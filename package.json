@@ -11,8 +11,13 @@
     "backend": "cd backend && npm run dev",
     "backend:start": "cd backend && npm start",
     "backend:migrate": "cd backend && npm run migrate",
+    "backend:seed": "cd backend && npm run seed",
+    "backend:fresh": "cd backend && npm run fresh-install",
     "full-dev": "concurrently \"npm run backend\" \"npm run dev\"",
-    "setup": "npm install && cd backend && npm install && npm run migrate"
+    "setup": "npm install && cd backend && npm install && npm run migrate && npm run seed",
+    "fresh-setup": "npm install && cd backend && npm install && npm run fresh-install",
+    "launch": "npm run setup && npm run full-dev",
+    "verify": "node verify-setup.js"
   },
   "dependencies": {
     "@base44/sdk": "^0.1.2",
