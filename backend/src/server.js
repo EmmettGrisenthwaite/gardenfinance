@@ -15,6 +15,7 @@ import goalRoutes from './routes/goals.js';
 import portfolioRoutes from './routes/portfolios.js';
 import debtRoutes from './routes/debts.js';
 import achievementRoutes from './routes/achievements.js';
+import aiRoutes from './routes/ai.js';
 
 // Load environment variables
 dotenv.config();
@@ -56,6 +57,7 @@ app.use('/api/goals', goalRoutes);
 app.use('/api/portfolios', portfolioRoutes);
 app.use('/api/debts', debtRoutes);
 app.use('/api/achievements', achievementRoutes);
+app.use('/api/ai', aiRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

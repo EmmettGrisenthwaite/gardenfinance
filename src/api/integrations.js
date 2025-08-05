@@ -1,41 +1,25 @@
-// Mock implementations for Base44 integrations
-// In a real application, you would integrate with actual services
+// Base44 integrations
+import { apiClient } from './client.js';
 
 export const Core = {
-  InvokeLLM: async (prompt, options = {}) => {
-    // Mock LLM response for budget recommendations, financial advice, etc.
-    console.log('Mock LLM called with prompt:', prompt);
-    
-    // Simple mock responses based on prompt content
-    if (prompt.includes('budget') || prompt.includes('Budget')) {
-      return {
-        response: `Based on your income and expenses, here are some recommendations:
-        
-1. **Emergency Fund**: Aim to save 3-6 months of expenses
-2. **Debt Reduction**: Consider the debt avalanche method for high-interest debts
-3. **Investment Allocation**: Consider a 60/40 stock/bond portfolio for moderate risk
-4. **Expense Optimization**: Review your subscription services and dining out expenses
+  InvokeLLM: async (options = {}) => {
+    try {
+      // Extract the message from prompt or options
+      const message = options.prompt || options.message || '';
+      const context = options.context || '';
+      
+      // Call the backend AI endpoint
+      const response = await apiClient.sendChatMessage(message, context);
+      
+      return response.response;
+    } catch (error) {
+      console.error('Error calling AI service:', error);
+      
+      // Fallback response if the AI service fails
+      return `I'm having trouble connecting to my AI service right now. This might be due to high demand or a temporary issue. Please try again in a moment, or feel free to browse the learning resources in the meantime! 🤖
 
-Your budget shows good fundamentals. Consider increasing your savings rate by 5% if possible.`
-      };
+If this continues, you can still use all the budgeting, goal tracking, and portfolio features in the app.`;
     }
-    
-    if (prompt.includes('goal') || prompt.includes('Goal')) {
-      return {
-        response: `Great financial goal! Here's how to achieve it:
-        
-1. **Break it down**: Divide your goal into smaller monthly targets
-2. **Automate savings**: Set up automatic transfers to a dedicated savings account
-3. **Track progress**: Review your progress weekly and adjust as needed
-4. **Stay motivated**: Celebrate small milestones along the way
-
-You're on the right track to achieving your financial objectives!`
-      };
-    }
-
-    return {
-      response: 'I understand you need financial advice. Could you please provide more specific details about your financial situation or goals?'
-    };
   },
 
   SendEmail: async (emailData) => {
