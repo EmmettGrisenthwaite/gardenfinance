@@ -1,4 +1,4 @@
-# Base44 Financial Planning App
+# Financial Planning App
 
 A complete full-stack financial planning application with budgeting, goal tracking, portfolio management, debt tracking, and achievement systems.
 
@@ -96,6 +96,7 @@ JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 JWT_EXPIRES_IN=7d
 DB_PATH=./database.sqlite
 CORS_ORIGIN=http://localhost:5173
+OPENAI_API_KEY=your-openai-api-key-here
 ```
 
 ## API Documentation
@@ -134,7 +135,7 @@ The app uses SQLite with the following main entities:
 ### Frontend Architecture
 - **Pages**: Main application pages (Dashboard, BudgetBuilder, etc.)
 - **Components**: Reusable UI components organized by feature
-- **API Layer**: Custom API client replacing Base44 SDK
+- **API Layer**: Custom API client with AI integration
 - **State Management**: React hooks for local state
 - **Routing**: React Router for navigation
 
@@ -145,16 +146,15 @@ The app uses SQLite with the following main entities:
 - **Middleware**: Authentication, validation, error handling
 - **Database**: SQLite with migration system
 
-## Migration from Base44
+## AI Integration
 
-This app was successfully migrated from using the Base44 platform to a custom full-stack architecture:
+This app includes a fully functional AI integration for financial advice:
 
-- ✅ **Database**: Custom SQLite database with full schema
-- ✅ **Authentication**: JWT-based auth system
-- ✅ **API**: RESTful API with all CRUD operations
-- ✅ **Data Persistence**: All user data stored locally
-- ✅ **Feature Parity**: All original features maintained
-- ✅ **Mock Integrations**: LLM and external service mocks
+- ✅ **OpenAI Integration**: GPT-3.5-turbo powered financial advisor
+- ✅ **Contextual Responses**: AI has access to user's financial data
+- ✅ **Personalized Advice**: Tailored recommendations based on user profile
+- ✅ **Error Handling**: Graceful fallbacks when AI service is unavailable
+- ✅ **Rate Limiting**: Proper handling of API rate limits
 
 ## Development Notes
 

@@ -1,7 +1,7 @@
 {
-  "name": "base44-app-backend",
+  "name": "financial-planning-backend",
   "version": "1.0.0",
-  "description": "Backend API for Base44 financial planning app",
+  "description": "Backend API for Financial Planning app",
   "main": "src/server.js",
   "type": "module",
   "scripts": {

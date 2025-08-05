@@ -95,7 +95,7 @@ Password: demo123
 
 ```
 Frontend (React + Vite)
-├── Custom API Client (replaces Base44 SDK)
+├── Custom API Client with AI Integration
 ├── Entity Classes (Budget, Goal, Portfolio, etc.)
 ├── All existing UI components
 └── Environment configuration

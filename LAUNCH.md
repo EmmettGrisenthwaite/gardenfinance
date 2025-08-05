@@ -109,7 +109,7 @@ cd backend && npm install
 - The app automatically saves all changes to the SQLite database
 - No external services required - everything runs locally
 - Hot reload enabled for both frontend and backend
-- All Base44 integrations replaced with smart mocks
+- All external integrations replaced with smart mocks
 
 ## Ready to Code!
 
