@@ -27,7 +27,7 @@ export class Achievement {
     const params = [userId];
 
     if (filter.created_by) {
-      // For compatibility with Base44 SDK filter format
+      // For compatibility with filter format
       query += ' AND user_id = ?';
       params.push(filter.created_by);
     }

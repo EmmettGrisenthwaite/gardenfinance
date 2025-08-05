@@ -1,4 +1,4 @@
-// Base44 integrations
+// AI and external service integrations
 import { apiClient } from './client.js';
 
 export const Core = {
