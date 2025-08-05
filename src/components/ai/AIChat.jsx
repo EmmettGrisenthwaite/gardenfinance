@@ -268,7 +268,8 @@ Respond as their personal financial advisor:
       `;
 
       const response = await InvokeLLM({
-        prompt,
+        prompt: messageText,
+        context: prompt,
         add_context_from_internet: messageText.toLowerCase().includes('news') ||
                                    messageText.toLowerCase().includes('market') ||
                                    messageText.toLowerCase().includes('stock') ||

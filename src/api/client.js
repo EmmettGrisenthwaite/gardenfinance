@@ -171,6 +171,15 @@ class APIClient {
       method: 'DELETE',
     });
   }
+
+  // AI Chat methods
+  async sendChatMessage(message, context) {
+    const response = await this.request('/ai/chat', {
+      method: 'POST',
+      body: { message, context },
+    });
+    return response;
+  }
 }
 
 export const apiClient = new APIClient();
