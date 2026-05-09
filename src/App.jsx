@@ -28,9 +28,6 @@ function ProtectedRoute({ children }) {
   if (!user) return <Navigate to="/login" replace />
   return <Layout>{children}</Layout>
 }
-  if (!user) return <Navigate to="/login" replace />
-  return <Layout>{children}</Layout>
-}
 
 function PublicRoute({ children }) {
   const { user, loading } = useAuth()
