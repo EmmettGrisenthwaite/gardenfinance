@@ -16,7 +16,7 @@ function GoalModal({ goal, onSave, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-[60]">
       {/* Full-screen on mobile, modal on sm+ */}
       <div className="bg-white w-full sm:rounded-2xl sm:shadow-xl sm:w-full sm:max-w-md sm:mx-4 rounded-t-2xl shadow-2xl">
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
@@ -197,9 +197,9 @@ export default function Goals() {
         <div className="space-y-3">
           {goals.map(goal => (
             <div key={goal.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-semibold text-gray-900">{goal.name}</h3>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-gray-900 break-words">{goal.name}</h3>
                   {goal.deadline && (
                     <p className="text-xs text-gray-400 mt-0.5">By {new Date(goal.deadline).toLocaleDateString()}</p>
                   )}

@@ -21,7 +21,7 @@ function DebtModal({ debt, onSave, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/30 flex items-end sm:items-center justify-center z-[60]">
       <div className="bg-white w-full sm:rounded-2xl sm:shadow-xl sm:w-full sm:max-w-md sm:mx-4 rounded-t-2xl shadow-2xl">
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
           <h3 className="font-semibold text-gray-900">{debt ? 'Edit Debt' : 'Add Debt'}</h3>
