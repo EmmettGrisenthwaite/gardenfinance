@@ -1,226 +1,191 @@
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/AuthContext'
+import GardenVisual from '@/components/garden/GardenVisual'
+import Onboarding from '@/components/Onboarding'
+import { DollarSign, Target, CreditCard, TrendingUp, Wallet, UserCircle } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
 
-import React, { useState, useEffect } from "react";
-import { User } from "@/api/entities";
-import { Budget } from "@/api/entities";
-import { Portfolio } from "@/api/entities";
-import { Goal } from "@/api/entities";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
-import { 
-  TrendingUp, 
-  Target, 
-  DollarSign, 
-  PiggyBank,
-  ArrowUpRight,
-  Sparkles,
-  CheckCircle,
-  AlertCircle,
-  Plus
-} from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+const PROFILE_FIELDS = [
+  { key: 'age',              label: 'Age' },
+  { key: 'employment_type',  label: 'Employment type' },
+  { key: 'employer_401k',    label: '401k status' },
+  { key: 'investment_types', label: 'Investment accounts', check: v => Array.isArray(v) && v.length > 0 },
+  { key: 'health_insurance', label: 'Health insurance' },
+  { key: 'primary_goal',     label: 'Primary goal' },
+]
 
-import WelcomeCard from "../components/dashboard/WelcomeCard";
-import QuickStats from "../components/dashboard/QuickStats";
-import GoalsOverview from "../components/dashboard/GoalsOverview";
-import FinancialTips from "../components/dashboard/FinancialTips";
-import OnboardingPrompt from "../components/dashboard/OnboardingPrompt";
+function profileCompleteness(profile) {
+  if (!profile) return { filled: 0, total: PROFILE_FIELDS.length, missing: PROFILE_FIELDS.map(f => f.label) }
+  const filled  = PROFILE_FIELDS.filter(f => f.check ? f.check(profile[f.key]) : !!profile[f.key])
+  const missing = PROFILE_FIELDS.filter(f => !(f.check ? f.check(profile[f.key]) : !!profile[f.key]))
+  return { filled: filled.length, total: PROFILE_FIELDS.length, missing: missing.map(f => f.label) }
+}
+
+function StatSkeleton() {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+      <div className="w-9 h-9 bg-gray-100 rounded-lg mb-3 animate-pulse" />
+      <div className="h-6 bg-gray-100 rounded animate-pulse mb-1.5 w-20" />
+      <div className="h-3.5 bg-gray-100 rounded animate-pulse w-24" />
+    </div>
+  )
+}
 
 export default function Dashboard() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [budgets, setBudgets] = useState([]);
-  const [portfolios, setPortfolios] = useState([]);
-  const [goals, setGoals] = useState([]);
+  const { user, profile } = useAuth()
+  const [goals,           setGoals]           = useState([])
+  const [budgets,         setBudgets]         = useState([])
+  const [debts,           setDebts]           = useState([])
+  const [accounts,        setAccounts]        = useState([])
+  const [loading,         setLoading]         = useState(true)
+  const [showOnboarding,  setShowOnboarding]  = useState(false)
+
+  const { filled, total, missing } = profileCompleteness(profile)
+  const isProfileIncomplete = filled < total
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
-
-  const loadDashboardData = async () => {
-    try {
-      const userData = await User.me();
-      setUser(userData);
-      
-      if (userData.onboarding_completed) {
-        const [budgetData, portfolioData, goalData] = await Promise.all([
-          Budget.filter({ created_by: userData.email }),
-          Portfolio.filter({ created_by: userData.email }),
-          Goal.filter({ created_by: userData.email }, '-created_date')
-        ]);
-        
-        setBudgets(budgetData);
-        setPortfolios(portfolioData);
-        setGoals(goalData);
-      }
-    } catch (error) {
-      console.error("Error loading dashboard data:", error);
+    async function load() {
+      const [g, b, d, a] = await Promise.all([
+        supabase.from('goals').select('*').eq('user_id', user.id),
+        supabase.from('budgets').select('*').eq('user_id', user.id),
+        supabase.from('debts').select('*').eq('user_id', user.id),
+        supabase.from('accounts').select('*').eq('user_id', user.id),
+      ])
+      setGoals(g.data ?? [])
+      setBudgets(b.data ?? [])
+      setDebts(d.data ?? [])
+      setAccounts(a.data ?? [])
+      setLoading(false)
     }
-    setLoading(false);
-  };
+    load()
+  }, [user.id])
 
-  if (loading) {
-    return (
-      <div className="p-6 lg:p-8 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {Array(4).fill(0).map((_, i) => (
-            <Card key={i} className="animate-pulse border-0 shadow-lg">
-              <CardContent className="p-6">
-                <div className="h-4 bg-slate-200 rounded mb-3"></div>
-                <div className="h-8 bg-slate-200 rounded mb-2"></div>
-                <div className="h-3 bg-slate-200 rounded w-3/4"></div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
+  const recurringIncome   = budgets.filter(b => b.type === 'income'  && b.recurring !== false).reduce((s, b) => s + Number(b.amount), 0)
+  const recurringExpenses = budgets.filter(b => b.type === 'expense' && b.recurring !== false).reduce((s, b) => s + Number(b.amount), 0)
+  const net        = recurringIncome - recurringExpenses
+  const totalDebt  = debts.reduce((s, d) => s + Number(d.balance), 0)
+  const totalAssets = accounts.reduce((s, a) => s + Number(a.balance), 0)
+  const netWorth   = totalAssets - totalDebt
 
-  if (!user?.onboarding_completed) {
-    return <OnboardingPrompt />;
-  }
+  const name = user.user_metadata?.full_name?.split(' ')[0] || 'there'
 
-  const currentBudget = budgets[0];
-  const currentPortfolio = portfolios.find(p => p.type === 'current');
-  const activeGoals = goals.filter(g => g.status === 'active');
+  const stats = [
+    { label: 'Monthly Income',   value: `$${recurringIncome.toLocaleString()}`,   icon: DollarSign, color: 'text-green-600',  bg: 'bg-green-50'  },
+    { label: 'Monthly Expenses', value: `$${recurringExpenses.toLocaleString()}`, icon: TrendingUp, color: 'text-orange-600', bg: 'bg-orange-50' },
+    { label: 'Active Goals',     value: goals.length,                              icon: Target,     color: 'text-blue-600',   bg: 'bg-blue-50'   },
+    { label: 'Total Debt',       value: `$${totalDebt.toLocaleString()}`,          icon: CreditCard, color: 'text-red-600',    bg: 'bg-red-50'    },
+  ]
 
   return (
-    <div className="p-4 lg:p-8 space-y-8 max-w-7xl mx-auto">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <WelcomeCard user={user} />
-      </motion.div>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      className="p-4 md:p-6 lg:p-8 max-w-5xl mx-auto space-y-5 pb-24 md:pb-8"
+    >
+      {showOnboarding && <Onboarding onClose={() => setShowOnboarding(false)} />}
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-      >
-        <QuickStats 
-          user={user}
-          currentBudget={currentBudget}
-          currentPortfolio={currentPortfolio}
-          activeGoals={activeGoals}
-        />
-      </motion.div>
-
-      <div className="grid lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-          >
-            <GoalsOverview goals={activeGoals} />
-          </motion.div>
-
-          {/* AI Actions Section */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-          >
-            <Card className="border-0 shadow-lg bg-white/90 backdrop-blur-sm">
-              <CardHeader className="border-b border-slate-100">
-                <CardTitle className="flex items-center gap-3 text-xl font-bold text-slate-900">
-                  <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-blue-500 rounded-lg flex items-center justify-center">
-                    <Sparkles className="w-5 h-5 text-white" />
-                  </div>
-                  AI-Powered Financial Tools
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <Link to={createPageUrl("AIAdvisor?topic=budget")}>
-                    <Button 
-                      variant="outline" 
-                      className="w-full h-24 flex flex-col gap-3 border-2 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50 transition-all duration-300 hover:shadow-lg hover:-translate-y-1"
-                    >
-                      <DollarSign className="w-8 h-8 text-emerald-600" />
-                      <span className="font-semibold text-slate-700">Ask AI About My Budget</span>
-                    </Button>
-                  </Link>
-                  <Link to={createPageUrl("AIAdvisor?topic=portfolio")}>
-                    <Button 
-                      variant="outline" 
-                      className="w-full h-24 flex flex-col gap-3 border-2 border-purple-200 hover:border-purple-400 hover:bg-purple-50 transition-all duration-300 hover:shadow-lg hover:-translate-y-1"
-                    >
-                      <TrendingUp className="w-8 h-8 text-purple-600" />
-                      <span className="font-semibold text-slate-700">Optimize Portfolio with AI</span>
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
-
-        <div className="space-y-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-          >
-            <FinancialTips />
-          </motion.div>
-
-          {/* Portfolio Summary */}
-          {currentPortfolio && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.5 }}
-            >
-              <Card className="border-0 shadow-lg bg-white/90 backdrop-blur-sm">
-                <CardHeader className="border-b border-slate-100">
-                  <CardTitle className="flex items-center gap-3 text-xl font-bold text-slate-900">
-                    <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-lg flex items-center justify-center">
-                      <TrendingUp className="w-5 h-5 text-white" />
-                    </div>
-                    Portfolio Snapshot
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6 space-y-6">
-                  <div className="text-center">
-                    <p className="text-3xl font-bold text-slate-900">
-                      ${currentPortfolio.total_value?.toLocaleString() || '0'}
-                    </p>
-                    <p className="text-sm text-slate-500 font-medium">Total Value</p>
-                  </div>
-                  {currentPortfolio.analysis && (
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-slate-600">Risk Score</span>
-                        <Badge className={currentPortfolio.analysis.risk_score > 7 ? "bg-red-50 text-red-700 border-red-200" : "bg-green-50 text-green-700 border-green-200"} variant="outline">
-                          {currentPortfolio.analysis.risk_score}/10
-                        </Badge>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-slate-600">Diversification</span>
-                        <Badge className={currentPortfolio.analysis.diversification_score > 7 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-yellow-50 text-yellow-700 border-yellow-200"} variant="outline">
-                          {currentPortfolio.analysis.diversification_score}/10
-                        </Badge>
-                      </div>
-                    </div>
-                  )}
-                  <Link to={createPageUrl("Portfolio")}>
-                    <Button variant="outline" size="sm" className="w-full gap-2 hover:bg-slate-50 border-slate-200 font-semibold">
-                      View Full Portfolio <ArrowUpRight className="w-4 h-4" />
-                    </Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Hey {name} 👋</h1>
+        <p className="text-gray-500 mt-1 text-sm">Here's how your financial garden is growing.</p>
       </div>
-    </div>
-  );
+
+      {/* Profile completeness banner */}
+      {isProfileIncomplete && !loading && (
+        <button
+          onClick={() => setShowOnboarding(true)}
+          className="w-full flex items-center gap-4 p-4 bg-white rounded-xl border border-dashed border-amber-300 hover:border-amber-400 hover:bg-amber-50/40 transition-all group text-left"
+        >
+          <div className="w-10 h-10 rounded-xl bg-amber-50 group-hover:bg-amber-100 flex items-center justify-center flex-shrink-0 transition-colors">
+            <UserCircle className="w-5 h-5 text-amber-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-gray-800">
+              Complete your advisor profile — {filled}/{total} done
+            </div>
+            <div className="text-xs text-gray-400 mt-0.5 truncate">
+              Missing: {missing.join(', ')}
+            </div>
+            <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5">
+              <div
+                className="h-1.5 rounded-full bg-amber-400 transition-all"
+                style={{ width: `${(filled / total) * 100}%` }}
+              />
+            </div>
+          </div>
+          <span className="text-xs font-medium text-amber-600 group-hover:text-amber-700 flex-shrink-0">
+            Add info →
+          </span>
+        </button>
+      )}
+
+      {/* Quick stats — 2 cols on mobile, 4 on desktop */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+        {loading
+          ? [1, 2, 3, 4].map(i => <StatSkeleton key={i} />)
+          : stats.map(({ label, value, icon: Icon, color, bg }) => (
+            <div key={label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-shadow">
+              <div className={`inline-flex items-center justify-center w-9 h-9 ${bg} rounded-lg mb-3`}>
+                <Icon className={`w-4 h-4 ${color}`} />
+              </div>
+              <div className="text-xl font-bold text-gray-900">{value}</div>
+              <div className="text-xs text-gray-500 mt-0.5">{label}</div>
+            </div>
+          ))
+        }
+      </div>
+
+      {/* Net worth banner */}
+      {!loading && accounts.length > 0 && (
+        <div className={`rounded-xl p-4 flex items-center justify-between ${netWorth >= 0 ? 'bg-blue-50 border border-blue-100' : 'bg-orange-50 border border-orange-100'}`}>
+          <div className="flex items-center gap-3">
+            <Wallet className={`w-5 h-5 flex-shrink-0 ${netWorth >= 0 ? 'text-blue-600' : 'text-orange-600'}`} />
+            <div>
+              <div className={`text-sm font-semibold ${netWorth >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>
+                Net Worth: {netWorth >= 0 ? '' : '-'}${Math.abs(netWorth).toLocaleString()}
+              </div>
+              <div className="text-xs text-gray-400">
+                ${totalAssets.toLocaleString()} assets · ${totalDebt.toLocaleString()} debt
+              </div>
+            </div>
+          </div>
+          <Link to="/accounts" className="text-xs text-gray-400 hover:text-gray-600 underline flex-shrink-0">
+            View
+          </Link>
+        </div>
+      )}
+
+      {/* Prompt to add accounts */}
+      {!loading && accounts.length === 0 && (budgets.length > 0 || goals.length > 0) && (
+        <Link to="/accounts"
+          className="flex items-center gap-3 p-4 bg-white rounded-xl border border-dashed border-gray-200 hover:border-green-300 hover:bg-green-50/40 transition-colors group">
+          <div className="w-9 h-9 bg-gray-50 group-hover:bg-green-100 rounded-lg flex items-center justify-center transition-colors flex-shrink-0">
+            <Wallet className="w-4 h-4 text-gray-400 group-hover:text-green-600 transition-colors" />
+          </div>
+          <div>
+            <div className="text-sm font-medium text-gray-700 group-hover:text-green-800">Add your account balances</div>
+            <div className="text-xs text-gray-400">Checking, savings, retirement — lets your advisor see your full picture</div>
+          </div>
+        </Link>
+      )}
+
+      {/* Garden visual */}
+      {loading ? (
+        <div className="h-64 bg-gray-100 rounded-xl animate-pulse" />
+      ) : (
+        <GardenVisual goals={goals} budgets={budgets} debts={debts} />
+      )}
+
+      {/* Monthly net summary */}
+      {!loading && (recurringIncome > 0 || recurringExpenses > 0) && (
+        <div className={`rounded-xl p-4 text-sm font-medium ${net >= 0 ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+          {net >= 0
+            ? `You have a $${net.toLocaleString()} monthly surplus — great work! 🌱`
+            : `You're spending $${Math.abs(net).toLocaleString()} more than you earn monthly. Time to weed the garden.`}
+        </div>
+      )}
+    </motion.div>
+  )
 }
