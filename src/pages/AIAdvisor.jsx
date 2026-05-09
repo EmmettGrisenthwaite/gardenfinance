@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { computeScores } from '@/lib/gardenUtils'
-import { Send, Bot, ChevronDown, ChevronUp, Sparkles, RefreshCw, Scan } from 'lucide-react'
+import { Send, Bot, ChevronDown, ChevronUp, Sparkles, RefreshCw, Scan, ArrowDown } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
@@ -533,8 +533,10 @@ export default function AIAdvisor() {
   const [accounts, setAccounts]         = useState([])
   const [snapshotOpen, setSnapshotOpen] = useState(false)
   const [error, setError]               = useState(null)
-  const bottomRef = useRef(null)
-  const inputRef  = useRef(null)
+  const [atBottom, setAtBottom]         = useState(true)
+  const bottomRef    = useRef(null)
+  const inputRef     = useRef(null)
+  const scrollRef    = useRef(null)
 
   useEffect(() => {
     async function load() {
@@ -557,8 +559,15 @@ export default function AIAdvisor() {
   }, [messages])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (atBottom) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    setAtBottom(distFromBottom < 80)
+  }, [])
 
   const scores = useMemo(() => computeScores(budgets, goals, debts), [budgets, goals, debts])
 
@@ -578,6 +587,7 @@ export default function AIAdvisor() {
     const next    = [...messages, userMsg]
     setMessages(next)
     setInput('')
+    setAtBottom(true)
     if (opts.analyzing) setAnalyzing(true); else setLoading(true)
 
     try {
@@ -653,7 +663,20 @@ export default function AIAdvisor() {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto relative">
+        {/* Scroll to bottom button */}
+        <AnimatePresence>
+          {!atBottom && messages.length > 0 && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }} transition={{ duration: 0.15 }}
+              onClick={() => { setAtBottom(true); bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }}
+              className="fixed bottom-36 md:bottom-24 right-4 z-10 w-9 h-9 bg-white border border-gray-200 shadow-md rounded-full flex items-center justify-center text-gray-500 hover:text-green-600 hover:border-green-400 transition-colors"
+            >
+              <ArrowDown className="w-4 h-4" />
+            </motion.button>
+          )}
+        </AnimatePresence>
         <div className="max-w-3xl mx-auto px-4 py-6">
 
           {isEmpty && !noKey && (

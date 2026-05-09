@@ -399,12 +399,13 @@ function SparklesEl() {
 }
 
 // ─── Tree label ────────────────────────────────────────────────────────────────
-function TreeLabel({ x, name, pct }) {
+function TreeLabel({ x, name, pct, index = 0 }) {
   const short = name.length > 11 ? name.slice(0, 11) + '…' : name
   const txt   = `${short} · ${pct}%`
   const w     = Math.min(txt.length * 6.4 + 16, 106)
+  const labelY = BASE_Y + 22 + (index % 2 === 1 ? 18 : 0)
   return (
-    <g transform={`translate(${x},${BASE_Y + 22})`}>
+    <g transform={`translate(${x},${labelY})`}>
       <rect x={-w / 2} y="-11" width={w} height="19" rx="9.5"
         fill="rgba(255,255,255,0.93)" />
       <text x="0" y="3.5" textAnchor="middle" fontSize="10" fontWeight="600"
@@ -501,7 +502,7 @@ const GardenVisual = memo(function GardenVisual({ goals = [], budgets = [], debt
                   {stage === 5 && <ButterflyEl x={x} topY={topY * s} />}
                   <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                     transition={{ delay: i * 0.12 + 0.5 }}>
-                    <TreeLabel x={x} name={goal.name} pct={pct} />
+                    <TreeLabel x={x} name={goal.name} pct={pct} index={i} />
                   </motion.g>
                 </g>
               )
