@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, memo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sprout, Target, Droplets, Sun } from 'lucide-react'
@@ -74,13 +74,17 @@ function SceneBackground() {
   return (
     <>
       <rect width={W} height={H} fill="url(#gSky)" />
-      {/* far hill */}
-      <path fill="#a8d8a0" opacity="0.32"
+      {/* far hill — slow breathing float */}
+      <motion.path fill="#a8d8a0" opacity="0.32"
         d={`M0,${GROUND_Y+8} Q100,${GROUND_Y-40} 220,${GROUND_Y-10} Q330,${GROUND_Y+10} 430,${GROUND_Y-38} Q530,${GROUND_Y-58} 650,${GROUND_Y-25} Q740,${GROUND_Y-5} ${W},${GROUND_Y-20} L${W},${H} L0,${H}Z`}
+        animate={{ y: [0, -2.5, 0] }}
+        transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut' }}
       />
-      {/* near hill */}
-      <path fill="#7bbf6a" opacity="0.38"
+      {/* near hill — slightly out of phase for natural feel */}
+      <motion.path fill="#7bbf6a" opacity="0.38"
         d={`M0,${GROUND_Y+4} Q130,${GROUND_Y-18} 260,${GROUND_Y+6} Q390,${GROUND_Y+20} 500,${GROUND_Y-14} Q620,${GROUND_Y-30} ${W},${GROUND_Y} L${W},${H} L0,${H}Z`}
+        animate={{ y: [0, -1.8, 0] }}
+        transition={{ duration: 7, repeat: Infinity, ease: 'easeInOut', delay: 1.5 }}
       />
     </>
   )
@@ -118,7 +122,7 @@ function Fence() {
     <g>
       {Array.from({ length: planks }).map((_, i) => {
         const x = i * gap
-        const l = 36 + (i % 3) * 6  // lightness variation
+        const l = 44 + (i % 3) * 6  // lightness variation
         return (
           <g key={i}>
             <rect x={x - 5.5} y={top} width={11} height={bot - top}
@@ -412,7 +416,7 @@ function TreeLabel({ x, name, pct }) {
 }
 
 // ─── Main component ─────────────────────────────────────────────────────────────
-export default function GardenVisual({ goals = [], budgets = [], debts = [] }) {
+const GardenVisual = memo(function GardenVisual({ goals = [], budgets = [], debts = [] }) {
   const scores = useMemo(() => computeScores(budgets, goals, debts), [budgets, goals, debts])
   const { totalScore, surplusRatio, hasDeficit, deficitSeverity,
           recurringIncome, recurringExpenses } = scores
@@ -589,4 +593,6 @@ export default function GardenVisual({ goals = [], budgets = [], debts = [] }) {
       </CardContent>
     </Card>
   )
-}
+})
+
+export default GardenVisual
