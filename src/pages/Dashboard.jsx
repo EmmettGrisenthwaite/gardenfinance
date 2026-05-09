@@ -71,6 +71,9 @@ export default function Dashboard() {
 
   const name = user.user_metadata?.full_name?.split(' ')[0] || 'there'
 
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+
   const stats = [
     { label: 'Monthly Income',   value: `$${recurringIncome.toLocaleString()}`,   icon: DollarSign, color: 'text-green-600',  bg: 'bg-green-50'  },
     { label: 'Monthly Expenses', value: `$${recurringExpenses.toLocaleString()}`, icon: TrendingUp, color: 'text-orange-600', bg: 'bg-orange-50' },
@@ -88,7 +91,7 @@ export default function Dashboard() {
       {showOnboarding && <Onboarding onClose={() => setShowOnboarding(false)} />}
 
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Hey {name} 👋</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{greeting}, {name} 👋</h1>
         <p className="text-gray-500 mt-1 text-sm">Here's how your financial garden is growing.</p>
       </div>
 

@@ -576,7 +576,15 @@ const GardenVisual = memo(function GardenVisual({ goals = [], budgets = [], debt
             </div>
             <div className="w-full bg-gray-100 rounded-full h-2.5">
               <motion.div className="h-2.5 rounded-full"
-                style={{ background: 'linear-gradient(to right,#4ade80,#16a34a)' }}
+                style={{
+                  background: totalScore >= 85
+                    ? 'linear-gradient(to right,#34d399,#059669)'
+                    : totalScore >= 60
+                    ? 'linear-gradient(to right,#4ade80,#16a34a)'
+                    : totalScore >= 30
+                    ? 'linear-gradient(to right,#fbbf24,#d97706)'
+                    : 'linear-gradient(to right,#f87171,#dc2626)',
+                }}
                 initial={{ width: '0%' }}
                 animate={{ width: `${totalScore}%` }}
                 transition={{ duration: 1.8, ease: 'easeInOut' }} />
