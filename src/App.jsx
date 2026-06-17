@@ -7,7 +7,6 @@ import Layout from '@/components/Layout'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import Budget from '@/pages/Budget'
-import Goals from '@/pages/Goals'
 import Debt from '@/pages/Debt'
 import AIAdvisor from '@/pages/AIAdvisor'
 import Accounts from '@/pages/Accounts'
@@ -75,7 +74,7 @@ export default function App() {
               <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
               <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/budget" element={<ProtectedRoute><Budget /></ProtectedRoute>} />
-              <Route path="/goals" element={<ProtectedRoute><Goals /></ProtectedRoute>} />
+              <Route path="/goals" element={<Navigate to="/plan" replace />} />
               <Route path="/debt" element={<ProtectedRoute><Debt /></ProtectedRoute>} />
               <Route path="/accounts" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
               <Route path="/advisor" element={<ProtectedRoute><AIAdvisor /></ProtectedRoute>} />

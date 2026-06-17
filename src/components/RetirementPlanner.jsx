@@ -7,7 +7,7 @@ function Field({ label, value, onChange, prefix, suffix, step = 1, min = 0, max 
   return (
     <label className="block">
       <span className="block text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-1">{label}</span>
-      <div className="flex items-center bg-white/10 border border-white/15 rounded-lg px-2.5 py-1.5 focus-within:border-emerald-400/50 transition-colors">
+      <div className="flex items-center bg-white/10 border border-white/[0.08] rounded-lg px-2.5 py-1.5 focus-within:border-emerald-400/50 transition-colors">
         {prefix && <span className="text-white/40 text-sm mr-1">{prefix}</span>}
         <input
           type="number" inputMode="decimal" value={value} step={step} min={min} max={max}
@@ -62,7 +62,7 @@ export default function RetirementPlanner({ userId, defaults, initial, linkedGoa
       : `Contributing ${fmt$(out.monthlyGap)} more per month (${fmt$(out.requiredMonthly)} total) puts you on track for your ${fmt$(out.target)} goal.`
 
   return (
-    <div className="rounded-2xl border border-white/15 bg-white/[0.07] backdrop-blur-xl overflow-hidden">
+    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.055] overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10 bg-emerald-500/10">
         <PiggyBank className="w-4 h-4 text-emerald-300" />
         <span className="text-sm font-semibold text-white flex-1">Retirement Planner</span>
@@ -112,8 +112,8 @@ export default function RetirementPlanner({ userId, defaults, initial, linkedGoa
       {/* Goal integration */}
       <div className="px-4 py-3 border-t border-white/10">
         {linkedGoalId ? (
-          <Link to="/goals" className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-colors">
-            <Check className="w-3.5 h-3.5" /> {justLinked ? 'Synced' : 'Linked'} to your Retirement goal · view in Goals <ArrowRight className="w-3.5 h-3.5" />
+          <Link to="/plan#goals" className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-colors">
+            <Check className="w-3.5 h-3.5" /> {justLinked ? 'Synced' : 'Linked'} to your Retirement goal · view in goals <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         ) : (
           <button onClick={handleSync} disabled={syncing || out.years <= 0}

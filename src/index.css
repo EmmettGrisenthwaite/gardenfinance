@@ -8,6 +8,9 @@
 /* Money and metrics align cleanly everywhere */
 @layer base {
   body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  /* Native controls render dark (legible text, dark calendars/selects) on the
+     dark shell — without this, default black input text is invisible. */
+  input, textarea, select { color-scheme: dark; }
 }
 
 
@@ -168,5 +171,43 @@ button:focus-visible {
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* ── Dark-glass design primitives (shared across pages, legibility-safe) ──────
+   Inputs use a near-opaque surface + color-scheme:dark so native selects/date
+   pickers render dark and text stays high-contrast (WCAG ≥ 4.5:1). */
+@layer components {
+  /* Content surfaces are near-solid + hairline (clean, not frosted glass).
+     Blur is reserved for true overlays — nav, HUD, modals. */
+  .glass-card {
+    @apply bg-white/[0.055] rounded-2xl border border-white/[0.08];
+  }
+  .glass-row {
+    @apply bg-white/[0.04] rounded-xl border border-white/[0.07];
+  }
+  .field-label {
+    @apply block text-xs font-medium text-white/55 mb-1.5;
+  }
+  .glass-input {
+    @apply w-full rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/35
+           focus:outline-none transition-colors;
+    background-color: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    color-scheme: dark;
+  }
+  .glass-input:focus {
+    border-color: rgba(52, 211, 153, 0.55);
+    box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.25);
+  }
+  .glass-input option { color: #fff; background: #0c1510; }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-emerald-600
+           hover:bg-emerald-500 text-white text-sm font-semibold shadow-lg shadow-emerald-900/30
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-white/10
+           hover:bg-white/15 border border-white/15 text-white text-sm font-semibold transition-colors;
   }
 }

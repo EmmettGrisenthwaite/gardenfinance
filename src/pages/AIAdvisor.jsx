@@ -531,7 +531,7 @@ function WelcomeScreen({ hasData, onAnalyze, onSuggest, analyzing, onBuildPlan, 
       <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:flex-wrap md:justify-center md:overflow-x-visible md:-mx-0 md:px-0 md:max-w-lg md:mx-auto">
         {SUGGESTIONS.map((s, i) => (
           <button key={i} onClick={() => onSuggest(s.label)}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-white/10 border border-white/15 rounded-full text-sm text-white/70 hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-white transition-all">
+            className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-white/10 border border-white/[0.08] rounded-full text-sm text-white/70 hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-white transition-all">
             <s.icon className="w-3.5 h-3.5 text-emerald-300/80" />{s.label}
           </button>
         ))}
@@ -798,7 +798,7 @@ export default function AIAdvisor() {
               initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }} transition={{ duration: 0.15 }}
               onClick={() => { setAtBottom(true); bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }}
-              className="fixed bottom-36 md:bottom-24 right-4 z-10 w-9 h-9 bg-white/15 backdrop-blur-md border border-white/20 shadow-lg rounded-full flex items-center justify-center text-white/70 hover:text-emerald-300 hover:border-emerald-400/50 transition-colors"
+              className="fixed bottom-36 md:bottom-24 right-4 z-10 w-9 h-9 bg-white/15 backdrop-blur-md border border-white/10 shadow-lg rounded-full flex items-center justify-center text-white/70 hover:text-emerald-300 hover:border-emerald-400/50 transition-colors"
             >
               <ArrowDown className="w-4 h-4" />
             </motion.button>
@@ -857,7 +857,7 @@ export default function AIAdvisor() {
             <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:flex-wrap md:overflow-x-visible md:-mx-0 md:px-0 mt-2 mb-2">
               {SUGGESTIONS.slice(0, 4).map((s, i) => (
                 <button key={i} onClick={() => send(s.label)}
-                  className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-white/10 border border-white/15 rounded-full text-xs text-white/60 hover:border-emerald-400/50 hover:text-white transition-all">
+                  className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-white/10 border border-white/[0.08] rounded-full text-xs text-white/60 hover:border-emerald-400/50 hover:text-white transition-all">
                   <s.icon className="w-3 h-3 text-emerald-300/80" /> {s.label}
                 </button>
               ))}
@@ -872,7 +872,7 @@ export default function AIAdvisor() {
       <div className="flex-shrink-0 border-t border-white/10 bg-white/5 backdrop-blur-md pb-20 md:pb-0">
         <form onSubmit={e => { e.preventDefault(); send(input) }} className="max-w-3xl mx-auto px-4 py-3 md:py-4">
           <div className="flex gap-2 items-end">
-            <div className="flex-1 bg-white/10 border border-white/15 rounded-2xl px-4 py-3 focus-within:border-emerald-400/50 focus-within:ring-1 focus-within:ring-emerald-400/20 transition-all">
+            <div className="flex-1 bg-white/10 border border-white/[0.08] rounded-2xl px-4 py-3 focus-within:border-emerald-400/50 focus-within:ring-1 focus-within:ring-emerald-400/20 transition-all">
               <textarea ref={inputRef} value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}

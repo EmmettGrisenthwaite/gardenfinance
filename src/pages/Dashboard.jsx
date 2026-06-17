@@ -36,7 +36,7 @@ function GardenHud({ stage, score }) {
   const pct = stage >= 5 ? 100 : Math.round(((score - lo) / (hi - lo)) * 100)
   return (
     <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-      <div className="flex items-center gap-2.5 bg-black/45 backdrop-blur-md border border-white/20 rounded-full pl-3.5 pr-4 py-1.5 shadow-lg">
+      <div className="flex items-center gap-2.5 bg-black/45 backdrop-blur-md border border-white/10 rounded-full pl-3.5 pr-4 py-1.5 shadow-lg">
         <span className="w-2.5 h-2.5 rounded-full ring-2 ring-white/20"
           style={{ background: ['#8a6a44','#a3b35a','#6cc24a','#3fa53b','#2f9e44','#34d399'][stage] }} />
         <span className="text-xs font-bold text-white whitespace-nowrap">{STAGE_NAMES[stage]}</span>
@@ -54,8 +54,8 @@ function GardenHud({ stage, score }) {
 function StatCard({ to, icon: Icon, label, value, sub, subColor }) {
   return (
     <Link to={to} className="block group">
-      <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/15 shadow-lg p-3 h-full
-                      group-hover:bg-white/[0.16] group-hover:border-white/25 transition-all">
+      <div className="bg-white/[0.055] rounded-2xl border border-white/[0.08] p-3 h-full
+                      group-hover:bg-white/[0.1] group-hover:border-white/[0.12] transition-all">
         <div className="flex items-center gap-2 mb-1">
           <div className="w-7 h-7 bg-white/10 rounded-lg flex items-center justify-center flex-shrink-0">
             <Icon className="w-3.5 h-3.5 text-emerald-200/80" />
@@ -71,7 +71,7 @@ function StatCard({ to, icon: Icon, label, value, sub, subColor }) {
 
 function StatSkeleton() {
   return (
-    <div className="bg-white/8 backdrop-blur-xl rounded-2xl border border-white/10 p-3 animate-pulse">
+    <div className="bg-white/[0.055] rounded-2xl border border-white/[0.08] p-3 animate-pulse">
       <div className="flex items-center gap-2 mb-2">
         <div className="w-7 h-7 bg-white/15 rounded-lg" />
         <div className="h-2.5 bg-white/15 rounded w-14" />
@@ -216,7 +216,7 @@ export default function Dashboard() {
       subColor: totalDebt === 0 ? 'text-emerald-300' : undefined,
     },
     {
-      to: '/goals', icon: Target,
+      to: '/plan#goals', icon: Target,
       label: 'Goals', value: `${goals.length}`,
       sub: goals.length > 0 ? `${goalsPct}% avg progress` : 'Plant your first goal',
     },

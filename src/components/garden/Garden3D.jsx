@@ -1490,8 +1490,8 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal, onZone })
           front-left Savings · front-right Investments · back-left Emergency · back-right Debt.
           Front banners sit LOW on the rim (clear of the goal markers above the
           plots); back banners float over the rim behind the gardens. */}
-      <ZoneLabel position={[-2.7, 0.45,  6.95]} label="Savings"     icon="🌱" accent="rgba(134,239,172,0.65)" tier={savingsTier}        to="/goals"    onZone={onZone} />
-      <ZoneLabel position={[ 2.7, 0.45,  6.95]} label="Investments" icon="📈" accent="rgba(251,191,36,0.65)"  tier={investTier}         to="/goals"    onZone={onZone} />
+      <ZoneLabel position={[-2.7, 0.45,  6.95]} label="Savings"     icon="🌱" accent="rgba(134,239,172,0.65)" tier={savingsTier}        to="/plan#goals" onZone={onZone} />
+      <ZoneLabel position={[ 2.7, 0.45,  6.95]} label="Investments" icon="📈" accent="rgba(251,191,36,0.65)"  tier={investTier}         to="/plan#goals" onZone={onZone} />
       <ZoneLabel position={[-2.9, 1.10, -6.95]} label="Emergency"   icon="🛟" accent="rgba(125,211,252,0.65)" tier={emergencyFill * 4}  to="/accounts" onZone={onZone} />
       <ZoneLabel position={[ 2.9, 1.10, -6.95]} label="Debt"        icon="💳" accent="rgba(248,180,180,0.65)" tier={(1 - debtLevel) * 4} to="/debt"     onZone={onZone} />
 
@@ -1660,7 +1660,7 @@ class GardenErrorBoundary extends Component {
 const Garden3D = memo(function Garden3D() {
   const { stage, weather, goals, debts } = useGarden()
   const navigate = useNavigate()
-  const goToGoals = () => navigate('/goals')
+  const goToGoals = () => navigate('/plan#goals')
   const goToZone  = (path) => navigate(path)
   return (
     <div className="w-full h-full">

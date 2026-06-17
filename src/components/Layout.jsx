@@ -1,26 +1,26 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Sprout, LayoutDashboard, Target, CreditCard, DollarSign, Bot, LogOut, Wallet, ClipboardList } from 'lucide-react'
+import { Sprout, LayoutDashboard, Target, CreditCard, DollarSign, Bot, LogOut, Wallet } from 'lucide-react'
 import Onboarding from '@/components/Onboarding'
 
+// Plan now holds goals + retirement + action steps (Goals was merged in).
 const NAV_ITEMS = [
   { to: '/',        label: 'Garden',  icon: LayoutDashboard },
+  { to: '/plan',    label: 'Plan',    icon: Target },
   { to: '/budget',  label: 'Budget',  icon: DollarSign },
-  { to: '/goals',   label: 'Goals',   icon: Target },
   { to: '/debt',    label: 'Debt',    icon: CreditCard },
   { to: '/accounts',label: 'Accounts',icon: Wallet },
   { to: '/advisor', label: 'Advisor', icon: Bot },
-  { to: '/plan',    label: 'Plan',    icon: ClipboardList },
 ]
 
-// Bottom HUD shows 5 items (Accounts is in the sidebar & mobile header)
+// Bottom HUD shows 5 items (Debt is reachable via its garden zone)
 const HUD_ITEMS = [
   { to: '/',        label: 'Garden',  icon: LayoutDashboard },
-  { to: '/goals',   label: 'Goals',   icon: Target },
+  { to: '/plan',    label: 'Plan',    icon: Target },
   { to: '/advisor', label: 'Advisor', icon: Bot },
-  { to: '/plan',    label: 'Plan',    icon: ClipboardList },
   { to: '/budget',  label: 'Budget',  icon: DollarSign },
+  { to: '/accounts',label: 'Accounts',icon: Wallet },
 ]
 
 export default function Layout({ children }) {
@@ -84,10 +84,10 @@ export default function Layout({ children }) {
 
         {/* ── Desktop glass sidebar ── */}
         <aside className="hidden md:flex w-56 shrink-0 p-3">
-          <div className="flex flex-col w-full h-full bg-white/15 backdrop-blur-xl rounded-2xl border border-white/25 shadow-2xl overflow-hidden">
+          <div className="flex flex-col w-full h-full bg-white/[0.06] backdrop-blur-md rounded-2xl border border-white/[0.12] shadow-2xl overflow-hidden">
 
             {/* Logo */}
-            <div className="px-4 py-4 border-b border-white/15">
+            <div className="px-4 py-4 border-b border-white/[0.08]">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 bg-green-500/90 rounded-xl flex items-center justify-center shadow-lg">
                   <Sprout className="w-4 h-4 text-white" />
@@ -121,7 +121,7 @@ export default function Layout({ children }) {
             </nav>
 
             {/* User + logout */}
-            <div className="p-2 border-t border-white/15">
+            <div className="p-2 border-t border-white/[0.08]">
               <div className="text-[10px] text-white/40 truncate px-3 mb-1">{user?.email}</div>
               <button
                 onClick={handleLogout}
@@ -146,7 +146,8 @@ export default function Layout({ children }) {
               <span className="font-display font-semibold text-white text-[15px] tracking-tight drop-shadow">Garden Financial</span>
             </div>
             <NavLink
-              to="/accounts"
+              to="/debt"
+              aria-label="Debt"
               className={({ isActive }) =>
                 `p-2 rounded-xl transition-all backdrop-blur-sm ${
                   isActive
@@ -155,7 +156,7 @@ export default function Layout({ children }) {
                 }`
               }
             >
-              <Wallet className="w-5 h-5" />
+              <CreditCard className="w-5 h-5" />
             </NavLink>
           </header>
 
@@ -172,7 +173,7 @@ export default function Layout({ children }) {
         className="md:hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="flex items-center gap-1 bg-black/40 backdrop-blur-2xl rounded-2xl border border-white/15 px-2 py-1.5"
+        <div className="flex items-center gap-1 bg-black/40 backdrop-blur-2xl rounded-2xl border border-white/[0.08] px-2 py-1.5"
           style={{ boxShadow: '0 12px 36px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.10)' }}>
           {HUD_ITEMS.map(({ to, label, icon: Icon }) => (
             <NavLink

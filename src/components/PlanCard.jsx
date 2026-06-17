@@ -81,7 +81,7 @@ function AddStepRow({ onAdd }) {
       <input autoFocus value={text} onChange={e => setText(e.target.value)}
         onBlur={() => !text && setOpen(false)}
         placeholder="e.g. Cancel unused subscriptions"
-        className="flex-1 bg-white/10 border border-white/15 rounded-lg px-3 py-1.5 text-xs text-white placeholder-white/35 focus:outline-none focus:border-emerald-400/50" />
+        className="flex-1 bg-white/10 border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-white placeholder-white/35 focus:outline-none focus:border-emerald-400/50" />
       <button type="submit" disabled={!text.trim()}
         className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-semibold transition-colors">
         Add

@@ -1,46 +1,26 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ClipboardList, Bot, Wallet, Percent, PiggyBank, Target, TrendingUp, Sprout } from 'lucide-react'
+import { ClipboardList, Bot, Wallet, Percent, PiggyBank, Target, Plus, Sprout } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { listPlans, updatePlanSteps, deletePlan, applyStep } from '@/lib/advisorPlans'
 import { deriveDefaults, computeRetirement, loadRetirement, fmt$ } from '@/lib/retirement'
+import { GoalItem, GoalModal, getProjection } from '@/components/GoalItem'
 import PlanCard from '@/components/PlanCard'
 import RetirementPlanner from '@/components/RetirementPlanner'
 
-function GoalRow({ goal }) {
-  const pct   = Math.min(100, Math.round((Number(goal.current_amount) / (Number(goal.target_amount) || 1)) * 100))
-  const isInv = goal.goal_type === 'investment'
-  const done  = pct >= 100
-  return (
-    <Link to="/goals" className="block bg-white/10 rounded-xl border border-white/15 p-3 hover:bg-white/[0.14] transition-colors">
-      <div className="flex items-center justify-between mb-1.5 gap-2">
-        <span className="text-sm font-semibold text-white truncate flex items-center gap-1.5 min-w-0">
-          {isInv ? <TrendingUp className="w-3.5 h-3.5 text-amber-300 flex-shrink-0" />
-                 : <Sprout className="w-3.5 h-3.5 text-emerald-300 flex-shrink-0" />}
-          <span className="truncate">{goal.name}</span>
-        </span>
-        <span className={`text-xs font-bold tabular-nums flex-shrink-0 ${done ? 'text-emerald-300' : 'text-white/60'}`}>{pct}%</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-        <div className={`h-full rounded-full transition-all duration-500 ${isInv ? 'bg-amber-400' : 'bg-emerald-400'}`}
-          style={{ width: `${pct}%` }} />
-      </div>
-      <div className="text-[10px] text-white/40 mt-1 tabular-nums">{fmt$(goal.current_amount)} of {fmt$(goal.target_amount)}</div>
-    </Link>
-  )
-}
+const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
 function SnapshotChip({ icon: Icon, label, value, sub, valueColor }) {
   return (
-    <div className="bg-white/10 backdrop-blur-xl rounded-xl border border-white/15 p-3">
+    <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] p-3 min-w-0">
       <div className="flex items-center gap-1.5 mb-1">
-        <Icon className="w-3.5 h-3.5 text-emerald-300/80" />
-        <span className="text-[10px] font-semibold text-white/45 uppercase tracking-wide">{label}</span>
+        <Icon className="w-3.5 h-3.5 text-emerald-300/80 flex-shrink-0" />
+        <span className="text-[10px] font-semibold text-white/45 uppercase tracking-wide truncate">{label}</span>
       </div>
-      <div className={`text-lg font-bold tabular-nums leading-tight ${valueColor ?? 'text-white'}`}>{value}</div>
-      {sub && <div className="text-[10px] text-white/40 mt-0.5">{sub}</div>}
+      <div className={`text-base md:text-lg font-bold tabular-nums leading-tight ${valueColor ?? 'text-white'}`}>{value}</div>
+      {sub && <div className="text-[10px] text-white/40 mt-0.5 truncate">{sub}</div>}
     </div>
   )
 }
@@ -51,16 +31,17 @@ export default function Plan() {
   const [data, setData]       = useState({ goals: [], budgets: [], debts: [], accounts: [] })
   const [retire, setRetire]   = useState(null)
   const [loading, setLoading] = useState(true)
+  const [modal, setModal]     = useState(null)   // null | 'new' | goal
 
   async function loadGoals() {
-    const { data: g } = await supabase.from('goals').select('*').eq('user_id', user.id)
+    const { data: g } = await supabase.from('goals').select('*').eq('user_id', user.id).order('created_at')
     setData(d => ({ ...d, goals: g ?? [] }))
   }
 
   useEffect(() => {
     async function load() {
       const [g, b, d, a, ret, pl] = await Promise.all([
-        supabase.from('goals').select('*').eq('user_id', user.id),
+        supabase.from('goals').select('*').eq('user_id', user.id).order('created_at'),
         supabase.from('budgets').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
         supabase.from('accounts').select('*').eq('user_id', user.id),
@@ -74,6 +55,22 @@ export default function Plan() {
     }
     load().catch(() => setLoading(false))
   }, [user.id])
+
+  // ── Goal CRUD (refreshes goals so snapshot + retirement stay in sync) ────────
+  async function saveGoal(payload) {
+    if (modal && modal !== 'new') await supabase.from('goals').update(payload).eq('id', modal.id)
+    else await supabase.from('goals').insert({ ...payload, user_id: user.id })
+    setModal(null)
+    loadGoals()
+  }
+  function deleteGoal(id) {
+    setData(d => ({ ...d, goals: d.goals.filter(g => g.id !== id) }))
+    supabase.from('goals').delete().eq('id', id).then(() => {})
+  }
+  function updateProgress(id, amount) {
+    setData(d => ({ ...d, goals: d.goals.map(g => g.id === id ? { ...g, current_amount: amount } : g) }))
+    supabase.from('goals').update({ current_amount: amount }).eq('id', id).then(() => {})
+  }
 
   // ── Action-plan handlers (functional updaters → burst-safe) ─────────────────
   function editPlan(planId, mutate) {
@@ -97,7 +94,7 @@ export default function Plan() {
     deletePlan(planId).catch(() => {})
   }
 
-  // ── Snapshot metrics ────────────────────────────────────────────────────────
+  // ── Derived metrics ──────────────────────────────────────────────────────────
   const { goals, budgets, debts, accounts } = data
   const totalAssets = accounts.reduce((s, a) => s + Number(a.balance), 0)
   const totalDebt   = debts.reduce((s, d) => s + Number(d.balance), 0)
@@ -110,9 +107,15 @@ export default function Plan() {
   const retireInput = { ...defaults, ...(retire?.settings ?? {}) }
   const retireOut   = computeRetirement(retireInput)
 
-  const isComplete  = p => p.steps.length > 0 && p.steps.every(s => s.done)
   const stepsLeft   = plans.reduce((n, p) => n + p.steps.filter(s => !s.done).length, 0)
+  const isComplete  = p => p.steps.length > 0 && p.steps.every(s => s.done)
   const sortedPlans = [...plans].sort((a, b) => (isComplete(a) === isComplete(b) ? 0 : isComplete(a) ? 1 : -1))
+
+  // Living headline — the nearest goal you'll reach, in plain language.
+  const nearest = goals
+    .map(g => ({ g, p: getProjection(g) }))
+    .filter(x => x.p && !x.p.done && !x.p.longTerm && x.p.monthsLeft)
+    .sort((a, b) => a.p.monthsLeft - b.p.monthsLeft)[0]
 
   return (
     <motion.div
@@ -120,16 +123,27 @@ export default function Plan() {
       className="p-4 md:p-6 lg:p-8 max-w-3xl mx-auto space-y-5 pb-24 md:pb-8"
     >
       <div>
-        <h1 className="font-display text-[26px] font-medium text-white drop-shadow-lg">Your Financial Plan</h1>
-        <p className="text-white/60 mt-1 text-sm">A living plan that grows with you</p>
+        <h1 className="font-display text-[26px] font-medium text-white drop-shadow-lg">Your Plan</h1>
+        <p className="text-white/60 mt-1 text-sm">Your goals, retirement, and next steps — in one place.</p>
       </div>
 
       {loading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-28 bg-white/10 rounded-2xl animate-pulse" />)}
+          {[1, 2, 3].map(i => <div key={i} className="h-28 bg-white/[0.05] rounded-2xl animate-pulse" />)}
         </div>
       ) : (
         <>
+          {/* Living headline */}
+          {nearest && (
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/[0.1] border border-emerald-400/20">
+              <Sprout className="w-4 h-4 text-emerald-300 flex-shrink-0" />
+              <p className="text-sm text-white/90 leading-snug">
+                On pace to reach <span className="font-semibold text-white">{nearest.g.name}</span> by{' '}
+                <span className="font-semibold text-emerald-300">{nearest.p.label}</span>.
+              </p>
+            </div>
+          )}
+
           {/* Snapshot */}
           <div className="grid grid-cols-3 gap-2.5">
             <SnapshotChip icon={Wallet} label="Net worth" value={`${netWorth < 0 ? '-' : ''}${fmt$(Math.abs(netWorth))}`}
@@ -145,32 +159,70 @@ export default function Plan() {
               sub="on track" />
           </div>
 
-          {/* Retirement planner */}
-          <RetirementPlanner
-            userId={user.id}
-            defaults={defaults}
-            initial={retire?.settings}
-            linkedGoalId={retire?.linked_goal_id}
-            onGoalSynced={loadGoals}
-          />
-
-          {/* Goals & milestones — the same goals you see on the Goals page */}
-          {goals.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-2.5">
-                <h2 className="text-sm font-semibold text-white flex items-center gap-1.5">
-                  <Target className="w-4 h-4 text-emerald-300" /> Goals &amp; milestones
-                </h2>
-                <Link to="/goals" className="text-xs text-emerald-300 hover:text-emerald-200 transition-colors">Manage →</Link>
-              </div>
-              <div className="grid sm:grid-cols-2 gap-2">
-                {goals.map(g => <GoalRow key={g.id} goal={g} />)}
-              </div>
+          {/* Sticky jump-nav */}
+          <div className="sticky top-0 z-20 -mx-4 px-4 py-2 bg-[#04100a]/80 backdrop-blur-md border-y border-white/[0.06]">
+            <div className="flex gap-2">
+              {[['Goals', 'goals'], ['Retirement', 'retirement'], ['Steps', 'steps']].map(([label, id]) => (
+                <button key={id} onClick={() => scrollTo(id)}
+                  className="px-3 py-1 rounded-full text-xs font-semibold text-white/60 bg-white/[0.06] border border-white/[0.08] hover:text-white hover:bg-white/10 transition-colors">
+                  {label}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
 
-          {/* Action steps */}
-          <div>
+          {/* ── Goals ── */}
+          <section id="goals" className="scroll-mt-16 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-white flex items-center gap-1.5">
+                <Target className="w-4 h-4 text-emerald-300" /> Goals
+              </h2>
+              <button onClick={() => setModal('new')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors">
+                <Plus className="w-3.5 h-3.5" /> Add goal
+              </button>
+            </div>
+
+            {goals.length === 0 ? (
+              <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] p-8 text-center">
+                <div className="w-11 h-11 mx-auto mb-3 rounded-full bg-emerald-500/15 flex items-center justify-center">
+                  <Target className="w-5 h-5 text-emerald-400" />
+                </div>
+                <p className="text-white font-semibold text-sm mb-1">No goals yet</p>
+                <p className="text-white/45 text-xs max-w-xs mx-auto mb-4">
+                  What are you saving toward — a house, emergency fund, or trip? Add one to plant your first tree.
+                </p>
+                <button onClick={() => setModal('new')}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors">
+                  <Plus className="w-4 h-4" /> Add your first goal
+                </button>
+              </div>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-3">
+                {goals.map(g => (
+                  <GoalItem key={g.id} goal={g}
+                    onEdit={setModal} onDelete={deleteGoal} onUpdateProgress={updateProgress} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* ── Retirement ── */}
+          <section id="retirement" className="scroll-mt-16">
+            <h2 className="text-sm font-semibold text-white flex items-center gap-1.5 mb-2.5">
+              <PiggyBank className="w-4 h-4 text-emerald-300" /> Retirement
+            </h2>
+            <RetirementPlanner
+              userId={user.id}
+              defaults={defaults}
+              initial={retire?.settings}
+              linkedGoalId={retire?.linked_goal_id}
+              onGoalSynced={loadGoals}
+            />
+          </section>
+
+          {/* ── Action steps ── */}
+          <section id="steps" className="scroll-mt-16">
             <div className="flex items-center justify-between mb-2.5">
               <h2 className="text-sm font-semibold text-white flex items-center gap-1.5">
                 <ClipboardList className="w-4 h-4 text-emerald-300" /> Action steps
@@ -179,7 +231,7 @@ export default function Plan() {
             </div>
 
             {plans.length === 0 ? (
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/15 p-8 text-center">
+              <div className="bg-white/[0.055] rounded-2xl border border-white/[0.08] p-8 text-center">
                 <p className="text-white font-semibold text-sm mb-1">No action steps yet</p>
                 <p className="text-white/45 text-xs max-w-xs mx-auto mb-4">
                   Ask your advisor to build an action plan — save it here to track your steps.
@@ -200,8 +252,12 @@ export default function Plan() {
                 ))}
               </div>
             )}
-          </div>
+          </section>
         </>
+      )}
+
+      {modal && (
+        <GoalModal goal={modal === 'new' ? null : modal} onSave={saveGoal} onClose={() => setModal(null)} />
       )}
     </motion.div>
   )

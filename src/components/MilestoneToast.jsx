@@ -233,7 +233,7 @@ export default function MilestoneToast({ milestoneKey, goals = [], debts = [], o
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.42 }}
                 onClick={dismiss}
-                className="px-7 py-2.5 bg-white/15 hover:bg-white/25 border border-white/20 text-white font-semibold text-sm rounded-2xl transition-all"
+                className="px-7 py-2.5 bg-white/15 hover:bg-white/25 border border-white/10 text-white font-semibold text-sm rounded-2xl transition-all"
               >
                 Keep growing 🌱
               </motion.button>
