@@ -1,0 +1,182 @@
+// Supabase Edge Function: `chat`
+// Server-side proxy to the Anthropic Messages API. The Anthropic key lives ONLY
+// here (as a function secret) — it is never shipped to the browser.
+//
+// Security: requires a valid Supabase user JWT (Authorization: Bearer <token>).
+// Anonymous callers are rejected, so the key can't be abused by the public.
+//
+// Deploy + configure (run once, from the repo root):
+//   supabase functions deploy chat
+//   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+// (SUPABASE_URL and SUPABASE_ANON_KEY are injected automatically.)
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')
+const SUPABASE_URL       = Deno.env.get('SUPABASE_URL')!
+const SUPABASE_ANON_KEY  = Deno.env.get('SUPABASE_ANON_KEY')!
+
+const DEFAULT_MODEL = 'claude-sonnet-4-6'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'content-type': 'application/json' },
+  })
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  if (req.method !== 'POST')    return json({ error: 'Method not allowed' }, 405)
+
+  if (!ANTHROPIC_API_KEY) {
+    return json({ error: 'Server is missing ANTHROPIC_API_KEY. Run: supabase secrets set ANTHROPIC_API_KEY=...' }, 500)
+  }
+
+  // ── Require an authenticated Supabase user ──────────────────────────────────
+  const authHeader = req.headers.get('Authorization') ?? ''
+  const token = authHeader.replace(/^Bearer\s+/i, '')
+  if (!token) return json({ error: 'Unauthorized' }, 401)
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authHeader } },
+  })
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token)
+  if (authErr || !user) return json({ error: 'Unauthorized' }, 401)
+
+  // ── Parse + validate the request ────────────────────────────────────────────
+  let payload: {
+    messages?: unknown; system?: string; maxTokens?: number; model?: string
+    stream?: boolean; tool?: string
+  }
+  try {
+    payload = await req.json()
+  } catch {
+    return json({ error: 'Invalid JSON body' }, 400)
+  }
+  const { messages, system, maxTokens = 1024, model = DEFAULT_MODEL, stream = false, tool } = payload
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return json({ error: 'messages[] is required' }, 400)
+  }
+  // Clamp to keep costs/abuse bounded
+  const max_tokens = Math.min(Math.max(Number(maxTokens) || 1024, 1), 2048)
+
+  // ── Tool definitions (structured outputs the client can save/apply) ──────────
+  const ACTION_PLAN_TOOL = {
+    name: 'create_action_plan',
+    description: 'Create a short, personalized financial action plan for the user based on their real numbers. 3–5 concrete, ordered steps. Where a step naturally maps to adding a savings/investment goal or a recurring budget line, fill in its `apply` object so the user can act in one tap.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Short plan title, e.g. "Your 90-day money plan"' },
+        steps: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              text:   { type: 'string', description: 'The action, imperative and specific, e.g. "Build a $6,000 emergency fund"' },
+              detail: { type: 'string', description: 'One short sentence on why or how' },
+              apply: {
+                type: 'object',
+                description: 'Optional one-tap action this step enables',
+                properties: {
+                  type:                 { type: 'string', enum: ['goal', 'budget'] },
+                  name:                 { type: 'string', description: 'goal: the goal name' },
+                  goal_type:            { type: 'string', enum: ['savings', 'investment'] },
+                  target_amount:        { type: 'number', description: 'goal: target $' },
+                  monthly_contribution: { type: 'number', description: 'goal: planned $/month' },
+                  budget_type:          { type: 'string', enum: ['income', 'expense'] },
+                  category:             { type: 'string', description: 'budget: category' },
+                  amount:               { type: 'number', description: 'budget: monthly $' },
+                },
+                required: ['type'],
+              },
+            },
+            required: ['text'],
+          },
+        },
+      },
+      required: ['title', 'steps'],
+    },
+  }
+
+  const SUGGEST_GOAL_TOOL = {
+    name: 'suggest_goal',
+    description: 'Decide whether the user just expressed a concrete financial goal worth tracking — e.g. saving for a house, car, trip, wedding, emergency fund, or starting to invest. If yes, propose realistic numbers grounded in their actual income and monthly surplus, and set should_suggest=true. If the latest message is NOT about a specific savings/investment goal (general questions, budgeting chat, etc.), set should_suggest=false and leave the rest blank.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        should_suggest:       { type: 'boolean', description: 'true only if there is a concrete goal to track' },
+        name:                 { type: 'string',  description: 'Short, specific goal name, e.g. "House Down Payment", "Japan Trip", "New Car"' },
+        goal_type:            { type: 'string',  enum: ['savings', 'investment'] },
+        target_amount:        { type: 'number',  description: 'Realistic target $ for this goal' },
+        monthly_contribution: { type: 'number',  description: 'A realistic monthly amount given their budget surplus' },
+        timeline_months:      { type: 'number',  description: 'Roughly how many months at that contribution' },
+        rationale:            { type: 'string',  description: 'One short, friendly sentence explaining the suggested numbers' },
+      },
+      required: ['should_suggest'],
+    },
+  }
+
+  const TOOLS: Record<string, unknown> = { action_plan: ACTION_PLAN_TOOL, suggest_goal: SUGGEST_GOAL_TOOL }
+
+  const body: Record<string, unknown> = { model, max_tokens, system, messages }
+  if (tool && TOOLS[tool]) {
+    const def = TOOLS[tool] as { name: string }
+    body.tools = [def]
+    body.tool_choice = { type: 'tool', name: def.name }
+  } else {
+    body.stream = Boolean(stream)
+  }
+
+  // ── Proxy to Anthropic ──────────────────────────────────────────────────────
+  let res: Response
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+  } catch (e) {
+    return json({ error: 'Upstream request failed', detail: String(e).slice(0, 300) }, 502)
+  }
+
+  if (!res.ok) {
+    const detail = (await res.text()).slice(0, 500)
+    return json({ error: `Anthropic error ${res.status}`, detail }, 502)
+  }
+
+  // Streaming: pipe Anthropic's SSE straight through to the browser
+  if (!tool && stream) {
+    return new Response(res.body, {
+      headers: {
+        ...corsHeaders,
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+      },
+    })
+  }
+
+  const data = await res.json()
+  // Tool call → return the structured input the model produced
+  if (tool && TOOLS[tool]) {
+    const block = Array.isArray(data?.content)
+      ? data.content.find((b: { type?: string }) => b.type === 'tool_use')
+      : null
+    if (!block) return json({ error: 'Model did not return structured output' }, 502)
+    // `plan` kept for backward-compat with the action-plan client
+    return json(tool === 'action_plan' ? { plan: block.input } : { result: block.input })
+  }
+  const text = data?.content?.[0]?.text ?? ''
+  return json({ text })
+})
