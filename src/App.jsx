@@ -1,6 +1,8 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
+import { GardenProvider } from '@/context/GardenContext'
 import { Toaster } from '@/components/ui/toaster'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import Layout from '@/components/Layout'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
@@ -9,7 +11,9 @@ import Goals from '@/pages/Goals'
 import Debt from '@/pages/Debt'
 import AIAdvisor from '@/pages/AIAdvisor'
 import Accounts from '@/pages/Accounts'
-import { Sprout } from 'lucide-react'
+import Plan from '@/pages/Plan'
+import GardenPreview from '@/pages/GardenPreview'
+import { Sprout, Compass } from 'lucide-react'
 
 function AppLoader() {
   return (
@@ -36,21 +40,52 @@ function PublicRoute({ children }) {
   return children
 }
 
+function NotFound() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 flex flex-col items-center justify-center gap-5 p-6 text-center">
+      <div className="w-14 h-14 bg-green-500 rounded-2xl flex items-center justify-center shadow-lg">
+        <Compass className="w-8 h-8 text-white" />
+      </div>
+      <div>
+        <h1 className="text-lg font-bold text-gray-900">Page not found</h1>
+        <p className="text-sm text-gray-500 mt-1 max-w-sm">
+          This corner of the garden doesn’t exist. Let’s get you back home.
+        </p>
+      </div>
+      <Link
+        to="/"
+        className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors"
+      >
+        Back to your garden
+      </Link>
+    </div>
+  )
+}
+
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/budget" element={<ProtectedRoute><Budget /></ProtectedRoute>} />
-          <Route path="/goals" element={<ProtectedRoute><Goals /></ProtectedRoute>} />
-          <Route path="/debt" element={<ProtectedRoute><Debt /></ProtectedRoute>} />
-          <Route path="/accounts" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
-          <Route path="/advisor" element={<ProtectedRoute><AIAdvisor /></ProtectedRoute>} />
-        </Routes>
-      </BrowserRouter>
-      <Toaster />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <GardenProvider>
+          <BrowserRouter>
+            <Routes>
+              {import.meta.env.DEV && (
+                <Route path="/garden-preview" element={<GardenPreview />} />
+              )}
+              <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+              <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="/budget" element={<ProtectedRoute><Budget /></ProtectedRoute>} />
+              <Route path="/goals" element={<ProtectedRoute><Goals /></ProtectedRoute>} />
+              <Route path="/debt" element={<ProtectedRoute><Debt /></ProtectedRoute>} />
+              <Route path="/accounts" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
+              <Route path="/advisor" element={<ProtectedRoute><AIAdvisor /></ProtectedRoute>} />
+              <Route path="/plan" element={<ProtectedRoute><Plan /></ProtectedRoute>} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+          <Toaster />
+        </GardenProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }

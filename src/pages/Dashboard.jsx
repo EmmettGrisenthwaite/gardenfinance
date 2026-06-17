@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import GardenVisual from '@/components/garden/GardenVisual'
+import { useGarden } from '@/context/GardenContext'
+import { computeScores } from '@/lib/gardenUtils'
+import Garden3D from '@/components/garden/Garden3D'
 import Onboarding from '@/components/Onboarding'
-import { DollarSign, Target, CreditCard, TrendingUp, Wallet, UserCircle } from 'lucide-react'
+import MilestoneToast, { useMilestones, computeAchieved } from '@/components/MilestoneToast'
+import { Target, CreditCard, TrendingUp, Wallet, UserCircle, ClipboardList, Bot, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
@@ -23,172 +26,281 @@ function profileCompleteness(profile) {
   return { filled: filled.length, total: PROFILE_FIELDS.length, missing: missing.map(f => f.label) }
 }
 
-function StatSkeleton() {
+// ─── Garden stage HUD ──────────────────────────────────────────────────────────
+const STAGE_NAMES      = ['Barren', 'Sprouting', 'Greening', 'Growing', 'Thriving', 'Flourishing']
+const STAGE_THRESHOLDS = [0, 12, 30, 50, 70, 90, 100]
+
+function GardenHud({ stage, score }) {
+  const lo  = STAGE_THRESHOLDS[stage]
+  const hi  = STAGE_THRESHOLDS[stage + 1] ?? 100
+  const pct = stage >= 5 ? 100 : Math.round(((score - lo) / (hi - lo)) * 100)
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-      <div className="w-9 h-9 bg-gray-100 rounded-lg mb-3 animate-pulse" />
-      <div className="h-6 bg-gray-100 rounded animate-pulse mb-1.5 w-20" />
-      <div className="h-3.5 bg-gray-100 rounded animate-pulse w-24" />
+    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+      <div className="flex items-center gap-2.5 bg-black/45 backdrop-blur-md border border-white/20 rounded-full pl-3.5 pr-4 py-1.5 shadow-lg">
+        <span className="w-2.5 h-2.5 rounded-full ring-2 ring-white/20"
+          style={{ background: ['#8a6a44','#a3b35a','#6cc24a','#3fa53b','#2f9e44','#34d399'][stage] }} />
+        <span className="text-xs font-bold text-white whitespace-nowrap">{STAGE_NAMES[stage]}</span>
+        <div className="w-16 h-1.5 bg-white/20 rounded-full overflow-hidden">
+          <div className="h-full rounded-full bg-gradient-to-r from-green-300 to-emerald-400 transition-all duration-700"
+            style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+        </div>
+        <span className="text-[10px] font-bold text-green-200 whitespace-nowrap">{score}/100</span>
+      </div>
     </div>
   )
 }
 
+// ─── Top stat cards — dark glass, matches the HUD + nav language ──────────────
+function StatCard({ to, icon: Icon, label, value, sub, subColor }) {
+  return (
+    <Link to={to} className="block group">
+      <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/15 shadow-lg p-3 h-full
+                      group-hover:bg-white/[0.16] group-hover:border-white/25 transition-all">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-7 h-7 bg-white/10 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Icon className="w-3.5 h-3.5 text-emerald-200/80" />
+          </div>
+          <span className="text-[9px] font-semibold text-white/50 uppercase tracking-wide truncate">{label}</span>
+        </div>
+        <div className="text-lg font-bold tabular-nums text-white leading-tight truncate drop-shadow">{value}</div>
+        <div className={`text-[10px] font-medium mt-0.5 truncate ${subColor ?? 'text-white/40'}`}>{sub}</div>
+      </div>
+    </Link>
+  )
+}
+
+function StatSkeleton() {
+  return (
+    <div className="bg-white/8 backdrop-blur-xl rounded-2xl border border-white/10 p-3 animate-pulse">
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-7 h-7 bg-white/15 rounded-lg" />
+        <div className="h-2.5 bg-white/15 rounded w-14" />
+      </div>
+      <div className="h-5 bg-white/15 rounded w-20 mb-1.5" />
+      <div className="h-2.5 bg-white/10 rounded w-16" />
+    </div>
+  )
+}
+
+// ─── Main ──────────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { user, profile } = useAuth()
-  const [goals,           setGoals]           = useState([])
-  const [budgets,         setBudgets]         = useState([])
-  const [debts,           setDebts]           = useState([])
-  const [accounts,        setAccounts]        = useState([])
-  const [loading,         setLoading]         = useState(true)
-  const [showOnboarding,  setShowOnboarding]  = useState(false)
+  const { updateGarden, stage } = useGarden()
+  const { getNewMilestones, markSeen } = useMilestones(user.id)
 
-  const { filled, total, missing } = profileCompleteness(profile)
+  const [goals,          setGoals]          = useState([])
+  const [budgets,        setBudgets]        = useState([])
+  const [debts,          setDebts]          = useState([])
+  const [accounts,       setAccounts]       = useState([])
+  const [loading,        setLoading]        = useState(true)
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  // undefined = not computed yet · null = first snapshot · number = change vs last visit
+  const [nwDelta,        setNwDelta]        = useState(undefined)
+  const [planStepsLeft,  setPlanStepsLeft]  = useState(0)
+  const [hasPlan,        setHasPlan]        = useState(false)
+
+  // Milestone queue: array of milestone keys to show one at a time
+  const [milestoneQueue, setMilestoneQueue] = useState([])
+  const prevScoreRef = useRef(null)
+
+  const { filled, total } = profileCompleteness(profile)
   const isProfileIncomplete = filled < total
 
   useEffect(() => {
     async function load() {
-      const [g, b, d, a] = await Promise.all([
+      const [g, b, d, a, pl] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('budgets').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
         supabase.from('accounts').select('*').eq('user_id', user.id),
+        supabase.from('advisor_plans').select('steps').eq('user_id', user.id),
       ])
-      setGoals(g.data ?? [])
-      setBudgets(b.data ?? [])
-      setDebts(d.data ?? [])
-      setAccounts(a.data ?? [])
+      const goalsData   = g.data ?? []
+      const budgetsData = b.data ?? []
+      const debtsData   = d.data ?? []
+      const acctData    = a.data ?? []
+
+      setGoals(goalsData)
+      setBudgets(budgetsData)
+      setDebts(debtsData)
+      setAccounts(acctData)
+      setPlanStepsLeft((pl.data ?? []).reduce((n, p) => n + (p.steps ?? []).filter(s => !s.done).length, 0))
+      setHasPlan((pl.data ?? []).length > 0)
       setLoading(false)
+
+      // Update garden (now accounts-aware)
+      updateGarden(budgetsData, goalsData, debtsData, acctData)
+
+      // ── Net worth change — vs the most recent prior daily snapshot
+      //    (net_worth_snapshots is the canonical history, shared with Accounts) ─
+      const assets = acctData.reduce((s, x) => s + Number(x.balance), 0)
+      const liabilities = debtsData.reduce((s, x) => s + Number(x.balance), 0)
+      const worth = assets - liabilities
+      try {
+        const today = new Date().toISOString().slice(0, 10)
+        const { data: snaps } = await supabase.from('net_worth_snapshots')
+          .select('snapshot_date, net_worth').eq('user_id', user.id)
+          .order('snapshot_date', { ascending: false }).limit(3)
+        const prev = (snaps ?? []).find(s => s.snapshot_date !== today)
+        setNwDelta(prev ? worth - Number(prev.net_worth) : null)
+        // Record today so history builds from the home page too
+        await supabase.from('net_worth_snapshots').upsert(
+          { user_id: user.id, assets, liabilities, net_worth: worth, snapshot_date: today },
+          { onConflict: 'user_id,snapshot_date' }
+        )
+      } catch { setNwDelta(null) }
+
+      // ── Milestone detection ───────────────────────────────────────────────
+      const scores  = computeScores(budgetsData, goalsData, debtsData, acctData)
+      const achieved = computeAchieved({
+        budgets: budgetsData,
+        goals:   goalsData,
+        debts:   debtsData,
+        accounts: acctData,
+        scores,
+      })
+      const newOnes = getNewMilestones(achieved)
+      if (newOnes.length > 0) {
+        // Only show the "highest value" milestone per session to avoid spam
+        // Priority: score milestones > goal/debt specifics > first-time milestones
+        const priority = ['score_100','score_75','score_50','goal_complete','debt_cleared','first_surplus','first_account','first_goal','first_debt','first_budget','first_transaction']
+        const sorted = newOnes.sort((a, b) => {
+          const ai = priority.findIndex(p => a.startsWith(p))
+          const bi = priority.findIndex(p => b.startsWith(p))
+          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+        })
+        setMilestoneQueue(sorted)
+        prevScoreRef.current = scores.totalScore
+      }
     }
     load()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id])
 
-  const recurringIncome   = budgets.filter(b => b.type === 'income'  && b.recurring !== false).reduce((s, b) => s + Number(b.amount), 0)
-  const recurringExpenses = budgets.filter(b => b.type === 'expense' && b.recurring !== false).reduce((s, b) => s + Number(b.amount), 0)
-  const net        = recurringIncome - recurringExpenses
-  const totalDebt  = debts.reduce((s, d) => s + Number(d.balance), 0)
+  function dismissMilestone() {
+    const [shown, ...rest] = milestoneQueue
+    if (shown) markSeen(shown)
+    setMilestoneQueue(rest)
+  }
+
+  const totalDebt   = debts.reduce((s, d) => s + Number(d.balance), 0)
   const totalAssets = accounts.reduce((s, a) => s + Number(a.balance), 0)
-  const netWorth   = totalAssets - totalDebt
+  const netWorth    = totalAssets - totalDebt
+  const gardenScore = computeScores(budgets, goals, debts, accounts).totalScore
+  const goalsPct    = goals.length
+    ? Math.round(goals.reduce((s, g) => s + Math.min(Number(g.current_amount) / (Number(g.target_amount) || 1), 1), 0) / goals.length * 100)
+    : 0
 
-  const name = user.user_metadata?.full_name?.split(' ')[0] || 'there'
-
-  const hour = new Date().getHours()
+  const name    = user.user_metadata?.full_name?.split(' ')[0] || 'there'
+  const hour    = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
   const stats = [
-    { label: 'Monthly Income',   value: `$${recurringIncome.toLocaleString()}`,   icon: DollarSign, color: 'text-green-600',  bg: 'bg-green-50'  },
-    { label: 'Monthly Expenses', value: `$${recurringExpenses.toLocaleString()}`, icon: TrendingUp, color: 'text-orange-600', bg: 'bg-orange-50' },
-    { label: 'Active Goals',     value: goals.length,                              icon: Target,     color: 'text-blue-600',   bg: 'bg-blue-50'   },
-    { label: 'Total Debt',       value: `$${totalDebt.toLocaleString()}`,          icon: CreditCard, color: 'text-red-600',    bg: 'bg-red-50'    },
+    {
+      to: '/accounts', icon: Wallet,
+      label: 'Balances', value: `$${totalAssets.toLocaleString()}`,
+      sub: accounts.length > 0 ? `${accounts.length} account${accounts.length === 1 ? '' : 's'}` : 'Add your accounts',
+    },
+    {
+      to: '/accounts', icon: TrendingUp,
+      label: 'Net Worth', value: `${netWorth < 0 ? '-' : ''}$${Math.abs(netWorth).toLocaleString()}`,
+      sub: nwDelta === undefined || nwDelta === null ? 'Tracking starts today'
+         : nwDelta === 0 ? 'No change since last visit'
+         : `${nwDelta > 0 ? '▲' : '▼'} $${Math.abs(nwDelta).toLocaleString()} since last visit`,
+      subColor: nwDelta > 0 ? 'text-emerald-300' : nwDelta < 0 ? 'text-rose-300' : undefined,
+    },
+    {
+      to: '/debt', icon: CreditCard,
+      label: 'Debt', value: `$${totalDebt.toLocaleString()}`,
+      sub: totalDebt === 0 ? 'Debt-free' : `${debts.length} account${debts.length === 1 ? '' : 's'}`,
+      subColor: totalDebt === 0 ? 'text-emerald-300' : undefined,
+    },
+    {
+      to: '/goals', icon: Target,
+      label: 'Goals', value: `${goals.length}`,
+      sub: goals.length > 0 ? `${goalsPct}% avg progress` : 'Plant your first goal',
+    },
   ]
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
-      className="p-4 md:p-6 lg:p-8 max-w-5xl mx-auto space-y-5 pb-24 md:pb-8"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+      className="h-full flex flex-col"
     >
       {showOnboarding && <Onboarding onClose={() => setShowOnboarding(false)} />}
 
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">{greeting}, {name} 👋</h1>
-        <p className="text-gray-500 mt-1 text-sm">Here's how your financial garden is growing.</p>
-      </div>
+      {/* Milestone celebration — shows queued milestones one at a time */}
+      {milestoneQueue.length > 0 && (
+        <MilestoneToast
+          milestoneKey={milestoneQueue[0]}
+          goals={goals}
+          debts={debts}
+          onDismiss={dismissMilestone}
+        />
+      )}
 
-      {/* Profile completeness banner */}
-      {isProfileIncomplete && !loading && (
-        <button
-          onClick={() => setShowOnboarding(true)}
-          className="w-full flex items-center gap-4 p-4 bg-white rounded-xl border border-dashed border-amber-300 hover:border-amber-400 hover:bg-amber-50/40 transition-all group text-left"
-        >
-          <div className="w-10 h-10 rounded-xl bg-amber-50 group-hover:bg-amber-100 flex items-center justify-center flex-shrink-0 transition-colors">
-            <UserCircle className="w-5 h-5 text-amber-500" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-gray-800">
+      {/* ── Top: greeting + the four stats ── */}
+      <div className="max-w-3xl mx-auto w-full px-4 pt-1 pb-2 space-y-2.5 flex-shrink-0">
+        <div>
+          <h1 className="font-display text-[22px] font-medium text-white drop-shadow-lg leading-tight">{greeting}, {name}</h1>
+        </div>
+
+        {/* Profile completeness banner */}
+        {isProfileIncomplete && !loading && (
+          <button
+            onClick={() => setShowOnboarding(true)}
+            className="w-full flex items-center gap-3 px-3 py-2 bg-amber-400/15 backdrop-blur-sm rounded-xl border border-amber-400/30 hover:bg-amber-400/25 transition-all group text-left"
+          >
+            <UserCircle className="w-4 h-4 text-amber-300 flex-shrink-0" />
+            <div className="flex-1 min-w-0 text-xs font-semibold text-white truncate">
               Complete your advisor profile — {filled}/{total} done
             </div>
-            <div className="text-xs text-gray-400 mt-0.5 truncate">
-              Missing: {missing.join(', ')}
-            </div>
-            <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5">
-              <div
-                className="h-1.5 rounded-full bg-amber-400 transition-all"
-                style={{ width: `${(filled / total) * 100}%` }}
-              />
-            </div>
-          </div>
-          <span className="text-xs font-medium text-amber-600 group-hover:text-amber-700 flex-shrink-0">
-            Add info →
-          </span>
-        </button>
-      )}
+            <span className="text-xs font-semibold text-amber-300 flex-shrink-0">Add →</span>
+          </button>
+        )}
 
-      {/* Quick stats — 2 cols on mobile, 4 on desktop */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        {loading
-          ? [1, 2, 3, 4].map(i => <StatSkeleton key={i} />)
-          : stats.map(({ label, value, icon: Icon, color, bg }) => (
-            <div key={label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition-shadow">
-              <div className={`inline-flex items-center justify-center w-9 h-9 ${bg} rounded-lg mb-3`}>
-                <Icon className={`w-4 h-4 ${color}`} />
-              </div>
-              <div className="text-xl font-bold text-gray-900">{value}</div>
-              <div className="text-xs text-gray-500 mt-0.5">{label}</div>
-            </div>
-          ))
-        }
+        {/* Stats — 2×2 on mobile, one row on desktop */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+          {loading
+            ? [1, 2, 3, 4].map(i => <StatSkeleton key={i} />)
+            : stats.map(s => <StatCard key={s.label} {...s} />)}
+        </div>
+
+        {/* Connective thread to the Plan / Advisor — one focused next step */}
+        {!loading && !isProfileIncomplete && (goals.length > 0 || budgets.length > 0 || accounts.length > 0 || debts.length > 0) && (() => {
+          const toPlan = planStepsLeft > 0
+          const to     = toPlan ? '/plan' : '/advisor'
+          const Icon   = toPlan ? ClipboardList : Bot
+          const text   = toPlan ? `${planStepsLeft} step${planStepsLeft === 1 ? '' : 's'} left in your plan`
+                       : hasPlan ? 'Plan complete — see what’s next with your advisor'
+                       : 'Get a personalized action plan from your advisor'
+          return (
+            <Link to={to}
+              className="flex items-center gap-2.5 px-3 py-2 bg-emerald-500/15 backdrop-blur-sm rounded-xl border border-emerald-400/25 hover:bg-emerald-500/25 transition-all group">
+              <Icon className="w-4 h-4 text-emerald-300 flex-shrink-0" />
+              <span className="flex-1 min-w-0 text-xs font-semibold text-white truncate">{text}</span>
+              <ArrowRight className="w-3.5 h-3.5 text-emerald-300 flex-shrink-0 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
+          )
+        })()}
       </div>
 
-      {/* Net worth banner */}
-      {!loading && accounts.length > 0 && (
-        <div className={`rounded-xl p-4 flex items-center justify-between ${netWorth >= 0 ? 'bg-blue-50 border border-blue-100' : 'bg-orange-50 border border-orange-100'}`}>
-          <div className="flex items-center gap-3">
-            <Wallet className={`w-5 h-5 flex-shrink-0 ${netWorth >= 0 ? 'text-blue-600' : 'text-orange-600'}`} />
-            <div>
-              <div className={`text-sm font-semibold ${netWorth >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>
-                Net Worth: {netWorth >= 0 ? '' : '-'}${Math.abs(netWorth).toLocaleString()}
-              </div>
-              <div className="text-xs text-gray-400">
-                ${totalAssets.toLocaleString()} assets · ${totalDebt.toLocaleString()} debt
-              </div>
-            </div>
-          </div>
-          <Link to="/accounts" className="text-xs text-gray-400 hover:text-gray-600 underline flex-shrink-0">
-            View
-          </Link>
+      {/* ── The garden IS the dashboard — fills everything below the stats,
+            edge-faded so it melts into the page; the nav floats over it ── */}
+      <div className="relative flex-1 min-h-[340px]">
+        <div
+          className="absolute inset-0"
+          style={{
+            maskImage: 'linear-gradient(to bottom, transparent 0, black 26px, black calc(100% - 96px), transparent 100%)',
+            WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, black 26px, black calc(100% - 96px), transparent 100%)',
+          }}
+        >
+          <Garden3D />
         </div>
-      )}
-
-      {/* Prompt to add accounts */}
-      {!loading && accounts.length === 0 && (budgets.length > 0 || goals.length > 0) && (
-        <Link to="/accounts"
-          className="flex items-center gap-3 p-4 bg-white rounded-xl border border-dashed border-gray-200 hover:border-green-300 hover:bg-green-50/40 transition-colors group">
-          <div className="w-9 h-9 bg-gray-50 group-hover:bg-green-100 rounded-lg flex items-center justify-center transition-colors flex-shrink-0">
-            <Wallet className="w-4 h-4 text-gray-400 group-hover:text-green-600 transition-colors" />
-          </div>
-          <div>
-            <div className="text-sm font-medium text-gray-700 group-hover:text-green-800">Add your account balances</div>
-            <div className="text-xs text-gray-400">Checking, savings, retirement — lets your advisor see your full picture</div>
-          </div>
-        </Link>
-      )}
-
-      {/* Garden visual */}
-      {loading ? (
-        <div className="h-64 bg-gray-100 rounded-xl animate-pulse" />
-      ) : (
-        <GardenVisual goals={goals} budgets={budgets} debts={debts} />
-      )}
-
-      {/* Monthly net summary */}
-      {!loading && (recurringIncome > 0 || recurringExpenses > 0) && (
-        <div className={`rounded-xl p-4 text-sm font-medium ${net >= 0 ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
-          {net >= 0
-            ? `You have a $${net.toLocaleString()} monthly surplus — great work! 🌱`
-            : `You're spending $${Math.abs(net).toLocaleString()} more than you earn monthly. Time to weed the garden.`}
-        </div>
-      )}
+        {!loading && <GardenHud stage={stage} score={gardenScore} />}
+      </div>
     </motion.div>
   )
 }

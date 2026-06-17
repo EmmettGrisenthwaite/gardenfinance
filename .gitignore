@@ -24,3 +24,11 @@ dist-ssr
 *.sw?
 
 .env
+
+# Local-only Supabase deploy token (never commit)
+.supabase-token
+supabase/.env.deploy
+
+# Local agent/editor config + Office lock files
+.claude/
+~$*

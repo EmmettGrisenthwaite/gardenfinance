@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Plus, Trash2, Pencil, Check, X, Wallet, TrendingUp, Shield, PiggyBank } from 'lucide-react'
+import { Plus, Trash2, Pencil, Check, X, Wallet, TrendingUp, Shield, PiggyBank, LineChart } from 'lucide-react'
 import { motion } from 'framer-motion'
+import {
+  ResponsiveContainer, LineChart as ReLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
+} from 'recharts'
 
 export const ACCOUNT_TYPES = [
   { value: 'checking',     label: 'Checking',        group: 'Cash & Savings' },
@@ -29,6 +32,93 @@ const GROUPS = [
 
 function typeLabel(value) {
   return ACCOUNT_TYPES.find(t => t.value === value)?.label ?? value
+}
+
+// ─── Custom tooltip ────────────────────────────────────────────────────────────
+function NetWorthTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  const val = payload[0].value
+  return (
+    <div className="bg-white border border-gray-200 shadow-lg rounded-lg px-3 py-2 text-xs">
+      <div className="text-gray-500 mb-0.5">{label}</div>
+      <div className={`font-bold text-sm ${val >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>
+        {val >= 0 ? '' : '-'}${Math.abs(val).toLocaleString()}
+      </div>
+    </div>
+  )
+}
+
+// ─── Net worth chart ───────────────────────────────────────────────────────────
+function NetWorthChart({ snapshots }) {
+  if (snapshots.length < 2) {
+    return (
+      <div className="bg-white/80 backdrop-blur-md rounded-xl border border-white/40 shadow-lg p-4 md:p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <LineChart className="w-4 h-4 text-gray-500" />
+          <h2 className="font-semibold text-gray-900">Net Worth History</h2>
+        </div>
+        <div className="text-center py-8">
+          <div className="w-10 h-10 mx-auto mb-2.5 rounded-full bg-emerald-50 flex items-center justify-center">
+            <TrendingUp className="w-5 h-5 text-emerald-500" />
+          </div>
+          <p className="text-sm text-gray-500 font-medium">Building your history</p>
+          <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">
+            Your net worth is tracked daily. Come back tomorrow and you'll start seeing your trend.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  const data = snapshots.map(s => ({
+    date:     new Date(s.snapshot_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    netWorth: Number(s.net_worth),
+  }))
+
+  const values   = data.map(d => d.netWorth)
+  const minVal   = Math.min(...values)
+  const maxVal   = Math.max(...values)
+  const hasGrowth = maxVal > minVal
+  const latest   = values[values.length - 1]
+  const first    = values[0]
+  const change   = latest - first
+  const positive = change >= 0
+
+  return (
+    <div className="bg-white/80 backdrop-blur-md rounded-xl border border-white/40 shadow-lg p-4 md:p-5">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <LineChart className="w-4 h-4 text-gray-500" />
+          <h2 className="font-semibold text-gray-900">Net Worth History</h2>
+        </div>
+        {hasGrowth && (
+          <span className={`text-xs font-semibold px-2 py-1 rounded-full ${positive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            {positive ? '+' : ''}${change.toLocaleString()} since start
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-gray-400 mb-4">{snapshots.length} snapshots over {snapshots.length} days</p>
+
+      <ResponsiveContainer width="100%" height={180}>
+        <ReLineChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false}
+            interval="preserveStartEnd" />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} axisLine={false}
+            tickFormatter={v => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`}
+            width={48}
+          />
+          <ReferenceLine y={0} stroke="#e5e7eb" strokeDasharray="4 2" />
+          <Tooltip content={<NetWorthTooltip />} />
+          <Line
+            type="monotone" dataKey="netWorth" dot={{ r: 3, fill: positive ? '#3b82f6' : '#f97316' }}
+            activeDot={{ r: 5 }} stroke={positive ? '#3b82f6' : '#f97316'} strokeWidth={2.5}
+          />
+        </ReLineChart>
+      </ResponsiveContainer>
+    </div>
+  )
 }
 
 // ─── Inline balance editor ──────────────────────────────────────────────────────
@@ -104,7 +194,6 @@ function AddForm({ onAdd }) {
           <X className="w-4 h-4" />
         </button>
       </div>
-      {/* Stack vertically on mobile */}
       <div className="flex flex-col gap-3">
         <input value={name} onChange={e => setName(e.target.value)}
           placeholder="Account name (e.g. Chase Checking)"
@@ -128,8 +217,7 @@ function AddForm({ onAdd }) {
           <div className="relative flex-1">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
             <input type="number" inputMode="decimal" min="0" step="0.01" value={balance}
-              onChange={e => setBalance(e.target.value)}
-              placeholder="Current balance"
+              onChange={e => setBalance(e.target.value)} placeholder="Current balance"
               className="w-full pl-7 pr-3 py-2.5 border border-gray-200 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-green-400" />
           </div>
           <button type="submit"
@@ -146,7 +234,7 @@ function AccountsSkeleton() {
   return (
     <div className="space-y-4">
       {[1, 2].map(i => (
-        <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div key={i} className="bg-white/80 backdrop-blur-md rounded-xl border border-white/40 shadow-lg overflow-hidden">
           <div className="h-12 bg-gray-100 animate-pulse" />
           <div className="divide-y divide-gray-50">
             {[1, 2].map(j => (
@@ -167,20 +255,43 @@ function AccountsSkeleton() {
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export default function Accounts() {
-  const { user } = useAuth()
-  const [accounts, setAccounts] = useState([])
-  const [debts,    setDebts]    = useState([])
-  const [loading,  setLoading]  = useState(true)
+  const { user }   = useAuth()
+  const [accounts,  setAccounts]  = useState([])
+  const [debts,     setDebts]     = useState([])
+  const [snapshots, setSnapshots] = useState([])
+  const [loading,   setLoading]   = useState(true)
 
   useEffect(() => {
     async function load() {
-      const [a, d] = await Promise.all([
+      const [a, d, s] = await Promise.all([
         supabase.from('accounts').select('*').eq('user_id', user.id).order('created_at'),
         supabase.from('debts').select('balance').eq('user_id', user.id),
+        supabase.from('net_worth_snapshots').select('*').eq('user_id', user.id)
+          .order('snapshot_date', { ascending: true }).limit(90),
       ])
-      setAccounts(a.data ?? [])
-      setDebts(d.data ?? [])
+      const accts    = a.data ?? []
+      const dts      = d.data ?? []
+      const snaps    = s.data ?? []
+      setAccounts(accts)
+      setDebts(dts)
+      setSnapshots(snaps)
       setLoading(false)
+
+      // Auto-snapshot today's net worth (upsert = no duplicate)
+      const assets      = accts.reduce((sum, ac) => sum + Number(ac.balance), 0)
+      const liabilities = dts.reduce((sum, dt) => sum + Number(dt.balance), 0)
+      const netWorth    = assets - liabilities
+      if (accts.length > 0) {
+        const today = new Date().toISOString().split('T')[0]
+        await supabase.from('net_worth_snapshots').upsert(
+          { user_id: user.id, assets, liabilities, net_worth: netWorth, snapshot_date: today },
+          { onConflict: 'user_id,snapshot_date' }
+        )
+        // Refresh snapshots to include today
+        const { data: fresh } = await supabase.from('net_worth_snapshots').select('*')
+          .eq('user_id', user.id).order('snapshot_date', { ascending: true }).limit(90)
+        if (fresh) setSnapshots(fresh)
+      }
     }
     load()
   }, [user.id])
@@ -222,29 +333,34 @@ export default function Accounts() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Accounts</h1>
-          <p className="text-gray-500 mt-1 text-sm">Your balances across all accounts</p>
+          <h1 className="font-display text-[26px] font-medium text-white drop-shadow-lg">Accounts</h1>
+          <p className="text-white/60 mt-1 text-sm">Your balances across all accounts</p>
         </div>
         <AddForm onAdd={handleAdd} />
       </div>
 
-      {/* Net worth summary — 3 cols on sm+, stacked on xs */}
+      {/* Net worth summary */}
       <div className="grid grid-cols-3 gap-3 md:gap-4">
-        <div className="bg-green-50 rounded-xl p-3 md:p-4 border border-green-100">
-          <div className="text-xs font-medium text-green-700 mb-1">Assets</div>
+        <div className="bg-white/70 backdrop-blur-md rounded-xl border border-white/50 shadow-sm p-3 md:p-4">
+          <div className="text-xs font-semibold text-green-700 mb-1">Assets</div>
           <div className="text-lg md:text-2xl font-bold text-green-800">${totalAssets.toLocaleString()}</div>
         </div>
-        <div className="bg-rose-50 rounded-xl p-3 md:p-4 border border-rose-100">
-          <div className="text-xs font-medium text-rose-700 mb-1">Debt</div>
-          <div className="text-lg md:text-2xl font-bold text-rose-800">${totalDebt.toLocaleString()}</div>
+        <div className="bg-white/70 backdrop-blur-md rounded-xl border border-white/50 shadow-sm p-3 md:p-4">
+          <div className="text-xs font-semibold text-rose-600 mb-1">Debt</div>
+          <div className="text-lg md:text-2xl font-bold text-rose-700">${totalDebt.toLocaleString()}</div>
         </div>
-        <div className={`rounded-xl p-3 md:p-4 border ${netWorth >= 0 ? 'bg-blue-50 border-blue-100' : 'bg-orange-50 border-orange-100'}`}>
-          <div className={`text-xs font-medium mb-1 ${netWorth >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>Net Worth</div>
-          <div className={`text-lg md:text-2xl font-bold ${netWorth >= 0 ? 'text-blue-800' : 'text-orange-800'}`}>
+        <div className="bg-white/70 backdrop-blur-md rounded-xl border border-white/50 shadow-sm p-3 md:p-4">
+          <div className={`text-xs font-semibold mb-1 ${netWorth >= 0 ? 'text-blue-700' : 'text-orange-600'}`}>Net Worth</div>
+          <div className={`text-lg md:text-2xl font-bold ${netWorth >= 0 ? 'text-blue-800' : 'text-orange-700'}`}>
             {netWorth >= 0 ? '' : '-'}${Math.abs(netWorth).toLocaleString()}
           </div>
         </div>
       </div>
+
+      {/* Net worth history chart */}
+      {!loading && accounts.length > 0 && (
+        <NetWorthChart snapshots={snapshots} />
+      )}
 
       {/* Account groups */}
       {loading ? (
@@ -262,7 +378,7 @@ export default function Accounts() {
           {grouped.map(({ key, icon: Icon, color, bg, border, accounts: grpAccounts }) => {
             const subtotal = grpAccounts.reduce((s, a) => s + Number(a.balance), 0)
             return (
-              <div key={key} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+              <div key={key} className="bg-white/80 backdrop-blur-md rounded-xl border border-white/40 shadow-lg overflow-hidden hover:shadow-md transition-shadow">
                 <div className={`flex items-center justify-between px-4 py-3 ${bg} border-b ${border}`}>
                   <div className="flex items-center gap-2">
                     <Icon className={`w-4 h-4 ${color}`} />
@@ -297,7 +413,7 @@ export default function Accounts() {
 
       {accounts.length > 0 && (
         <p className="text-xs text-gray-400 text-center">
-          Balances are used by your AI Advisor to give personalized advice. Tap any balance to update it.
+          Balances are tracked daily for your net worth chart. Tap any balance to update it.
         </p>
       )}
     </motion.div>

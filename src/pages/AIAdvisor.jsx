@@ -2,21 +2,32 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { computeScores } from '@/lib/gardenUtils'
-import { Send, Bot, ChevronDown, ChevronUp, Sparkles, RefreshCw, Scan, ArrowDown } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { callClaude, requestPlan, suggestGoal, chatConfigured } from '@/lib/claude'
+import { savePlan, applyStep, addGoal, normalizeSteps, listPlans } from '@/lib/advisorPlans'
+import { loadRetirement, deriveDefaults, computeRetirement } from '@/lib/retirement'
+import PlanCard from '@/components/PlanCard'
+import GoalSuggestionCard from '@/components/GoalSuggestionCard'
 
-const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
+// Loosely gates the (extra) goal-suggestion call to messages that sound like a
+// savings/financial intent — the tool itself makes the final decision.
+const GOAL_INTENT = /\b(sav(e|ing|ings)|buy|buying|afford|down\s?-?payment|house|home|condo|apartment|car|vehicle|truck|trip|travel|vacation|holiday|honeymoon|wedding|ring|baby|college|tuition|degree|invest|investing|brokerage|roth|ira|401k|fund|goal|retire|retirement|emergency)\b/i
+import {
+  Send, Bot, ChevronDown, ChevronUp, Sparkles, RefreshCw, Scan, ArrowDown,
+  Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Lightbulb, Shield, Sprout,
+  ClipboardList, Loader2,
+} from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 // ─── Quick questions ───────────────────────────────────────────────────────────
 const SUGGESTIONS = [
-  { label: "What should I prioritize right now?", icon: '🎯' },
-  { label: "How's my budget looking?",            icon: '📊' },
-  { label: "Am I saving enough?",                 icon: '🪙' },
-  { label: "How do I tackle my debt?",            icon: '💳' },
-  { label: "Should I start investing?",           icon: '📈' },
-  { label: "What is a Roth IRA?",                 icon: '💡' },
-  { label: "How big should my emergency fund be?",icon: '🛡️' },
-  { label: "How can I grow my garden score?",     icon: '🌱' },
+  { label: "What should I prioritize right now?", icon: Target },
+  { label: "How's my budget looking?",            icon: BarChart3 },
+  { label: "Am I saving enough?",                 icon: PiggyBank },
+  { label: "How do I tackle my debt?",            icon: CreditCard },
+  { label: "Should I start investing?",           icon: TrendingUp },
+  { label: "What is a Roth IRA?",                 icon: Lightbulb },
+  { label: "How big should my emergency fund be?",icon: Shield },
+  { label: "How can I grow my garden score?",     icon: Sprout },
 ]
 
 // ─── System prompt ─────────────────────────────────────────────────────────────
@@ -156,7 +167,10 @@ RESPONSE FORMAT RULES
 - Be encouraging. Never shame. Frame everything as "here's the opportunity" not "here's what you did wrong."`
 }
 
-function buildContext(scores, goals, debts, budgets, accounts, profile) {
+const STAGE_NAMES = ['Barren', 'Sprouting', 'Greening', 'Growing', 'Thriving', 'Flourishing']
+const stageOf = (s) => s >= 90 ? 5 : s >= 70 ? 4 : s >= 50 ? 3 : s >= 30 ? 2 : s >= 12 ? 1 : 0
+
+function buildContext(scores, goals, debts, budgets, accounts, profile, extras = {}) {
   const { totalScore, budgetScore, goalsScore, debtScore, recurringIncome, recurringExpenses, surplusRatio } = scores
   const net = recurringIncome - recurringExpenses
 
@@ -281,6 +295,28 @@ function buildContext(scores, goals, debts, budgets, accounts, profile) {
     }
   }
 
+  // ── Cross-feature state: retirement projection + saved plan ────────────────
+  // So the advisor speaks to the whole app, not just raw numbers.
+  ctx += `GARDEN STAGE: ${stageOf(totalScore)}/5 (${STAGE_NAMES[stageOf(totalScore)]}) — the app shows their finances as a living garden; better habits grow it.\n`
+  if (extras.retirement) {
+    const r = extras.retirement
+    ctx += `RETIREMENT PLAN: ${Math.round(r.onTrack * 100)}% on track — projected $${r.projected.toLocaleString()} by retirement vs a $${r.target.toLocaleString()} target (4% rule).`
+    ctx += r.onTrack >= 1 ? ' On track.\n' : ` Behind by ~$${r.monthlyGap.toLocaleString()}/mo.\n`
+  } else {
+    ctx += `RETIREMENT PLAN: Not set up yet — the Plan tab has an interactive Retirement Planner; suggest it when relevant.\n`
+  }
+  if (extras.plans?.length) {
+    ctx += `SAVED ACTION PLAN (on the Plan tab — reference it and build on it, don't duplicate):\n`
+    extras.plans.forEach(p => {
+      const done = p.steps.filter(s => s.done).length
+      const pending = p.steps.filter(s => !s.done).map(s => s.text).slice(0, 4)
+      ctx += `  • "${p.title}" — ${done}/${p.steps.length} done${pending.length ? `. Pending: ${pending.join('; ')}` : ' (complete)'}\n`
+    })
+  } else {
+    ctx += `SAVED ACTION PLAN: None yet — you can offer to build one (the "Build action plan" button saves a checklist to their Plan tab).\n`
+  }
+  ctx += '\n'
+
   // ── Profile (prepended at top) ─────────────────────────────────────────────
   if (profile) {
     const employmentLabels = { w2: 'W-2 / salaried employee', freelance: 'Freelance / self-employed', student: 'Student', other: 'Other / gig / part-time' }
@@ -319,41 +355,17 @@ function buildContext(scores, goals, debts, budgets, accounts, profile) {
   return ctx
 }
 
-async function callClaude(messages, systemPrompt) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-opus-4-5',
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages,
-    }),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message ?? `API error ${res.status}`)
-  }
-  const data = await res.json()
-  return data.content?.[0]?.text ?? ''
-}
-
 // ─── Typing indicator ──────────────────────────────────────────────────────────
 function TypingIndicator() {
   return (
     <div className="flex items-end gap-2 mb-4">
-      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-        <Bot className="w-4 h-4 text-green-700" />
+      <div className="w-8 h-8 rounded-full bg-emerald-500/20 ring-1 ring-emerald-400/30 flex items-center justify-center flex-shrink-0">
+        <Bot className="w-4 h-4 text-emerald-300" />
       </div>
-      <div className="bg-white border border-gray-100 shadow-sm rounded-2xl rounded-bl-sm px-4 py-3">
+      <div className="bg-white/10 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-3.5">
         <div className="flex items-center gap-1.5">
           {[0, 1, 2].map(i => (
-            <motion.div key={i} className="w-2 h-2 bg-gray-300 rounded-full"
+            <motion.div key={i} className="w-2 h-2 bg-emerald-300/70 rounded-full"
               animate={{ y: [0, -6, 0] }}
               transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.18 }} />
           ))}
@@ -377,8 +389,8 @@ function MessageBubble({ msg }) {
       // "Your move:" or "Next step:" — render as a distinct action card
       if (/^(Your move:|Next step:)/i.test(line.trim())) {
         return (
-          <div key={i} className="mt-3 p-3 bg-green-50 border-l-4 border-green-500 rounded-r-lg">
-            <div className="text-sm font-semibold text-green-800">{rendered}</div>
+          <div key={i} className="mt-3 p-3 bg-emerald-400/15 border-l-2 border-emerald-400 rounded-r-lg">
+            <div className="text-sm font-semibold text-emerald-100">{rendered}</div>
           </div>
         )
       }
@@ -386,7 +398,7 @@ function MessageBubble({ msg }) {
       if (line.trim().startsWith('• ') || line.trim().startsWith('- ')) {
         return (
           <div key={i} className="flex gap-2 my-0.5">
-            <span className="text-green-500 mt-0.5 flex-shrink-0">•</span>
+            <span className="text-emerald-400 mt-0.5 flex-shrink-0">•</span>
             <span>{rendered}</span>
           </div>
         )
@@ -396,7 +408,7 @@ function MessageBubble({ msg }) {
       }
       if (!line.trim()) return <div key={i} className="h-2" />
       if (line.trim().endsWith(':') && line.length < 60 && !line.includes('$')) {
-        return <div key={i} className="font-semibold text-gray-800 mt-3 mb-1">{rendered}</div>
+        return <div key={i} className="font-semibold text-white mt-3 mb-1">{rendered}</div>
       }
       return <div key={i}>{rendered}</div>
     })
@@ -406,7 +418,7 @@ function MessageBubble({ msg }) {
     return (
       <motion.div className="flex justify-end mb-4"
         initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
-        <div className="max-w-[85%] md:max-w-[78%] bg-green-600 text-white rounded-2xl rounded-br-sm px-4 py-3 text-sm leading-relaxed shadow-sm">
+        <div className="max-w-[85%] md:max-w-[78%] bg-emerald-600 text-white rounded-2xl rounded-br-sm px-4 py-3 text-sm leading-relaxed shadow-lg">
           {msg.content}
         </div>
       </motion.div>
@@ -416,10 +428,10 @@ function MessageBubble({ msg }) {
   return (
     <motion.div className="flex items-end gap-2 mb-4"
       initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
-      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mb-0.5">
-        <Bot className="w-4 h-4 text-green-700" />
+      <div className="w-8 h-8 rounded-full bg-emerald-500/20 ring-1 ring-emerald-400/30 flex items-center justify-center flex-shrink-0 mb-0.5">
+        <Bot className="w-4 h-4 text-emerald-300" />
       </div>
-      <div className="max-w-[85%] md:max-w-[82%] bg-white border border-gray-100 shadow-sm rounded-2xl rounded-bl-sm px-4 py-3 text-sm text-gray-700 leading-relaxed">
+      <div className="max-w-[85%] md:max-w-[82%] bg-white/10 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-3 text-sm text-white/85 leading-relaxed [&_strong]:text-white [&_strong]:font-semibold">
         {renderContent(msg.content)}
       </div>
     </motion.div>
@@ -434,11 +446,11 @@ function Snapshot({ scores, goals, debts, open, onToggle }) {
   const totalSaved = goals.reduce((s, g) => s + Number(g.current_amount), 0)
 
   return (
-    <div className="border-b border-gray-100 bg-green-50/60">
+    <div className="border-b border-white/10 bg-emerald-500/[0.07]">
       <button onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-green-800 hover:bg-green-50 transition-colors">
+        className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-emerald-200 hover:bg-white/5 transition-colors">
         <span className="flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-green-600" />
+          <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
           What your advisor can see · Health score {totalScore}/100
         </span>
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -449,14 +461,14 @@ function Snapshot({ scores, goals, debts, open, onToggle }) {
             exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
             <div className="px-4 pb-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
               {[
-                { label: 'Monthly net',  value: `${net >= 0 ? '+' : ''}$${net.toLocaleString()}`,  color: net >= 0 ? 'text-green-700' : 'text-red-600' },
-                { label: 'Total saved',  value: `$${totalSaved.toLocaleString()}`,  color: 'text-blue-700' },
-                { label: 'Total debt',   value: `$${totalDebt.toLocaleString()}`,   color: totalDebt > 0 ? 'text-rose-700' : 'text-green-700' },
-                { label: 'Score split',  value: `B${Math.round(budgetScore)} · G${Math.round(goalsScore)} · D${Math.round(debtScore)}`, color: 'text-gray-700' },
+                { label: 'Monthly net',  value: `${net >= 0 ? '+' : ''}$${net.toLocaleString()}`,  color: net >= 0 ? 'text-emerald-300' : 'text-rose-300' },
+                { label: 'Total saved',  value: `$${totalSaved.toLocaleString()}`,  color: 'text-sky-300' },
+                { label: 'Total debt',   value: `$${totalDebt.toLocaleString()}`,   color: totalDebt > 0 ? 'text-rose-300' : 'text-emerald-300' },
+                { label: 'Score split',  value: `B${Math.round(budgetScore)} · G${Math.round(goalsScore)} · D${Math.round(debtScore)}`, color: 'text-white/80' },
               ].map(({ label, value, color }) => (
-                <div key={label} className="bg-white rounded-lg p-2.5 border border-gray-100">
-                  <div className="text-gray-400 mb-0.5">{label}</div>
-                  <div className={`font-bold ${color}`}>{value}</div>
+                <div key={label} className="bg-white/[0.07] rounded-lg p-2.5 border border-white/10">
+                  <div className="text-white/40 mb-0.5">{label}</div>
+                  <div className={`font-bold tabular-nums ${color}`}>{value}</div>
                 </div>
               ))}
             </div>
@@ -468,48 +480,59 @@ function Snapshot({ scores, goals, debts, open, onToggle }) {
 }
 
 // ─── Welcome / empty state ─────────────────────────────────────────────────────
-function WelcomeScreen({ hasData, onAnalyze, onSuggest, analyzing }) {
+function WelcomeScreen({ hasData, onAnalyze, onSuggest, analyzing, onBuildPlan, building }) {
   return (
     <motion.div className="text-center py-6"
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-green-100 to-emerald-200 flex items-center justify-center mx-auto mb-4 shadow-sm">
-        <Bot className="w-8 h-8 text-green-700" />
+      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500/30 to-emerald-700/30 ring-1 ring-emerald-400/20 flex items-center justify-center mx-auto mb-4 shadow-lg">
+        <Bot className="w-8 h-8 text-emerald-300" />
       </div>
-      <h2 className="text-lg font-bold text-gray-900 mb-2">Your personal financial advisor</h2>
-      <p className="text-gray-500 text-sm max-w-sm mx-auto leading-relaxed mb-6">
+      <h2 className="font-display text-[20px] font-medium text-white mb-2">Your personal financial advisor</h2>
+      <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed mb-6">
         {hasData
           ? "I've looked at your numbers. Want me to tell you exactly where you stand and what to do next?"
           : "Add your budget, goals, and debts first — then I can give you advice that's actually about you, not generic tips."}
       </p>
 
       {hasData && (
-        <motion.button
-          onClick={onAnalyze}
-          disabled={analyzing}
-          whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-          className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-xl font-semibold text-sm shadow-md transition-colors mb-6"
-        >
-          {analyzing ? (
-            <>
-              <motion.div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
-                animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} />
-              Analyzing your situation…
-            </>
-          ) : (
-            <>
-              <Scan className="w-4 h-4" />
-              Analyze my situation
-            </>
-          )}
-        </motion.button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 mb-6">
+          <motion.button
+            onClick={onAnalyze}
+            disabled={analyzing || building}
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-700/50 text-white rounded-xl font-semibold text-sm shadow-lg shadow-emerald-900/40 transition-colors"
+          >
+            {analyzing ? (
+              <>
+                <motion.div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                  animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} />
+                Analyzing your situation…
+              </>
+            ) : (
+              <><Scan className="w-4 h-4" /> Analyze my situation</>
+            )}
+          </motion.button>
+          <motion.button
+            onClick={onBuildPlan}
+            disabled={analyzing || building}
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-white/10 border border-emerald-400/30 hover:bg-emerald-500/15 text-white rounded-xl font-semibold text-sm transition-colors"
+          >
+            {building ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Building plan…</>
+            ) : (
+              <><ClipboardList className="w-4 h-4 text-emerald-300" /> Build my action plan</>
+            )}
+          </motion.button>
+        </div>
       )}
 
       {/* Horizontally scrollable on mobile, wrapping on desktop */}
       <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:flex-wrap md:justify-center md:overflow-x-visible md:-mx-0 md:px-0 md:max-w-lg md:mx-auto">
         {SUGGESTIONS.map((s, i) => (
           <button key={i} onClick={() => onSuggest(s.label)}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-white border border-gray-200 rounded-full text-sm text-gray-600 hover:border-green-400 hover:bg-green-50 hover:text-green-800 transition-all shadow-sm">
-            <span>{s.icon}</span>{s.label}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-white/10 border border-white/15 rounded-full text-sm text-white/70 hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-white transition-all">
+            <s.icon className="w-3.5 h-3.5 text-emerald-300/80" />{s.label}
           </button>
         ))}
       </div>
@@ -521,46 +544,82 @@ function WelcomeScreen({ hasData, onAnalyze, onSuggest, analyzing }) {
 export default function AIAdvisor() {
   const { user, profile } = useAuth()
   const STORAGE_KEY = `advisor-chat-${user.id}`
+
+  // Init from localStorage immediately (no flicker), then sync from Supabase
   const [messages, setMessages]         = useState(() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? [] } catch { return [] }
   })
   const [input, setInput]               = useState('')
   const [loading, setLoading]           = useState(false)
   const [analyzing, setAnalyzing]       = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(true)
   const [goals,    setGoals]            = useState([])
   const [budgets,  setBudgets]          = useState([])
   const [debts,    setDebts]            = useState([])
   const [accounts, setAccounts]         = useState([])
+  const [retire,   setRetire]           = useState(null)
+  const [plans,    setPlans]            = useState([])
   const [snapshotOpen, setSnapshotOpen] = useState(false)
   const [error, setError]               = useState(null)
   const [atBottom, setAtBottom]         = useState(true)
+  const [pendingPlan, setPendingPlan]   = useState(null)   // proposed plan card in the thread
+  const [buildingPlan, setBuildingPlan] = useState(false)
+  const [pendingGoal, setPendingGoal]   = useState(null)   // inline goal suggestion card
   const bottomRef    = useRef(null)
   const inputRef     = useRef(null)
   const scrollRef    = useRef(null)
+  // Prevent saving to Supabase while we're loading from it
+  const isLoadingHistory = useRef(true)
 
   useEffect(() => {
     async function load() {
-      const [g, b, d, a] = await Promise.all([
+      const [g, b, d, a, conv, ret, pl] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('budgets').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
         supabase.from('accounts').select('*').eq('user_id', user.id),
+        supabase.from('conversations').select('messages').eq('user_id', user.id).single(),
+        loadRetirement(user.id),
+        listPlans(user.id),
       ])
       setGoals(g.data ?? [])
       setBudgets(b.data ?? [])
       setDebts(d.data ?? [])
       setAccounts(a.data ?? [])
+      setRetire(ret)
+      setPlans(pl ?? [])
+
+      // Merge Supabase history: use whichever has more messages
+      if (conv.data?.messages?.length) {
+        const remoteMessages = conv.data.messages
+        setMessages(prev => remoteMessages.length >= prev.length ? remoteMessages : prev)
+        // Update localStorage cache
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteMessages)) } catch {}
+      }
+      isLoadingHistory.current = false
+      setHistoryLoading(false)
     }
     load()
   }, [user.id])
 
+  // Persist to localStorage + Supabase when messages settle (not mid-stream)
   useEffect(() => {
+    if (isLoadingHistory.current) return
+    if (loading || analyzing) return
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)) } catch {}
-  }, [messages])
+    // Supabase upsert — fire and forget
+    supabase.from('conversations').upsert(
+      { user_id: user.id, messages, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' }
+    ).then(() => {}) // intentionally not awaited
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, loading, analyzing])
 
   useEffect(() => {
-    if (atBottom) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
+    // Instant follow while streaming (smooth-scroll per token stutters)
+    if (atBottom) bottomRef.current?.scrollIntoView({ behavior: loading || analyzing ? 'auto' : 'smooth' })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, loading, pendingPlan, buildingPlan, pendingGoal])
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current
@@ -569,14 +628,24 @@ export default function AIAdvisor() {
     setAtBottom(distFromBottom < 80)
   }, [])
 
-  const scores = useMemo(() => computeScores(budgets, goals, debts), [budgets, goals, debts])
+  const scores = useMemo(() => computeScores(budgets, goals, debts, accounts), [budgets, goals, debts, accounts])
+
+  // Cross-feature extras so the advisor knows the user's whole picture.
+  const extras = useMemo(() => {
+    const defaults = deriveDefaults({ accounts, goals, budgets, profile })
+    const inputs   = { ...defaults, ...(retire?.settings ?? {}) }
+    const r        = computeRetirement(inputs)
+    // Only treat retirement as "set up" once they have some investment savings or saved settings
+    const hasRet = (retire?.settings && Object.keys(retire.settings).length > 0) || inputs.currentSaved > 0
+    return { retirement: hasRet ? r : null, plans }
+  }, [accounts, goals, budgets, profile, retire, plans])
 
   const systemPrompt = useMemo(
-    () => buildSystemPrompt(buildContext(scores, goals, debts, budgets, accounts, profile)),
-    [scores, goals, debts, budgets, accounts, profile]
+    () => buildSystemPrompt(buildContext(scores, goals, debts, budgets, accounts, profile, extras)),
+    [scores, goals, debts, budgets, accounts, profile, extras]
   )
 
-  const noKey  = !API_KEY || API_KEY === 'paste_your_new_key_here'
+  const noKey  = !chatConfigured
   const hasData = goals.length > 0 || budgets.length > 0 || debts.length > 0 || accounts.length > 0
 
   async function send(text, opts = {}) {
@@ -588,11 +657,22 @@ export default function AIAdvisor() {
     setMessages(next)
     setInput('')
     setAtBottom(true)
+    setPendingGoal(null)   // clear any prior suggestion
     if (opts.analyzing) setAnalyzing(true); else setLoading(true)
 
     try {
-      const reply = await callClaude(next, systemPrompt)
-      setMessages([...next, { role: 'assistant', content: reply }])
+      // Stream the reply token-by-token into a live assistant bubble
+      const reply = await callClaude(next, systemPrompt, {
+        maxTokens: 1024,
+        onDelta: (text) => setMessages([...next, { role: 'assistant', content: text }]),
+      })
+      const convo = [...next, { role: 'assistant', content: reply }]
+      setMessages(convo)
+      // If they expressed a savings/financial goal, offer to add it (async,
+      // appears just after the reply — the tool decides if it's worth it).
+      if (GOAL_INTENT.test(text)) {
+        suggestGoal(convo, systemPrompt).then(g => { if (g) setPendingGoal(g) })
+      }
     } catch (err) {
       setError(err.message ?? 'Something went wrong. Please try again.')
       setMessages(messages)
@@ -610,35 +690,81 @@ export default function AIAdvisor() {
     )
   }
 
-  const isEmpty = messages.length === 0 && !loading && !analyzing
+  async function handleBuildPlan() {
+    if (buildingPlan || loading || analyzing || noKey) return
+    setError(null)
+    setBuildingPlan(true)
+    setAtBottom(true)
+    try {
+      const planMsgs = [
+        ...messages,
+        { role: 'user', content: 'Based on my actual numbers, build me a short, concrete financial action plan I can follow — 3 to 5 ordered steps. Where a step means starting a savings/investment goal or adding a recurring budget line, include its apply action so I can add it in one tap.' },
+      ]
+      const plan = await requestPlan(planMsgs, systemPrompt)
+      setPendingPlan({ ...plan, steps: normalizeSteps(plan.steps), saved: false })
+    } catch (err) {
+      setError(err.message ?? 'Could not build a plan. Please try again.')
+    } finally {
+      setBuildingPlan(false)
+    }
+  }
+
+  async function handleSavePlan() {
+    await savePlan(user.id, pendingPlan)
+    setPendingPlan(p => ({ ...p, saved: true }))
+  }
+
+  const applyPlanStep = async (step) => {
+    try { await applyStep(user.id, step.apply) }
+    catch (err) { setError(err.message ?? 'Could not apply that step.'); throw err }
+  }
+
+  const isEmpty = messages.length === 0 && !loading && !analyzing && !historyLoading && !pendingPlan && !buildingPlan
 
   return (
-    // On mobile: full height minus the top header (h-14 = 3.5rem). On desktop: full screen.
-    <div className="flex flex-col h-[calc(100dvh-3.5rem)] md:h-screen">
+    // Fills the app shell exactly; all scrolling happens inside the thread.
+    <div className="flex flex-col h-full">
 
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-gray-100 bg-white px-4 md:px-6 py-4">
+      <div className="flex-shrink-0 border-b border-white/10 bg-white/5 backdrop-blur-md px-4 md:px-6 py-3.5">
         <div className="flex items-center justify-between max-w-3xl mx-auto">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-green-500 to-emerald-700 flex items-center justify-center shadow-sm">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-lg">
               <Bot className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-gray-900 text-sm leading-tight">Financial Advisor</h1>
-              <p className="text-xs text-gray-400">Personalized to your real data</p>
+              <h1 className="font-display text-[16px] font-medium text-white leading-tight">Financial Advisor</h1>
+              <p className="text-xs text-white/40">Personalized to your real data</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {!noKey && (
+              <button
+                onClick={handleBuildPlan}
+                disabled={buildingPlan || loading || analyzing}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs font-semibold hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
+                title="Generate a saveable action plan"
+              >
+                {buildingPlan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">Action plan</span>
+              </button>
+            )}
             {messages.length > 0 && (
-              <button onClick={() => { setMessages([]); setError(null); localStorage.removeItem(STORAGE_KEY) }}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
-                title="Start over">
+              <button
+                onClick={() => {
+                  setMessages([])
+                  setError(null)
+                  setPendingPlan(null)
+                  setPendingGoal(null)
+                  localStorage.removeItem(STORAGE_KEY)
+                  supabase.from('conversations').delete().eq('user_id', user.id).then(() => {})
+                }}
+                className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                title="Start over"
+              >
                 <RefreshCw className="w-4 h-4" />
               </button>
             )}
-            <span className="text-xs text-gray-400 flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> Claude
-            </span>
           </div>
         </div>
       </div>
@@ -649,14 +775,15 @@ export default function AIAdvisor() {
           open={snapshotOpen} onToggle={() => setSnapshotOpen(o => !o)} />
       </div>
 
-      {/* No key banner */}
+      {/* Not-configured banner (only if Supabase URL is missing at build time) */}
       {noKey && (
         <div className="flex-shrink-0 max-w-3xl w-full mx-auto px-4 mt-4">
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm">
-            <p className="font-semibold text-amber-800 mb-1">Add your Anthropic API key to get started</p>
-            <p className="text-amber-700 text-xs leading-relaxed">
-              Open <code className="bg-amber-100 px-1 rounded">.env</code> and set{' '}
-              <code className="bg-amber-100 px-1 rounded">VITE_ANTHROPIC_API_KEY</code>, then restart the dev server.
+          <div className="p-4 bg-amber-400/10 border border-amber-400/30 rounded-xl text-sm">
+            <p className="font-semibold text-amber-200 mb-1">Advisor isn’t configured yet</p>
+            <p className="text-amber-200/70 text-xs leading-relaxed">
+              Set <code className="bg-amber-400/15 px-1 rounded">VITE_SUPABASE_URL</code> and deploy the{' '}
+              <code className="bg-amber-400/15 px-1 rounded">chat</code> Edge Function
+              (<code className="bg-amber-400/15 px-1 rounded">supabase functions deploy chat</code>).
             </p>
           </div>
         </div>
@@ -671,7 +798,7 @@ export default function AIAdvisor() {
               initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }} transition={{ duration: 0.15 }}
               onClick={() => { setAtBottom(true); bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }}
-              className="fixed bottom-36 md:bottom-24 right-4 z-10 w-9 h-9 bg-white border border-gray-200 shadow-md rounded-full flex items-center justify-center text-gray-500 hover:text-green-600 hover:border-green-400 transition-colors"
+              className="fixed bottom-36 md:bottom-24 right-4 z-10 w-9 h-9 bg-white/15 backdrop-blur-md border border-white/20 shadow-lg rounded-full flex items-center justify-center text-white/70 hover:text-emerald-300 hover:border-emerald-400/50 transition-colors"
             >
               <ArrowDown className="w-4 h-4" />
             </motion.button>
@@ -685,29 +812,43 @@ export default function AIAdvisor() {
               onAnalyze={handleAnalyze}
               onSuggest={send}
               analyzing={analyzing}
+              onBuildPlan={handleBuildPlan}
+              building={buildingPlan}
             />
-          )}
-
-          {analyzing && messages.length === 0 && (
-            <div className="flex items-end gap-2 mb-4">
-              <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                <Bot className="w-4 h-4 text-green-700" />
-              </div>
-              <div className="bg-white border border-gray-100 shadow-sm rounded-2xl rounded-bl-sm px-4 py-3 text-sm text-gray-400 italic">
-                Looking at your numbers…
-              </div>
-            </div>
           )}
 
           <AnimatePresence>
             {messages.map((msg, i) => <MessageBubble key={i} msg={msg} />)}
           </AnimatePresence>
 
-          {loading && <TypingIndicator />}
+          {/* Typing dots only until the first streamed token arrives */}
+          {(loading || analyzing) && messages[messages.length - 1]?.role === 'user' && <TypingIndicator />}
+
+          {/* Proposed action plan card */}
+          {pendingPlan && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
+              <PlanCard plan={pendingPlan} variant="chat" saved={pendingPlan.saved}
+                onSave={handleSavePlan} onApply={applyPlanStep} />
+            </motion.div>
+          )}
+          {buildingPlan && (
+            <div className="flex items-center gap-2 mb-4 text-sm text-emerald-200/80">
+              <Loader2 className="w-4 h-4 animate-spin" /> Building your action plan…
+            </div>
+          )}
+
+          {/* Inline goal suggestion — adds to Goals + appears in the Plan */}
+          {pendingGoal && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
+              <GoalSuggestionCard suggestion={pendingGoal}
+                onAdd={(g) => addGoal(user.id, g)}
+                onDismiss={() => setPendingGoal(null)} />
+            </motion.div>
+          )}
 
           {error && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-3">
-              <p className="text-xs text-red-500 bg-red-50 inline-block px-3 py-2 rounded-lg">{error}</p>
+              <p className="text-xs text-rose-200 bg-rose-500/15 border border-rose-400/25 inline-block px-3 py-2 rounded-lg">{error}</p>
             </motion.div>
           )}
 
@@ -716,8 +857,8 @@ export default function AIAdvisor() {
             <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:flex-wrap md:overflow-x-visible md:-mx-0 md:px-0 mt-2 mb-2">
               {SUGGESTIONS.slice(0, 4).map((s, i) => (
                 <button key={i} onClick={() => send(s.label)}
-                  className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs text-gray-500 hover:border-green-400 hover:text-green-700 transition-all">
-                  {s.icon} {s.label}
+                  className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-white/10 border border-white/15 rounded-full text-xs text-white/60 hover:border-emerald-400/50 hover:text-white transition-all">
+                  <s.icon className="w-3 h-3 text-emerald-300/80" /> {s.label}
                 </button>
               ))}
             </div>
@@ -728,26 +869,26 @@ export default function AIAdvisor() {
       </div>
 
       {/* Input — pb clears the fixed mobile bottom nav */}
-      <div className="flex-shrink-0 border-t border-gray-100 bg-white pb-16 md:pb-0">
+      <div className="flex-shrink-0 border-t border-white/10 bg-white/5 backdrop-blur-md pb-20 md:pb-0">
         <form onSubmit={e => { e.preventDefault(); send(input) }} className="max-w-3xl mx-auto px-4 py-3 md:py-4">
           <div className="flex gap-2 items-end">
-            <div className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 focus-within:border-green-400 focus-within:ring-1 focus-within:ring-green-100 transition-all">
+            <div className="flex-1 bg-white/10 border border-white/15 rounded-2xl px-4 py-3 focus-within:border-emerald-400/50 focus-within:ring-1 focus-within:ring-emerald-400/20 transition-all">
               <textarea ref={inputRef} value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}
                 placeholder={noKey ? 'Add your API key to start…' : 'Ask anything about your finances…'}
                 disabled={noKey || loading || analyzing}
                 rows={1}
-                className="w-full bg-transparent text-base md:text-sm text-gray-800 placeholder-gray-400 focus:outline-none resize-none leading-relaxed disabled:opacity-50"
+                className="w-full bg-transparent text-base md:text-sm text-white placeholder-white/35 focus:outline-none resize-none leading-relaxed disabled:opacity-50"
                 style={{ maxHeight: 120, overflowY: 'auto' }}
               />
             </div>
             <button type="submit" disabled={!input.trim() || loading || analyzing || noKey}
-              className="w-11 h-11 rounded-xl bg-green-600 hover:bg-green-700 disabled:bg-gray-200 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors flex-shrink-0 shadow-sm">
+              className="w-11 h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors flex-shrink-0 shadow-lg shadow-emerald-900/30">
               <Send className="w-4 h-4" />
             </button>
           </div>
-          <p className="text-center text-[10px] text-gray-300 mt-2">
+          <p className="text-center text-[10px] text-white/30 mt-2">
             Educational guidance — not a substitute for a licensed financial planner.
           </p>
         </form>

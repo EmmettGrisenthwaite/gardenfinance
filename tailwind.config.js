@@ -4,6 +4,10 @@ module.exports = {
     content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
   theme: {
   	extend: {
+  		fontFamily: {
+  			sans: ['Plus Jakarta Sans Variable', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+  			display: ['Fraunces Variable', 'Fraunces', 'Georgia', 'serif'],
+  		},
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
@@ -63,25 +67,34 @@ module.exports = {
   		},
   		keyframes: {
   			'accordion-down': {
-  				from: {
-  					height: '0'
-  				},
-  				to: {
-  					height: 'var(--radix-accordion-content-height)'
-  				}
+  				from: { height: '0' },
+  				to: { height: 'var(--radix-accordion-content-height)' }
   			},
   			'accordion-up': {
-  				from: {
-  					height: 'var(--radix-accordion-content-height)'
-  				},
-  				to: {
-  					height: '0'
-  				}
-  			}
+  				from: { height: 'var(--radix-accordion-content-height)' },
+  				to: { height: '0' }
+  			},
+  			'orb-1': {
+  				'0%, 100%': { transform: 'translate(0%, 0%) scale(1)' },
+  				'33%':       { transform: 'translate(5%, -8%) scale(1.08)' },
+  				'66%':       { transform: 'translate(-4%, 5%) scale(0.94)' },
+  			},
+  			'orb-2': {
+  				'0%, 100%': { transform: 'translate(0%, 0%) scale(1)' },
+  				'40%':       { transform: 'translate(-6%, 9%) scale(1.12)' },
+  				'75%':       { transform: 'translate(5%, -5%) scale(0.92)' },
+  			},
+  			'orb-3': {
+  				'0%, 100%': { transform: 'translate(0%, 0%) scale(1)' },
+  				'50%':       { transform: 'translate(8%, -10%) scale(1.15)' },
+  			},
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
+  			'accordion-up':   'accordion-up 0.2s ease-out',
+  			'orb-1': 'orb-1 24s ease-in-out infinite',
+  			'orb-2': 'orb-2 19s ease-in-out infinite',
+  			'orb-3': 'orb-3 15s ease-in-out infinite',
   		}
   	}
   },
