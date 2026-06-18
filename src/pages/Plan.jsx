@@ -127,7 +127,10 @@ export default function Plan() {
 
   // ── Derived metrics ──────────────────────────────────────────────────────────
   const { goals, budgets, debts, accounts } = data
-  const totalAssets = accounts.reduce((s, a) => s + Number(a.balance), 0)
+  // Goal pots count as assets (funding a goal from an account is net-worth-neutral).
+  const acctAssets  = accounts.reduce((s, a) => s + Number(a.balance), 0)
+  const goalAssets  = goals.reduce((s, g) => s + Number(g.current_amount), 0)
+  const totalAssets = acctAssets + goalAssets
   const totalDebt   = debts.reduce((s, d) => s + Number(d.balance), 0)
   const netWorth    = totalAssets - totalDebt
   const income      = budgets.filter(b => b.type === 'income'  && b.recurring !== false).reduce((s, b) => s + Number(b.amount), 0)

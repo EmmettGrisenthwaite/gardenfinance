@@ -151,7 +151,9 @@ export default function Dashboard() {
 
       // ── Net worth change — vs the most recent prior daily snapshot
       //    (net_worth_snapshots is the canonical history, shared with Accounts) ─
+      // Goal pots count as assets too (consistent with Plan + Accounts).
       const assets = acctData.reduce((s, x) => s + Number(x.balance), 0)
+                   + goalsData.reduce((s, g) => s + Number(g.current_amount), 0)
       const liabilities = debtsData.reduce((s, x) => s + Number(x.balance), 0)
       const worth = assets - liabilities
       try {
@@ -202,8 +204,10 @@ export default function Dashboard() {
   }
 
   const totalDebt   = debts.reduce((s, d) => s + Number(d.balance), 0)
-  const totalAssets = accounts.reduce((s, a) => s + Number(a.balance), 0)
-  const netWorth    = totalAssets - totalDebt
+  const acctAssets  = accounts.reduce((s, a) => s + Number(a.balance), 0)
+  const goalAssets  = goals.reduce((s, g) => s + Number(g.current_amount), 0)
+  // "Balances" shows account cash; net worth also counts goal pots as assets.
+  const netWorth    = acctAssets + goalAssets - totalDebt
   const gardenScore = computeScores(budgets, goals, debts, accounts).totalScore
   const goalsPct    = goals.length
     ? Math.round(goals.reduce((s, g) => s + Math.min(Number(g.current_amount) / (Number(g.target_amount) || 1), 1), 0) / goals.length * 100)
@@ -216,7 +220,7 @@ export default function Dashboard() {
   const stats = [
     {
       to: '/accounts', icon: Wallet,
-      label: 'Balances', value: `$${totalAssets.toLocaleString()}`,
+      label: 'Balances', value: `$${acctAssets.toLocaleString()}`,
       sub: accounts.length > 0 ? `${accounts.length} account${accounts.length === 1 ? '' : 's'}` : 'Add your accounts',
     },
     {

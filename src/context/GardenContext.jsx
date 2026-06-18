@@ -68,9 +68,12 @@ export function GardenProvider({ children }) {
     const emergencyMonths = recurringExpenses > 0 ? liquidTotal / recurringExpenses : 0
 
     // ── Net worth calculation for garden visual richness ──────────────────────
+    // Goal "pots" count as assets, so moving money from an account into a goal
+    // is net-worth-neutral.
     const totalAccountValue = newAccounts.reduce((s, a) => s + Number(a.balance), 0)
+    const totalGoalValue    = newGoals.reduce((s, g) => s + Number(g.current_amount), 0)
     const totalDebtBalance  = newDebts.reduce((s, d) => s + Number(d.balance), 0)
-    const netWorth = totalAccountValue - totalDebtBalance
+    const netWorth = totalAccountValue + totalGoalValue - totalDebtBalance
     const netWorthTier =
       netWorth >= 200000 ? 4 :
       netWorth >= 50000  ? 3 :

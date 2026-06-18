@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Plus, Trash2, Pencil, Check, X, Wallet, TrendingUp, Shield, PiggyBank, LineChart } from 'lucide-react'
+import { Plus, Trash2, Pencil, Check, X, Wallet, TrendingUp, Shield, PiggyBank, LineChart, Sprout, ArrowRight } from 'lucide-react'
 import { motion } from 'framer-motion'
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
@@ -265,30 +266,36 @@ export default function Accounts() {
   const { user }   = useAuth()
   const [accounts,  setAccounts]  = useState([])
   const [debts,     setDebts]     = useState([])
+  const [goals,     setGoals]     = useState([])
   const [snapshots, setSnapshots] = useState([])
   const [loading,   setLoading]   = useState(true)
 
   useEffect(() => {
     async function load() {
-      const [a, d, s] = await Promise.all([
+      const [a, d, g, s] = await Promise.all([
         supabase.from('accounts').select('*').eq('user_id', user.id).order('created_at'),
         supabase.from('debts').select('balance').eq('user_id', user.id),
+        supabase.from('goals').select('name, current_amount').eq('user_id', user.id),
         supabase.from('net_worth_snapshots').select('*').eq('user_id', user.id)
           .order('snapshot_date', { ascending: true }).limit(90),
       ])
       const accts    = a.data ?? []
       const dts      = d.data ?? []
+      const gls      = g.data ?? []
       const snaps    = s.data ?? []
       setAccounts(accts)
       setDebts(dts)
+      setGoals(gls)
       setSnapshots(snaps)
       setLoading(false)
 
-      // Auto-snapshot today's net worth (upsert = no duplicate)
+      // Auto-snapshot today's net worth (upsert = no duplicate).
+      // Goal pots count as assets alongside account balances.
       const assets      = accts.reduce((sum, ac) => sum + Number(ac.balance), 0)
+                        + gls.reduce((sum, gl) => sum + Number(gl.current_amount), 0)
       const liabilities = dts.reduce((sum, dt) => sum + Number(dt.balance), 0)
       const netWorth    = assets - liabilities
-      if (accts.length > 0) {
+      if (accts.length > 0 || gls.length > 0) {
         const today = new Date().toISOString().split('T')[0]
         await supabase.from('net_worth_snapshots').upsert(
           { user_id: user.id, assets, liabilities, net_worth: netWorth, snapshot_date: today },
@@ -318,7 +325,9 @@ export default function Accounts() {
     setAccounts(prev => prev.filter(a => a.id !== id))
   }
 
-  const totalAssets = accounts.reduce((s, a) => s + Number(a.balance), 0)
+  const acctAssets  = accounts.reduce((s, a) => s + Number(a.balance), 0)
+  const goalAssets  = goals.reduce((s, g) => s + Number(g.current_amount), 0)
+  const totalAssets = acctAssets + goalAssets
   const totalDebt   = debts.reduce((s, d) => s + Number(d.balance), 0)
   const netWorth    = totalAssets - totalDebt
 
@@ -418,7 +427,32 @@ export default function Accounts() {
         </div>
       )}
 
-      {accounts.length > 0 && (
+      {/* Goals & savings — counted as assets; managed on the Plan page */}
+      {!loading && goalAssets > 0 && (
+        <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-emerald-500/15 border-b border-emerald-400/20">
+            <div className="flex items-center gap-2">
+              <Sprout className="w-4 h-4 text-emerald-300" />
+              <span className="text-sm font-semibold text-emerald-300">Goals &amp; Savings</span>
+            </div>
+            <span className="text-sm font-bold text-emerald-300">${goalAssets.toLocaleString()}</span>
+          </div>
+          <div className="divide-y divide-white/[0.06]">
+            {goals.filter(g => Number(g.current_amount) > 0).map((g, i) => (
+              <div key={i} className="flex items-center justify-between px-4 py-3">
+                <span className="text-sm font-medium text-white truncate min-w-0">{g.name}</span>
+                <span className="text-sm font-semibold text-white/80 tabular-nums flex-shrink-0">${Number(g.current_amount).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+          <Link to="/plan#goals"
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-semibold text-emerald-300 hover:text-emerald-200 hover:bg-emerald-500/[0.06] transition-colors border-t border-white/[0.06]">
+            Manage goals in Plan <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
+
+      {(accounts.length > 0 || goalAssets > 0) && (
         <p className="text-xs text-white/40 text-center">
           Balances are tracked daily for your net worth chart. Tap any balance to update it.
         </p>
