@@ -1,15 +1,14 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Sprout, LayoutDashboard, Target, CreditCard, DollarSign, Bot, LogOut, Wallet } from 'lucide-react'
+import { Sprout, LayoutDashboard, Target, DollarSign, Bot, LogOut, Wallet } from 'lucide-react'
 import Onboarding from '@/components/Onboarding'
 
-// Plan now holds goals + retirement + action steps (Goals was merged in).
+// Plan holds goals + retirement + steps; Budget holds income, expenses + debt.
 const NAV_ITEMS = [
   { to: '/',        label: 'Garden',  icon: LayoutDashboard },
   { to: '/plan',    label: 'Plan',    icon: Target },
   { to: '/budget',  label: 'Budget',  icon: DollarSign },
-  { to: '/debt',    label: 'Debt',    icon: CreditCard },
   { to: '/accounts',label: 'Accounts',icon: Wallet },
   { to: '/advisor', label: 'Advisor', icon: Bot },
 ]
@@ -145,19 +144,13 @@ export default function Layout({ children }) {
               </div>
               <span className="font-display font-semibold text-white text-[15px] tracking-tight drop-shadow">Garden Financial</span>
             </div>
-            <NavLink
-              to="/debt"
-              aria-label="Debt"
-              className={({ isActive }) =>
-                `p-2 rounded-xl transition-all backdrop-blur-sm ${
-                  isActive
-                    ? 'bg-white/30 text-white'
-                    : 'text-white/60 hover:bg-white/20 hover:text-white'
-                }`
-              }
+            <button
+              onClick={handleLogout}
+              aria-label="Sign out"
+              className="p-2 rounded-xl text-white/55 hover:bg-white/20 hover:text-white transition-all backdrop-blur-sm"
             >
-              <CreditCard className="w-5 h-5" />
-            </NavLink>
+              <LogOut className="w-5 h-5" />
+            </button>
           </header>
 
           {/* Page content — immersive pages (garden, advisor) are full-bleed and

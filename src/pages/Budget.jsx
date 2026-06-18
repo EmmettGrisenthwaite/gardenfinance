@@ -3,9 +3,10 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import {
   Plus, Trash2, TrendingUp, TrendingDown, DollarSign, RefreshCw, Zap,
-  Pencil, Check, X, BarChart3, Receipt, Download, ChevronDown, ChevronUp, Sprout,
+  Pencil, Check, X, BarChart3, Receipt, ChevronDown, ChevronUp, Sprout,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import DebtManager from '@/components/DebtManager'
 
 const EXPENSE_CATEGORIES = ['Housing', 'Food', 'Transport', 'Healthcare', 'Entertainment', 'Utilities', 'Savings', 'Other']
 const INCOME_CATEGORIES  = ['Salary', 'Freelance', 'Investment', 'Side Hustle', 'Other']
@@ -21,30 +22,6 @@ const CAT_COLORS = {
   Other:         { bar: 'bg-white/30',   light: 'bg-white/5',   text: 'text-white/60',   over: 'bg-red-500' },
 }
 function catColor(cat) { return CAT_COLORS[cat] ?? CAT_COLORS.Other }
-
-// ─── CSV export ────────────────────────────────────────────────────────────────
-function exportCSV(entries, transactions) {
-  const rows = [
-    ['Section', 'Type', 'Name / Note', 'Category', 'Amount', 'Recurring', 'Date'],
-    ...entries.map(e => [
-      'Budget Plan', e.type, e.name, e.category ?? '',
-      Number(e.amount).toFixed(2),
-      e.recurring === false ? 'One-time' : 'Monthly', '',
-    ]),
-    ...transactions.map(t => [
-      'Transactions', 'expense', t.note || '', t.category ?? '',
-      Number(t.amount).toFixed(2), '', t.date ?? '',
-    ]),
-  ]
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-  const blob = new Blob([csv], { type: 'text/csv' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = `garden-budget-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
 
 // ─── Entry add form ────────────────────────────────────────────────────────────
 function EntryForm({ type, onAdd }) {
@@ -514,6 +491,14 @@ export default function Budget() {
 
   useEffect(() => { load() }, [user.id])
 
+  // Deep-link support: /budget#debt scrolls to the Debt section once it's mounted.
+  useEffect(() => {
+    const id = window.location.hash.slice(1)
+    if (!id) return
+    const t = setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350)
+    return () => clearTimeout(t)
+  }, [])
+
   async function load() {
     const now      = new Date()
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
@@ -596,17 +581,9 @@ export default function Budget() {
       className="p-4 md:p-6 lg:p-8 max-w-4xl mx-auto space-y-5 pb-24 md:pb-8"
     >
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-[26px] font-medium text-white drop-shadow-lg">Budget</h1>
-          <p className="text-white/60 mt-1 text-sm">Track your monthly income and expenses</p>
-        </div>
-        <button
-          onClick={() => exportCSV(entries, transactions)}
-          className="flex items-center gap-1.5 px-3 py-2 min-h-[40px] bg-white/15 hover:bg-white/25 border border-white/10 text-white/80 hover:text-white rounded-lg text-xs font-medium transition-all"
-        >
-          <Download className="w-3.5 h-3.5" /> Export CSV
-        </button>
+      <div>
+        <h1 className="font-display text-[26px] font-medium text-white drop-shadow-lg">Budget</h1>
+        <p className="text-white/60 mt-1 text-sm">Income, expenses, and debt — your full monthly cash flow.</p>
       </div>
 
       {/* Summary */}
@@ -673,6 +650,9 @@ export default function Budget() {
           transactions={transactions}
         />
       )}
+
+      {/* Debt — payoff strategy + account-funded payments */}
+      <DebtManager />
 
       {/* Entry edit modal */}
       {editEntry && (

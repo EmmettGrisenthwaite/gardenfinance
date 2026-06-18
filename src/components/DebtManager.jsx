@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Plus, Trash2, Pencil, X, CreditCard, Flame, Snowflake, Calculator, ChevronDown, ChevronUp, DollarSign, Check } from 'lucide-react'
+import { Plus, Trash2, Pencil, X, CreditCard, Flame, Snowflake, Calculator, ChevronDown, ChevronUp, DollarSign, Check, Wallet } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import MilestoneToast from '@/components/MilestoneToast'
+
+const LIQUID_TYPES = ['checking', 'savings', 'emergency', 'money_market']
 
 // ─── Payoff simulator ──────────────────────────────────────────────────────────
 function simulatePayoff(debts, extraPayment, strategy) {
@@ -134,16 +136,28 @@ function DebtModal({ debt, onSave, onClose }) {
   )
 }
 
-// ─── Quick payment recorder ────────────────────────────────────────────────────
-function PaymentRecorder({ debt, onRecord, onCancel }) {
-  const [amount, setAmount] = useState('')
+// ─── Quick payment recorder (draws from a source account) ──────────────────────
+function PaymentRecorder({ debt, accounts, onRecord, onCancel }) {
   const balance = Number(debt.balance)
+  // Default the source to the largest liquid account, else the largest of any.
+  const defaultAcct = useMemo(() => {
+    if (!accounts.length) return ''
+    const liquid = accounts.filter(a => LIQUID_TYPES.includes(a.type))
+    const pool = liquid.length ? liquid : accounts
+    return [...pool].sort((a, b) => Number(b.balance) - Number(a.balance))[0].id
+  }, [accounts])
+
+  const [amount, setAmount]   = useState('')
+  const [account, setAccount] = useState(defaultAcct)
+
+  const srcAcct = accounts.find(a => a.id === account)
+  const srcBalance = srcAcct ? Number(srcAcct.balance) : Infinity
 
   function handleSubmit(e) {
     e.preventDefault()
     const payment = parseFloat(amount)
     if (isNaN(payment) || payment <= 0) return
-    onRecord(debt.id, Math.min(payment, balance))
+    onRecord(debt.id, Math.min(payment, balance), account || null)
   }
 
   return (
@@ -154,8 +168,8 @@ function PaymentRecorder({ debt, onRecord, onCancel }) {
       transition={{ duration: 0.2 }}
       className="overflow-hidden"
     >
-      <form onSubmit={handleSubmit} className="mt-3 pt-3 border-t border-white/10">
-        <div className="text-xs font-medium text-white/50 mb-2">Record a payment toward this debt</div>
+      <form onSubmit={handleSubmit} className="mt-3 pt-3 border-t border-white/10 space-y-2.5">
+        <div className="text-xs font-medium text-white/50">Record a payment toward this debt</div>
         <div className="flex gap-2 items-center flex-wrap">
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm">$</span>
@@ -164,28 +178,49 @@ function PaymentRecorder({ debt, onRecord, onCancel }) {
               type="number" inputMode="decimal" min="0.01" max={balance} step="0.01"
               value={amount} onChange={e => setAmount(e.target.value)}
               placeholder={`Max $${balance.toLocaleString()}`}
-              className="pl-7 pr-3 py-2 w-44 border border-white/[0.08] rounded-lg text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30"
+              className="pl-7 pr-3 py-2 w-40 border border-white/[0.08] rounded-lg text-base sm:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30"
             />
           </div>
-          {/* Shortcut: minimum payment */}
           {Number(debt.minimum_payment) > 0 && (
             <button type="button"
               onClick={() => setAmount(String(debt.minimum_payment))}
-              className="text-xs text-sky-400 hover:text-sky-300 border border-sky-400/30 hover:border-blue-400 px-2.5 py-1.5 rounded-lg transition-colors">
+              className="text-xs text-sky-400 hover:text-sky-300 border border-sky-400/30 hover:border-sky-400 px-2.5 py-1.5 rounded-lg transition-colors">
               Min: ${Number(debt.minimum_payment).toLocaleString()}
             </button>
           )}
+        </div>
+
+        {/* Source account */}
+        {accounts.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Wallet className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
+            <label className="text-xs text-white/50 flex-shrink-0">Pay from</label>
+            <select value={account} onChange={e => setAccount(e.target.value)}
+              className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-[#0e1812] text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30">
+              {accounts.map(a => (
+                <option key={a.id} value={a.id}>{a.name} — ${Number(a.balance).toLocaleString()}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="flex gap-2 items-center">
           <button type="submit"
             className="flex items-center gap-1.5 px-4 py-2 min-h-[40px] bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors">
-            <Check className="w-3.5 h-3.5" /> Record
+            <Check className="w-3.5 h-3.5" /> Record payment
           </button>
           <button type="button" onClick={onCancel}
             className="p-2 text-white/40 hover:text-white/60">
             <X className="w-4 h-4" />
           </button>
         </div>
-        <p className="text-xs text-white/40 mt-2">
-          This will reduce the remaining balance from ${balance.toLocaleString()}.
+        <p className="text-xs text-white/40">
+          {srcAcct
+            ? `Reduces ${srcAcct.name} and this balance by the same amount.`
+            : 'Reduces the remaining balance.'}
+          {srcAcct && amount && parseFloat(amount) > srcBalance && (
+            <span className="text-amber-300"> · More than that account holds.</span>
+          )}
         </p>
       </form>
     </motion.div>
@@ -199,7 +234,6 @@ function PayoffCalculator({ debts }) {
   const [inputVal,    setInputVal]    = useState('0')
   const [showDetails, setShowDetails] = useState(false)
 
-  // Dynamic slider max: at least $1000, or 3× the largest min payment, whichever is bigger
   const maxExtra = Math.max(1000, debts.reduce((m, d) => Math.max(m, Number(d.minimum_payment) * 3), 0))
 
   function handleSlider(e) {
@@ -210,7 +244,7 @@ function PayoffCalculator({ debts }) {
   function handleInput(e) {
     setInputVal(e.target.value)
     const n = parseFloat(e.target.value)
-    if (!isNaN(n) && n >= 0) setExtraPay(Math.min(n, maxExtra * 3)) // allow typing beyond slider
+    if (!isNaN(n) && n >= 0) setExtraPay(Math.min(n, maxExtra * 3))
   }
 
   const avResult   = useMemo(() => simulatePayoff(debts, extraPay, 'avalanche'), [debts, extraPay])
@@ -233,7 +267,7 @@ function PayoffCalculator({ debts }) {
 
   return (
     <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 bg-white/5/80 border-b border-white/10">
+      <div className="flex items-center justify-between px-4 py-3 bg-white/[0.03] border-b border-white/10">
         <div className="flex items-center gap-2">
           <Calculator className="w-4 h-4 text-white/60" />
           <span className="text-sm font-semibold text-white">Payoff Calculator</span>
@@ -245,7 +279,6 @@ function PayoffCalculator({ debts }) {
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Strategy toggle */}
         <div className="flex gap-2">
           <button onClick={() => setStrategy('avalanche')}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
@@ -255,7 +288,7 @@ function PayoffCalculator({ debts }) {
           </button>
           <button onClick={() => setStrategy('snowball')}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              strategy === 'snowball' ? 'bg-blue-500 text-white shadow-sm' : 'bg-white/10 text-white/50 hover:bg-white/15'
+              strategy === 'snowball' ? 'bg-sky-500 text-white shadow-sm' : 'bg-white/10 text-white/50 hover:bg-white/15'
             }`}>
             <Snowflake className="w-4 h-4" /> Snowball
           </button>
@@ -267,7 +300,6 @@ function PayoffCalculator({ debts }) {
             : 'Pay minimums on all debts, then attack the smallest balance first. Best for motivation.'}
         </p>
 
-        {/* Extra payment — slider + free-form input combo */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <label className="text-xs font-medium text-white/60">Extra monthly payment</label>
@@ -287,7 +319,7 @@ function PayoffCalculator({ debts }) {
             type="range" min="0" max={maxExtra} step="25"
             value={Math.min(extraPay, maxExtra)}
             onChange={handleSlider}
-            className="w-full h-2 bg-white/15 rounded-full appearance-none cursor-pointer accent-green-500"
+            className="w-full h-2 bg-white/15 rounded-full appearance-none cursor-pointer accent-emerald-500"
           />
           <div className="flex justify-between text-xs text-white/30 mt-1">
             <span>$0</span>
@@ -308,13 +340,13 @@ function PayoffCalculator({ debts }) {
               initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
               className="grid grid-cols-2 gap-3">
               <div className={`rounded-xl p-4 text-center ${strategy === 'avalanche' ? 'bg-amber-500/15' : 'bg-sky-500/15'}`}>
-                <div className={`text-2xl font-black ${strategy === 'avalanche' ? 'text-amber-300' : 'text-sky-300'}`}>
+                <div className={`text-2xl font-bold ${strategy === 'avalanche' ? 'text-amber-300' : 'text-sky-300'}`}>
                   {formatMonths(activeResult.months)}
                 </div>
                 <div className="text-xs text-white/50 mt-0.5">until debt-free</div>
               </div>
               <div className={`rounded-xl p-4 text-center ${strategy === 'avalanche' ? 'bg-amber-500/15' : 'bg-sky-500/15'}`}>
-                <div className={`text-2xl font-black ${strategy === 'avalanche' ? 'text-amber-300' : 'text-sky-300'}`}>
+                <div className={`text-2xl font-bold ${strategy === 'avalanche' ? 'text-amber-300' : 'text-sky-300'}`}>
                   ${activeResult.totalInterest.toLocaleString()}
                 </div>
                 <div className="text-xs text-white/50 mt-0.5">total interest paid</div>
@@ -357,7 +389,7 @@ function PayoffCalculator({ debts }) {
                 {strategyOrder.map((debt, i) => (
                   <div key={debt.id} className="flex items-center gap-2.5 text-sm">
                     <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-white ${
-                      strategy === 'avalanche' ? 'bg-amber-400' : 'bg-blue-400'
+                      strategy === 'avalanche' ? 'bg-amber-400' : 'bg-sky-400'
                     }`}>{i + 1}</span>
                     <span className="font-medium text-white flex-1 min-w-0 truncate">{debt.name}</span>
                     <span className="text-white/40 text-xs flex-shrink-0">
@@ -375,20 +407,25 @@ function PayoffCalculator({ debts }) {
   )
 }
 
-// ─── Main ──────────────────────────────────────────────────────────────────────
-export default function Debt() {
+// ─── Debt section (lives inside the Budget page) ───────────────────────────────
+export default function DebtManager() {
   const { user } = useAuth()
-  const [debts,          setDebts]          = useState([])
-  const [loading,        setLoading]        = useState(true)
-  const [modal,          setModal]          = useState(null)
-  const [recordingFor,   setRecordingFor]   = useState(null) // debt id showing payment recorder
-  const [clearedMilestone, setClearedMilestone] = useState(null) // { key, debtName }
+  const [debts,            setDebts]            = useState([])
+  const [accounts,         setAccounts]         = useState([])
+  const [loading,          setLoading]          = useState(true)
+  const [modal,            setModal]            = useState(null)
+  const [recordingFor,     setRecordingFor]     = useState(null)
+  const [clearedMilestone, setClearedMilestone] = useState(null)
 
   useEffect(() => { load() }, [user.id])
 
   async function load() {
-    const { data } = await supabase.from('debts').select('*').eq('user_id', user.id).order('created_at')
-    setDebts(data ?? [])
+    const [{ data: d }, { data: a }] = await Promise.all([
+      supabase.from('debts').select('*').eq('user_id', user.id).order('created_at'),
+      supabase.from('accounts').select('*').eq('user_id', user.id).order('created_at'),
+    ])
+    setDebts(d ?? [])
+    setAccounts(a ?? [])
     setLoading(false)
   }
 
@@ -407,18 +444,28 @@ export default function Debt() {
     setDebts(prev => prev.filter(d => d.id !== id))
   }
 
-  async function handleRecordPayment(debtId, amount) {
+  // Pay a debt — draws the amount from the chosen source account.
+  async function handleRecordPayment(debtId, amount, accountId) {
     const debt = debts.find(d => d.id === debtId)
     if (!debt) return
     const newBalance = Math.max(0, Number(debt.balance) - amount)
     await supabase.from('debts').update({ balance: newBalance }).eq('id', debtId)
     setDebts(prev => prev.map(d => d.id === debtId ? { ...d, balance: newBalance } : d))
+
+    // Draw the payment from the source account's balance.
+    if (accountId) {
+      const acct = accounts.find(a => a.id === accountId)
+      if (acct) {
+        const newAcctBalance = Math.max(0, Number(acct.balance) - amount)
+        await supabase.from('accounts').update({ balance: newAcctBalance }).eq('id', accountId)
+        setAccounts(prev => prev.map(a => a.id === accountId ? { ...a, balance: newAcctBalance } : a))
+      }
+    }
+
     setRecordingFor(null)
 
-    // Celebrate if debt is fully paid off
     if (newBalance === 0) {
       setClearedMilestone({ key: `debt_cleared_${debtId}`, debtName: debt.name })
-      // Mark in localStorage so Dashboard doesn't re-show it
       try {
         const storageKey = `milestones-seen-${user.id}`
         const seen = new Set(JSON.parse(localStorage.getItem(storageKey)) ?? [])
@@ -432,13 +479,7 @@ export default function Debt() {
   const totalMinPayment = debts.reduce((s, d) => s + Number(d.minimum_payment), 0)
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
-      className="p-4 md:p-6 lg:p-8 max-w-3xl mx-auto space-y-5 pb-24 md:pb-8"
-    >
-      {/* Debt-cleared celebration */}
+    <section id="debt" className="scroll-mt-16 space-y-4">
       {clearedMilestone && (
         <MilestoneToast
           milestoneKey={clearedMilestone.key}
@@ -448,45 +489,41 @@ export default function Debt() {
       )}
 
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-[26px] font-medium text-white drop-shadow-lg">Debt</h1>
-          <p className="text-white/60 mt-1 text-sm">Track and strategize your payoff plan</p>
-        </div>
+        <h2 className="font-semibold text-white flex items-center gap-2">
+          <CreditCard className="w-4 h-4 text-rose-400" /> Debt
+        </h2>
         <button onClick={() => setModal('new')}
-          className="flex items-center gap-1.5 px-4 py-2.5 min-h-[44px] bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors">
+          className="flex items-center gap-1.5 px-3 py-2 min-h-[40px] bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors">
           <Plus className="w-4 h-4" /> Add Debt
         </button>
       </div>
 
-      {/* Summary */}
       {!loading && debts.length > 0 && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-3 md:gap-4">
           <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] shadow-sm p-4">
             <div className="text-xs text-rose-400 font-semibold mb-1">Total Debt</div>
-            <div className="text-2xl font-bold text-rose-300">${totalDebt.toLocaleString()}</div>
+            <div className="text-xl md:text-2xl font-bold text-rose-300 tabular-nums">${totalDebt.toLocaleString()}</div>
           </div>
           <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] shadow-sm p-4">
             <div className="text-xs text-amber-300 font-semibold mb-1">Min. Monthly Payments</div>
-            <div className="text-2xl font-bold text-amber-300">
+            <div className="text-xl md:text-2xl font-bold text-amber-300 tabular-nums">
               {totalMinPayment > 0 ? `$${totalMinPayment.toLocaleString()}` : '—'}
             </div>
           </div>
         </div>
       )}
 
-      {/* Payoff calculator */}
-      {!loading && debts.length > 0 && (
-        <PayoffCalculator debts={debts} />
-      )}
+      {!loading && debts.length > 0 && <PayoffCalculator debts={debts} />}
 
-      {/* Debt list */}
       {loading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map(i => <div key={i} className="h-24 bg-white/[0.05] rounded-xl animate-pulse" />)}
+          {[1, 2].map(i => <div key={i} className="h-20 bg-white/[0.05] rounded-xl animate-pulse" />)}
         </div>
       ) : debts.length === 0 ? (
-        <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] p-10 text-center">
-          <div className="text-3xl mb-3">✅</div>
+        <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] p-8 text-center">
+          <div className="w-10 h-10 mx-auto mb-2.5 rounded-full bg-emerald-500/15 flex items-center justify-center">
+            <Check className="w-5 h-5 text-emerald-400" />
+          </div>
           <p className="text-white font-semibold text-sm mb-1">No debts tracked</p>
           <p className="text-white/40 text-xs max-w-xs mx-auto">
             Debt-free or just getting started — add any loans or cards to plan your payoff strategy.
@@ -506,7 +543,7 @@ export default function Debt() {
             return (
               <div key={debt.id}
                 className={`bg-white/[0.055] rounded-xl border shadow-lg p-5 transition-all ${
-                  isPaidOff ? 'border-emerald-400/30 bg-emerald-500/15/80' : 'border-white/[0.08]'
+                  isPaidOff ? 'border-emerald-400/30' : 'border-white/[0.08]'
                 }`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
@@ -514,8 +551,8 @@ export default function Debt() {
                       isPaidOff ? 'bg-emerald-500/20' : isHighInterest ? 'bg-rose-500/20' : 'bg-rose-500/15'
                     }`}>
                       {isPaidOff
-                        ? <span className="text-lg">✅</span>
-                        : <CreditCard className={`w-4 h-4 ${isHighInterest ? 'text-rose-400' : 'text-red-400'}`} />
+                        ? <Check className="w-4 h-4 text-emerald-400" />
+                        : <CreditCard className={`w-4 h-4 ${isHighInterest ? 'text-rose-400' : 'text-rose-300'}`} />
                       }
                     </div>
                     <div className="min-w-0">
@@ -541,7 +578,7 @@ export default function Debt() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <span className={`text-lg font-bold ${isPaidOff ? 'text-emerald-300' : 'text-white'}`}>
+                    <span className={`text-lg font-bold tabular-nums ${isPaidOff ? 'text-emerald-300' : 'text-white'}`}>
                       ${Number(debt.balance).toLocaleString()}
                     </span>
                     <button onClick={() => setModal(debt)}
@@ -555,7 +592,6 @@ export default function Debt() {
                   </div>
                 </div>
 
-                {/* Record payment button / inline recorder */}
                 {!isPaidOff && (
                   <div className="mt-3">
                     <AnimatePresence mode="wait">
@@ -563,6 +599,7 @@ export default function Debt() {
                         <PaymentRecorder
                           key="recorder"
                           debt={debt}
+                          accounts={accounts}
                           onRecord={handleRecordPayment}
                           onCancel={() => setRecordingFor(null)}
                         />
@@ -590,6 +627,6 @@ export default function Debt() {
       {modal && (
         <DebtModal debt={modal === 'new' ? null : modal} onSave={handleSave} onClose={() => setModal(null)} />
       )}
-    </motion.div>
+    </section>
   )
 }

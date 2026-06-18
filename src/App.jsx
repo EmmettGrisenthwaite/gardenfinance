@@ -8,7 +8,6 @@ import Layout from '@/components/Layout'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import Budget from '@/pages/Budget'
-import Debt from '@/pages/Debt'
 import AIAdvisor from '@/pages/AIAdvisor'
 import Accounts from '@/pages/Accounts'
 import Plan from '@/pages/Plan'
@@ -89,7 +88,7 @@ export default function App() {
               <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/budget" element={<ProtectedRoute><Budget /></ProtectedRoute>} />
               <Route path="/goals" element={<Navigate to="/plan" replace />} />
-              <Route path="/debt" element={<ProtectedRoute><Debt /></ProtectedRoute>} />
+              <Route path="/debt" element={<Navigate to="/budget" replace />} />
               <Route path="/accounts" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
               <Route path="/advisor" element={<ProtectedRoute><AIAdvisor /></ProtectedRoute>} />
               <Route path="/plan" element={<ProtectedRoute><Plan /></ProtectedRoute>} />

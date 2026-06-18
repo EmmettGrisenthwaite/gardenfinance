@@ -228,7 +228,7 @@ export default function Dashboard() {
       subColor: nwDelta > 0 ? 'text-emerald-300' : nwDelta < 0 ? 'text-rose-300' : undefined,
     },
     {
-      to: '/debt', icon: CreditCard,
+      to: '/budget#debt', icon: CreditCard,
       label: 'Debt', value: `$${totalDebt.toLocaleString()}`,
       sub: totalDebt === 0 ? 'Debt-free' : `${debts.length} account${debts.length === 1 ? '' : 's'}`,
       subColor: totalDebt === 0 ? 'text-emerald-300' : undefined,

@@ -56,6 +56,15 @@ export default function Plan() {
     load().catch(() => setLoading(false))
   }, [user.id])
 
+  // Deep-link support: /plan#goals (etc.) scrolls to the section once loaded.
+  useEffect(() => {
+    if (loading) return
+    const id = window.location.hash.slice(1)
+    if (!id) return
+    const t = setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
+    return () => clearTimeout(t)
+  }, [loading])
+
   // ── Goal CRUD (refreshes goals so snapshot + retirement stay in sync) ────────
   async function saveGoal(payload) {
     if (modal && modal !== 'new') await supabase.from('goals').update(payload).eq('id', modal.id)
@@ -70,6 +79,28 @@ export default function Plan() {
   function updateProgress(id, amount) {
     setData(d => ({ ...d, goals: d.goals.map(g => g.id === id ? { ...g, current_amount: amount } : g) }))
     supabase.from('goals').update({ current_amount: amount }).eq('id', id).then(() => {})
+  }
+  // Contribute to a goal — moves money out of the chosen account into the goal.
+  function contribute(goalId, amount, accountId) {
+    setData(d => {
+      const goals = d.goals.map(g => g.id === goalId
+        ? { ...g, current_amount: Number(g.current_amount) + amount } : g)
+      const accounts = accountId
+        ? d.accounts.map(a => a.id === accountId
+            ? { ...a, balance: Math.max(0, Number(a.balance) - amount) } : a)
+        : d.accounts
+      return { ...d, goals, accounts }
+    })
+    const goal = data.goals.find(g => g.id === goalId)
+    if (goal) {
+      supabase.from('goals').update({ current_amount: Number(goal.current_amount) + amount }).eq('id', goalId).then(() => {})
+    }
+    if (accountId) {
+      const acct = data.accounts.find(a => a.id === accountId)
+      if (acct) {
+        supabase.from('accounts').update({ balance: Math.max(0, Number(acct.balance) - amount) }).eq('id', accountId).then(() => {})
+      }
+    }
   }
 
   // ── Action-plan handlers (functional updaters → burst-safe) ─────────────────
@@ -200,8 +231,9 @@ export default function Plan() {
             ) : (
               <div className="grid sm:grid-cols-2 gap-3">
                 {goals.map(g => (
-                  <GoalItem key={g.id} goal={g}
-                    onEdit={setModal} onDelete={deleteGoal} onUpdateProgress={updateProgress} />
+                  <GoalItem key={g.id} goal={g} accounts={accounts}
+                    onEdit={setModal} onDelete={deleteGoal}
+                    onUpdateProgress={updateProgress} onContribute={contribute} />
                 ))}
               </div>
             )}

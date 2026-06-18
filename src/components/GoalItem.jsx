@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout } from 'lucide-react'
+import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout, Plus, Wallet } from 'lucide-react'
+
+const LIQUID_TYPES = ['checking', 'savings', 'emergency', 'money_market']
 
 // ─── Timeline projection ───────────────────────────────────────────────────────
 // Investment goals compound (~6%/yr) so long horizons stay realistic.
@@ -135,14 +137,32 @@ export function GoalModal({ goal, onSave, onClose }) {
   )
 }
 
-// ─── Inline progress updater ───────────────────────────────────────────────────
-function ProgressInput({ goal, onUpdate }) {
-  const [editing, setEditing] = useState(false)
-  const [value,   setValue]   = useState(goal.current_amount)
-
-  const save = () => { onUpdate(goal.id, parseFloat(value)); setEditing(false) }
-  const pct  = Math.min(Math.round((Number(goal.current_amount) / Number(goal.target_amount)) * 100), 100)
+// ─── Inline progress updater (contribute from an account, or adjust manually) ───
+function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
+  const [mode,   setMode]   = useState(null)   // null | 'add' | 'adjust'
+  const [amount, setAmount] = useState('')
+  const [absVal, setAbsVal] = useState(goal.current_amount)
   const isInv = goal.goal_type === 'investment'
+
+  // Default the source to the largest liquid account, else the largest of any.
+  const defaultAcct = useMemo(() => {
+    if (!accounts.length) return ''
+    const liquid = accounts.filter(a => LIQUID_TYPES.includes(a.type))
+    const pool = liquid.length ? liquid : accounts
+    return [...pool].sort((a, b) => Number(b.balance) - Number(a.balance))[0].id
+  }, [accounts])
+  const [account, setAccount] = useState(defaultAcct)
+
+  const pct  = Math.min(Math.round((Number(goal.current_amount) / Number(goal.target_amount)) * 100), 100)
+  const srcAcct = accounts.find(a => a.id === account)
+
+  function addMoney() {
+    const amt = parseFloat(amount)
+    if (isNaN(amt) || amt <= 0) return
+    onContribute(goal.id, amt, account || null)
+    setAmount(''); setMode(null)
+  }
+  function saveAbs() { onUpdate(goal.id, parseFloat(absVal) || 0); setMode(null) }
 
   return (
     <div className="mt-3">
@@ -156,22 +176,54 @@ function ProgressInput({ goal, onUpdate }) {
         <div className={`h-2 rounded-full transition-all duration-500 ${isInv ? 'bg-gradient-to-r from-amber-400 to-amber-300' : 'bg-gradient-to-r from-emerald-400 to-emerald-300'}`}
           style={{ width: `${pct}%` }} />
       </div>
-      {editing ? (
+
+      {mode === 'add' ? (
+        <div className="space-y-2">
+          <div className="flex gap-2 items-center">
+            <div className="relative flex-1">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40 text-sm">$</span>
+              <input autoFocus type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)}
+                min="0" step="0.01" placeholder="Amount to add"
+                onKeyDown={e => e.key === 'Enter' && addMoney()}
+                className="w-full pl-6 pr-2.5 py-2 rounded-lg border border-white/[0.08] bg-white/[0.06] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
+            </div>
+            <button onClick={addMoney} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
+            <button onClick={() => setMode(null)} className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
+          </div>
+          {accounts.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Wallet className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
+              <select value={account} onChange={e => setAccount(e.target.value)}
+                className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-[#0e1812] text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30">
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.name} — ${Number(a.balance).toLocaleString()}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <p className="text-[11px] text-white/40">
+            {srcAcct ? `Moves money out of ${srcAcct.name} into this goal.` : 'No account selected — tracked here only.'}
+          </p>
+        </div>
+      ) : mode === 'adjust' ? (
         <div className="flex gap-2 items-center">
-          <input type="number" inputMode="decimal" value={value} onChange={e => setValue(e.target.value)}
-            min="0" max={goal.target_amount} step="0.01"
+          <input autoFocus type="number" inputMode="decimal" value={absVal} onChange={e => setAbsVal(e.target.value)}
+            min="0" step="0.01"
             className="flex-1 px-2.5 py-2 rounded-lg border border-white/[0.08] bg-white/[0.06] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
-          <button onClick={save} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500">
-            <Check className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => setEditing(false)} className="p-2 text-white/40 hover:text-white/60">
-            <X className="w-3.5 h-3.5" />
-          </button>
+          <button onClick={saveAbs} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
+          <button onClick={() => setMode(null)} className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
         </div>
       ) : (
-        <button onClick={() => setEditing(true)} className="text-xs text-emerald-400 hover:underline font-medium py-1">
-          Update progress
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => { setAccount(defaultAcct); setMode('add') }}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/20 border border-emerald-400/30 px-2.5 py-1.5 rounded-lg transition-colors">
+            <Plus className="w-3 h-3" /> Add money
+          </button>
+          <button onClick={() => { setAbsVal(goal.current_amount); setMode('adjust') }}
+            className="text-xs text-white/45 hover:text-white/70 font-medium py-1">
+            Adjust
+          </button>
+        </div>
       )}
     </div>
   )
@@ -219,7 +271,7 @@ function TimelineBadge({ goal }) {
 }
 
 // ─── Editable goal card ─────────────────────────────────────────────────────────
-export function GoalItem({ goal, onEdit, onDelete, onUpdateProgress }) {
+export function GoalItem({ goal, accounts, onEdit, onDelete, onUpdateProgress, onContribute }) {
   const isInv = goal.goal_type === 'investment'
   return (
     <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
@@ -255,7 +307,7 @@ export function GoalItem({ goal, onEdit, onDelete, onUpdateProgress }) {
           </button>
         </div>
       </div>
-      <ProgressInput goal={goal} onUpdate={onUpdateProgress} />
+      <ProgressInput goal={goal} accounts={accounts} onContribute={onContribute} onUpdate={onUpdateProgress} />
       <TimelineBadge goal={goal} />
     </motion.div>
   )
