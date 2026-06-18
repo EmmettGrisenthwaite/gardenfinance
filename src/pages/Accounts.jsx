@@ -184,57 +184,69 @@ function AddForm({ onAdd }) {
     setOpen(false)
   }
 
-  if (!open) {
-    return (
+  const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border border-white/[0.08] text-base text-white focus:outline-none focus:ring-1 focus:ring-emerald-400/30'
+  return (
+    <>
       <button onClick={() => setOpen(true)}
         className="flex items-center gap-2 px-4 py-2.5 min-h-[44px] bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-medium transition-colors shadow-sm">
         <Plus className="w-4 h-4" /> Add Account
       </button>
-    )
-  }
 
-  return (
-    <form onSubmit={handleSubmit}
-      className="bg-[#0e1812] border border-emerald-400/30 rounded-xl p-4 shadow-sm space-y-3">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-sm font-semibold text-white">New Account</span>
-        <button type="button" onClick={() => setOpen(false)} className="text-white/40 hover:text-white/60 p-1">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-      <div className="flex flex-col gap-3">
-        <input value={name} onChange={e => setName(e.target.value)}
-          placeholder="Account name (e.g. Chase Checking)"
-          className="px-3 py-2.5 border border-white/[0.08] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-emerald-400/40" />
-        <div className="grid grid-cols-2 gap-3">
-          <select value={type} onChange={e => setType(e.target.value)}
-            className="px-3 py-2.5 border border-white/[0.08] rounded-lg text-base bg-[#0e1812] focus:outline-none focus:ring-2 focus:ring-emerald-400/40">
-            {['Cash & Savings', 'Retirement', 'Investments', 'Other'].map(g => (
-              <optgroup key={g} label={g}>
-                {ACCOUNT_TYPES.filter(t => t.group === g).map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          <input value={institution} onChange={e => setInstitution(e.target.value)}
-            placeholder="Bank / broker"
-            className="px-3 py-2.5 border border-white/[0.08] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-emerald-400/40" />
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm">$</span>
-            <input type="number" inputMode="decimal" min="0" step="0.01" value={balance}
-              onChange={e => setBalance(e.target.value)} placeholder="Current balance"
-              className="w-full pl-7 pr-3 py-2.5 border border-white/[0.08] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-emerald-400/40" />
+      {open && (
+        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-[60]">
+          <div className="bg-[#0e1812] w-full sm:rounded-2xl sm:shadow-xl sm:w-full sm:max-w-md sm:mx-4 rounded-t-2xl shadow-2xl">
+            <div className="flex items-center justify-between p-5 border-b border-white/10">
+              <h3 className="font-semibold text-white">New Account</h3>
+              <button type="button" onClick={() => setOpen(false)} className="p-1.5 text-white/40 hover:text-white/60 rounded-lg hover:bg-white/5">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-white/80 mb-1.5">Account name</label>
+                <input autoFocus value={name} onChange={e => setName(e.target.value)} required
+                  placeholder="e.g. Chase Checking" className={inputCls} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-white/80 mb-1.5">Type</label>
+                  <select value={type} onChange={e => setType(e.target.value)}
+                    className={`${inputCls} bg-[#0e1812]`}>
+                    {['Cash & Savings', 'Retirement', 'Investments', 'Other'].map(g => (
+                      <optgroup key={g} label={g}>
+                        {ACCOUNT_TYPES.filter(t => t.group === g).map(t => (
+                          <option key={t.value} value={t.value}>{t.label}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-white/80 mb-1.5">Bank / broker</label>
+                  <input value={institution} onChange={e => setInstitution(e.target.value)}
+                    placeholder="Optional" className={inputCls} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-white/80 mb-1.5">Current balance ($)</label>
+                <input type="number" inputMode="decimal" min="0" step="0.01" value={balance} required
+                  onChange={e => setBalance(e.target.value)} placeholder="0.00" className={inputCls} />
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button type="button" onClick={() => setOpen(false)}
+                  className="flex-1 py-3 border border-white/[0.08] rounded-lg text-sm font-medium text-white/60 hover:bg-white/5 transition-colors">
+                  Cancel
+                </button>
+                <button type="submit"
+                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors">
+                  Add account
+                </button>
+              </div>
+            </form>
           </div>
-          <button type="submit"
-            className="px-5 py-2.5 min-h-[44px] bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors">
-            Add
-          </button>
         </div>
-      </div>
-    </form>
+      )}
+    </>
   )
 }
 
