@@ -74,8 +74,8 @@ const STEPS = [
     type: 'single',
     field: 'health_insurance',
     options: [
-      { value: 'employer',    label: 'Yes — through work',      icon: '✅' },
-      { value: 'marketplace', label: 'Yes — marketplace / ACA', icon: '✅' },
+      { value: 'employer',    label: 'Yes — through work',      icon: '🏢' },
+      { value: 'marketplace', label: 'Yes — marketplace / ACA', icon: '🛒' },
       { value: 'parents',     label: "Yes — on parents' plan",  icon: '👨‍👩‍👧', sub: 'Available until age 26' },
       { value: 'none',        label: 'No — uninsured',          icon: '⚠️', sub: "We'll flag this as a priority" },
     ],
