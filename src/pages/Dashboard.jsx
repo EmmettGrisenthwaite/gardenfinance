@@ -24,7 +24,7 @@ function GardenLoading() {
   )
 }
 import MilestoneToast, { useMilestones, computeAchieved } from '@/components/MilestoneToast'
-import { Target, CreditCard, TrendingUp, Wallet, UserCircle, ClipboardList, Bot, ArrowRight } from 'lucide-react'
+import { Target, CreditCard, TrendingUp, Wallet, UserCircle, ClipboardList, Bot, ArrowRight, DollarSign, Check } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
@@ -96,6 +96,52 @@ function StatSkeleton() {
       </div>
       <div className="h-5 bg-white/15 rounded w-20 mb-1.5" />
       <div className="h-2.5 bg-white/10 rounded w-16" />
+    </div>
+  )
+}
+
+// ─── First-run setup checklist — prompts each tab so the garden can grow ────────
+function GardenSetup({ steps }) {
+  const done = steps.filter(s => s.done).length
+  const pct  = Math.round((done / steps.length) * 100)
+  const title = done === 0 ? 'Plant your garden'
+              : done >= steps.length - 1 ? 'Almost there — one to go'
+              : 'Grow your garden'
+  const subtitle = done === 0
+    ? 'Fill these in so your garden knows what to grow.'
+    : 'Each one you complete makes your garden flourish.'
+
+  return (
+    <div className="bg-emerald-500/[0.1] border border-emerald-400/25 rounded-xl p-3 space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Sprout className="w-4 h-4 text-emerald-300 flex-shrink-0" />
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-white truncate">{title}</div>
+            <div className="text-[10px] text-white/50 truncate">{subtitle}</div>
+          </div>
+        </div>
+        <span className="text-[11px] font-semibold text-emerald-300 flex-shrink-0 tabular-nums">{done}/{steps.length} planted</span>
+      </div>
+
+      <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+        <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-300 transition-all duration-500" style={{ width: `${pct}%` }} />
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto -mx-1 px-1 md:flex-wrap md:overflow-x-visible">
+        {steps.map(({ key, done, label, to, icon: Icon }) => (
+          <Link key={key} to={to}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium whitespace-nowrap flex-shrink-0 transition-colors ${
+              done
+                ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-200'
+                : 'border-white/10 bg-white/[0.04] text-white/75 hover:bg-white/[0.08] hover:text-white'
+            }`}>
+            {done ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Icon className="w-3.5 h-3.5 text-white/50" />}
+            {label}
+            {!done && <ArrowRight className="w-3 h-3 opacity-60" />}
+          </Link>
+        ))}
+      </div>
     </div>
   )
 }
@@ -244,6 +290,15 @@ export default function Dashboard() {
     },
   ]
 
+  // Setup checklist — prompts each tab so the garden has something to grow from.
+  const setupSteps = [
+    { key: 'accounts', done: accounts.length > 0,                 label: 'Add accounts', to: '/accounts',   icon: Wallet },
+    { key: 'budget',   done: budgets.some(b => b.type === 'income'), label: 'Set budget',  to: '/budget',     icon: DollarSign },
+    { key: 'goals',    done: goals.length > 0,                    label: 'Plant a goal', to: '/plan#goals', icon: Target },
+    { key: 'advisor',  done: hasPlan,                             label: 'Get a plan',   to: '/advisor',    icon: Bot },
+  ]
+  const setupDone = setupSteps.every(s => s.done)
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -290,8 +345,13 @@ export default function Dashboard() {
             : stats.map(s => <StatCard key={s.label} {...s} />)}
         </div>
 
-        {/* Connective thread to the Plan / Advisor — one focused next step */}
-        {!loading && !isProfileIncomplete && (goals.length > 0 || budgets.length > 0 || accounts.length > 0 || debts.length > 0) && (() => {
+        {/* First-run: prompt every tab so the garden has data to grow from */}
+        {!loading && !isProfileIncomplete && !setupDone && (
+          <GardenSetup steps={setupSteps} />
+        )}
+
+        {/* Once set up, a single focused next step toward the Plan / Advisor */}
+        {!loading && !isProfileIncomplete && setupDone && (() => {
           const toPlan = planStepsLeft > 0
           const to     = toPlan ? '/plan' : '/advisor'
           const Icon   = toPlan ? ClipboardList : Bot
