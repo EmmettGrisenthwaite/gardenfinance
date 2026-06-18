@@ -1,10 +1,28 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden } from '@/context/GardenContext'
 import { computeScores } from '@/lib/gardenUtils'
-import Garden3D from '@/components/garden/Garden3D'
+import { Sprout } from 'lucide-react'
 import Onboarding from '@/components/Onboarding'
+
+// Lazy-load the 3D garden so Three.js ships as its own chunk — keeps first
+// paint (login, other routes) fast and lets us show a branded loading state.
+const Garden3D = lazy(() => import('@/components/garden/Garden3D'))
+
+function GardenLoading() {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
+      <div
+        className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-2xl animate-pulse"
+        style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+      >
+        <Sprout className="w-6 h-6 text-white" strokeWidth={2.5} />
+      </div>
+      <span className="text-xs font-medium text-white/45">Growing your garden…</span>
+    </div>
+  )
+}
 import MilestoneToast, { useMilestones, computeAchieved } from '@/components/MilestoneToast'
 import { Target, CreditCard, TrendingUp, Wallet, UserCircle, ClipboardList, Bot, ArrowRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -297,7 +315,9 @@ export default function Dashboard() {
             WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, black 26px, black calc(100% - 96px), transparent 100%)',
           }}
         >
-          <Garden3D />
+          <Suspense fallback={<GardenLoading />}>
+            <Garden3D />
+          </Suspense>
         </div>
         {!loading && <GardenHud stage={stage} score={gardenScore} />}
       </div>

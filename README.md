@@ -1,206 +1,107 @@
-# Financial Planning App
+# 🌱 Garden Financial
 
-A complete full-stack financial planning application with budgeting, goal tracking, portfolio management, debt tracking, and achievement systems.
+Personal finance, visualized as a living garden. Track budgets, goals, debt and net
+worth — and watch a real-time 3D garden flourish as your finances improve. An AI advisor,
+grounded in your actual numbers, turns guidance into editable, step-by-step plans.
 
-## Features
+> Calm, game-like, and genuinely useful — your money as something you grow.
 
-- 💰 **Budget Management**: Create and track personal budgets with category allocations
-- 🎯 **Goal Setting**: Set and monitor financial goals with progress tracking
-- 📈 **Portfolio Management**: Track investment portfolios and holdings
-- 💳 **Debt Tracking**: Monitor debts and payment progress
-- 🏆 **Achievements**: Earn achievements for financial milestones
-- 🔐 **Secure Authentication**: JWT-based authentication system
-- 📱 **Responsive Design**: Beautiful UI built with React and Tailwind CSS
+## Highlights
 
-## Technology Stack
+- **Living 3D garden** — a React Three Fiber island that grows through 6 stages (barren →
+  thriving) from your real financial health, with four quadrants for Savings, Investments,
+  Emergency fund and Debt.
+- **Unified Plan** — goals, a retirement planner, and editable action steps in one place,
+  with a "living headline" that projects when you'll hit your nearest goal.
+- **AI advisor** — streaming chat powered by Claude (Anthropic), aware of your income,
+  goals, debt and garden state. It can add goals and build action plans via tool use.
+- **Budget, Debt & Accounts** — recurring cash-flow tracking, avalanche/snowball payoff
+  modeling, and a daily net-worth chart.
+- **Mobile-first PWA** — installable, dark-glass UI, designed for a 375px phone first.
 
-### Frontend
-- **React 18** with Vite for fast development
-- **Tailwind CSS** for styling
-- **Radix UI** components for accessibility
-- **React Router** for navigation
-- **Recharts** for data visualization
-- **Framer Motion** for animations
+## Tech stack
 
-### Backend
-- **Node.js** with Express.js
-- **SQLite** database for development
-- **JWT** authentication
-- **Joi** for validation
-- **bcryptjs** for password hashing
+- **React 18 + Vite** (SPA)
+- **Tailwind CSS** + Radix UI primitives — dark-glass design system (Fraunces + Plus Jakarta)
+- **React Three Fiber** + drei + postprocessing for the 3D garden
+- **Recharts** (charts) · **Framer Motion** (motion) · **lucide-react** (icons)
+- **Supabase** — Postgres, Auth, and Edge Functions (Deno)
+- **Anthropic Claude** — via a Supabase Edge Function that keeps the API key server-side
 
-## Quick Start
+There is **no separate backend server** — Supabase is the entire backend.
+
+## Quick start
 
 ### Prerequisites
-- Node.js 18+ installed
-- npm or yarn package manager
+- Node.js 18+
+- A Supabase project ([supabase.com](https://supabase.com))
 
-### Option 1: Full Setup (Recommended)
+### 1. Install & configure
 ```bash
-# Clone and setup everything
-npm run setup
-
-# Run both frontend and backend
-npm run full-dev
-```
-
-### Option 2: Manual Setup
-```bash
-# Install frontend dependencies
 npm install
-
-# Setup backend
-cd backend
-npm install
-npm run migrate
-cd ..
-
-# Run frontend (terminal 1)
-npm run dev
-
-# Run backend (terminal 2)  
-npm run backend
+cp .env.example .env        # then fill in your Supabase URL + anon key
 ```
 
-## Development
-
-### Available Scripts
-
-#### Frontend Scripts
-- `npm run dev` - Start frontend development server (port 5173)
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run lint` - Run ESLint
-
-#### Backend Scripts
-- `npm run backend` - Start backend development server (port 3001)
-- `npm run backend:start` - Start backend in production mode
-- `npm run backend:migrate` - Run database migrations
-
-#### Combined Scripts
-- `npm run full-dev` - Run both frontend and backend concurrently
-- `npm run setup` - Complete setup (install dependencies and migrate DB)
-
-### Environment Variables
-
-#### Frontend (.env.local)
+`.env`:
 ```
-VITE_API_URL=http://localhost:3001/api
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key
 ```
 
-#### Backend (backend/.env)
-```
-NODE_ENV=development
-PORT=3001
-JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
-JWT_EXPIRES_IN=7d
-DB_PATH=./database.sqlite
-CORS_ORIGIN=http://localhost:5173
-OPENAI_API_KEY=your-openai-api-key-here
-```
-
-## API Documentation
-
-### Authentication Endpoints
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login user  
-- `GET /api/auth/me` - Get current user
-- `PUT /api/auth/profile` - Update user profile
-
-### Data Endpoints
-- `GET/POST/PUT/DELETE /api/budgets` - Budget management
-- `GET/POST/PUT/DELETE /api/goals` - Goal management
-- `GET/POST/PUT/DELETE /api/portfolios` - Portfolio management
-- `GET/POST/PUT/DELETE /api/debts` - Debt management
-- `GET /api/achievements` - View achievements
-
-### Special Endpoints
-- `PUT /api/goals/:id/progress` - Update goal progress
-- `PUT /api/debts/:id/payment` - Make debt payment
-- `POST /api/portfolios/:id/holdings` - Add portfolio holding
-
-## Database Schema
-
-The app uses SQLite with the following main entities:
-- **Users** - User accounts and profiles
-- **Budgets** - Budget plans with category allocations
-- **Goals** - Financial goals with progress tracking
-- **Portfolios** - Investment portfolios with holdings
-- **Debts** - Debt accounts with payment tracking
-- **Achievements** - User achievements and milestones
-- **Transactions** - Financial transactions (future feature)
-
-## Architecture
-
-### Frontend Architecture
-- **Pages**: Main application pages (Dashboard, BudgetBuilder, etc.)
-- **Components**: Reusable UI components organized by feature
-- **API Layer**: Custom API client with AI integration
-- **State Management**: React hooks for local state
-- **Routing**: React Router for navigation
-
-### Backend Architecture
-- **Models**: Database entity models with business logic
-- **Controllers**: Request handlers and business logic
-- **Routes**: API endpoint definitions
-- **Middleware**: Authentication, validation, error handling
-- **Database**: SQLite with migration system
-
-## AI Integration
-
-This app includes a fully functional AI integration for financial advice:
-
-- ✅ **OpenAI Integration**: GPT-3.5-turbo powered financial advisor
-- ✅ **Contextual Responses**: AI has access to user's financial data
-- ✅ **Personalized Advice**: Tailored recommendations based on user profile
-- ✅ **Error Handling**: Graceful fallbacks when AI service is unavailable
-- ✅ **Rate Limiting**: Proper handling of API rate limits
-
-## Development Notes
-
-### Adding New Features
-1. Create database migration in `backend/src/database/migrations/`
-2. Add model in `backend/src/models/`
-3. Create controller in `backend/src/controllers/`
-4. Add routes in `backend/src/routes/`
-5. Update frontend API client if needed
-
-### Database Migrations
+### 2. Run
 ```bash
-cd backend
-npm run migrate
+npm run dev                 # http://localhost:5173
 ```
 
-### Testing
-- Backend: Unit tests can be added using Jest
-- Frontend: Component tests can be added using Vitest
-- E2E: Playwright or Cypress can be integrated
+### Scripts
+- `npm run dev` — start the dev server (port 5173)
+- `npm run build` — production build to `dist/`
+- `npm run preview` — preview the production build
+- `npm run lint` — run ESLint
 
-## Production Deployment
+## Supabase setup
 
-### Frontend
-- Build: `npm run build`
-- Deploy `dist/` folder to any static hosting service
-- Update `VITE_API_URL` to production backend URL
+1. **Database** — the app reads/writes tables for profiles, accounts, budgets, goals,
+   debts and net-worth snapshots (with row-level security per user). Apply your schema /
+   migrations in the Supabase SQL editor.
+2. **Auth** — email/password is enabled by default. For quick testing you can disable
+   "Confirm email" under Authentication → Providers.
+3. **AI Edge Function** — the advisor calls a `chat` Edge Function so the Anthropic key is
+   never exposed in the browser:
+   ```bash
+   supabase functions deploy chat
+   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+   ```
 
-### Backend
-- Set `NODE_ENV=production`
-- Use PostgreSQL or MySQL for production database
-- Deploy to any Node.js hosting service
-- Set secure `JWT_SECRET`
+## Deploy (Vercel)
 
-## Contributing
+The repo ships a `vercel.json` (Vite preset + SPA rewrite), so deploying is:
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+1. Import the repo at [vercel.com/new](https://vercel.com/new).
+2. Add the two environment variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) in
+   **Project → Settings → Environment Variables**.
+3. Deploy. The SPA rewrite makes deep links (e.g. `/plan`) work on refresh.
+
+The Edge Function is deployed separately via the Supabase CLI (see above).
+
+## Project structure
+
+```
+src/
+  pages/        Dashboard (garden), Plan, Budget, Debt, Accounts, AIAdvisor, Login
+  components/   Layout, Onboarding, RetirementPlanner, PlanCard, garden/Garden3D, ...
+  context/      AuthContext, GardenContext
+  lib/          supabase, claude, retirement, advisorPlans, gardenUtils
+supabase/
+  functions/chat/   Deno Edge Function — Anthropic proxy (SSE streaming + tool use)
+```
+
+## Security notes
+
+- The Anthropic key lives **only** as a Supabase Edge Function secret — never in client code.
+- `VITE_SUPABASE_ANON_KEY` is the public anon key; protect data with row-level security.
+- `.env` is gitignored. Never commit real keys.
 
 ## License
 
-This project is licensed under the MIT License.
-
-## Support
-
-For questions or issues, please open a GitHub issue or contact the development team.
+MIT

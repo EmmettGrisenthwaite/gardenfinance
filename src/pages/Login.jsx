@@ -36,7 +36,7 @@ export default function Login() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center p-4 overflow-hidden"
+      className="min-h-dvh flex items-center justify-center p-4 overflow-hidden"
       style={{ background: 'linear-gradient(155deg, #020c05 0%, #031508 30%, #04101a 60%, #030b14 100%)' }}
     >
       {/* Ambient orbs */}
@@ -60,7 +60,7 @@ export default function Login() {
         className="fixed rounded-full animate-orb-3 pointer-events-none"
         style={{
           top: '30%', left: '40%', width: '45%', height: '45%',
-          background: 'radial-gradient(circle at center, rgba(79,70,229,0.10) 0%, transparent 70%)',
+          background: 'radial-gradient(circle at center, rgba(45,212,191,0.10) 0%, transparent 70%)',
           filter: 'blur(72px)',
         }}
       />
@@ -128,7 +128,7 @@ export default function Login() {
                   onChange={e => setName(e.target.value)}
                   placeholder="Your name"
                   required
-                  className="w-full px-4 py-3 rounded-xl text-sm text-white placeholder-white/25 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/60 transition-all"
+                  className="w-full px-4 py-3 rounded-xl text-base md:text-sm text-white placeholder-white/25 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/60 transition-all"
                   style={{
                     background: 'rgba(255,255,255,0.07)',
                     border: '1px solid rgba(255,255,255,0.10)',
@@ -145,7 +145,7 @@ export default function Login() {
                 onChange={e => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                className="w-full px-4 py-3 rounded-xl text-sm text-white placeholder-white/25 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/60 transition-all"
+                className="w-full px-4 py-3 rounded-xl text-base md:text-sm text-white placeholder-white/25 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/60 transition-all"
                 style={{
                   background: 'rgba(255,255,255,0.07)',
                   border: '1px solid rgba(255,255,255,0.10)',
@@ -162,7 +162,7 @@ export default function Login() {
                 placeholder="••••••••"
                 required
                 minLength={6}
-                className="w-full px-4 py-3 rounded-xl text-sm text-white placeholder-white/25 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/60 transition-all"
+                className="w-full px-4 py-3 rounded-xl text-base md:text-sm text-white placeholder-white/25 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/60 transition-all"
                 style={{
                   background: 'rgba(255,255,255,0.07)',
                   border: '1px solid rgba(255,255,255,0.10)',
@@ -171,7 +171,7 @@ export default function Login() {
             </div>
 
             {error && (
-              <p className="text-sm text-red-300 bg-red-500/15 border border-red-500/20 rounded-xl px-4 py-2.5">
+              <p className="text-sm text-rose-300 bg-rose-500/15 border border-rose-500/20 rounded-xl px-4 py-2.5">
                 {error}
               </p>
             )}

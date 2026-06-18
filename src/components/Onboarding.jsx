@@ -130,12 +130,12 @@ function PreviewStep() {
           initial={{ opacity: 0, x: 16 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: i * 0.08, duration: 0.3 }}
-          className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100"
+          className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/[0.07]"
         >
           <div className="text-2xl flex-shrink-0 leading-none mt-0.5">{f.emoji}</div>
           <div>
-            <div className="text-sm font-semibold text-gray-900 mb-0.5">{f.title}</div>
-            <div className="text-xs text-gray-500 leading-relaxed">{f.desc}</div>
+            <div className="text-sm font-semibold text-white mb-0.5">{f.title}</div>
+            <div className="text-xs text-white/55 leading-relaxed">{f.desc}</div>
           </div>
         </motion.div>
       ))}
@@ -150,21 +150,21 @@ function OptionCard({ option, selected, onClick, multi }) {
     <button
       type="button"
       onClick={() => onClick(option.value)}
-      className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 text-left transition-all ${
+      className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border text-left transition-all ${
         active
-          ? 'border-green-500 bg-green-50 text-green-900'
-          : 'border-gray-200 bg-white text-gray-700 hover:border-green-300 hover:bg-green-50/40'
+          ? 'border-emerald-400/60 bg-emerald-500/[0.12] text-white'
+          : 'border-white/10 bg-white/[0.03] text-white/80 hover:border-emerald-400/40 hover:bg-emerald-500/[0.06]'
       }`}
     >
       <span className="text-xl flex-shrink-0 w-7 text-center">{option.icon}</span>
       <div className="flex-1 min-w-0">
         <div className="font-medium text-sm">{option.label}</div>
-        {option.sub && <div className="text-xs text-gray-400 mt-0.5">{option.sub}</div>}
+        {option.sub && <div className="text-xs text-white/40 mt-0.5">{option.sub}</div>}
       </div>
-      {active && !multi && <Check className="w-4 h-4 text-green-600 flex-shrink-0" />}
+      {active && !multi && <Check className="w-4 h-4 text-emerald-300 flex-shrink-0" />}
       {multi && (
         <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border-2 transition-colors ${
-          active ? 'bg-green-500 border-green-500' : 'border-gray-300'
+          active ? 'bg-emerald-500 border-emerald-500' : 'border-white/25'
         }`}>
           {active && <Check className="w-3 h-3 text-white" />}
         </div>
@@ -263,10 +263,11 @@ export default function Onboarding({ onClose }) {
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28, ease: 'easeOut' }}
-        className="bg-white w-full sm:rounded-2xl sm:shadow-2xl sm:w-full sm:max-w-md overflow-hidden rounded-t-3xl shadow-2xl"
+        className="bg-[#0b140e] border border-white/[0.08] w-full sm:rounded-2xl sm:shadow-2xl sm:w-full sm:max-w-md overflow-hidden rounded-t-3xl shadow-2xl"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-5">
+        <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-5">
           <div className="flex items-center gap-2.5 mb-4">
             <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
               <Sprout className="w-4 h-4 text-white" />
@@ -300,7 +301,7 @@ export default function Onboarding({ onClose }) {
         </div>
 
         {/* Body */}
-        <div className="px-6 py-6 overflow-y-auto" style={{ minHeight: 300, maxHeight: '60vh' }}>
+        <div className="px-6 py-6 overflow-y-auto" style={{ minHeight: 300, maxHeight: '60dvh' }}>
           <AnimatePresence mode="wait">
             <motion.div key={step}
               initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
@@ -308,8 +309,8 @@ export default function Onboarding({ onClose }) {
 
               {current.type !== 'preview' && (
                 <>
-                  <h2 className="text-lg font-bold text-gray-900 mb-1">{current.question}</h2>
-                  {current.sub && <p className="text-sm text-gray-500 mb-5">{current.sub}</p>}
+                  <h2 className="font-display text-xl font-medium text-white mb-1 tracking-tight">{current.question}</h2>
+                  {current.sub && <p className="text-sm text-white/50 mb-5">{current.sub}</p>}
                 </>
               )}
 
@@ -326,9 +327,9 @@ export default function Onboarding({ onClose }) {
                     'Health insurance → critical gap check',
                     'Your #1 goal → focused conversations',
                   ].map((item, i) => (
-                    <div key={i} className="flex items-center gap-2.5 text-sm text-gray-600">
-                      <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                        <Check className="w-3 h-3 text-green-600" />
+                    <div key={i} className="flex items-center gap-2.5 text-sm text-white/65">
+                      <div className="w-5 h-5 rounded-full bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+                        <Check className="w-3 h-3 text-emerald-300" />
                       </div>
                       {item}
                     </div>
@@ -346,9 +347,9 @@ export default function Onboarding({ onClose }) {
                     onKeyDown={e => e.key === 'Enter' && canAdvance() && setStep(s => s + 1)}
                     placeholder="e.g. 24"
                     autoFocus
-                    className="w-32 px-4 py-3 text-2xl font-bold border-2 border-gray-200 rounded-xl focus:outline-none focus:border-green-500 text-center"
+                    className="w-32 px-4 py-3 text-2xl font-bold text-white bg-white/[0.05] border-2 border-white/15 rounded-xl focus:outline-none focus:border-emerald-500 text-center tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
-                  <span className="text-gray-400 text-sm">years old</span>
+                  <span className="text-white/40 text-sm">years old</span>
                 </div>
               )}
 
@@ -386,12 +387,12 @@ export default function Onboarding({ onClose }) {
           <div className="flex items-center gap-3">
             {!isFirst && (
               <button onClick={() => setStep(s => s - 1)}
-                className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 transition-colors">
+                className="flex items-center gap-1.5 text-sm text-white/40 hover:text-white/70 transition-colors">
                 <ArrowLeft className="w-4 h-4" /> Back
               </button>
             )}
             {isFirst && (
-              <button onClick={skip} className="text-xs text-gray-300 hover:text-gray-500 transition-colors">
+              <button onClick={skip} className="text-xs text-white/30 hover:text-white/55 transition-colors">
                 Skip for now
               </button>
             )}
@@ -401,13 +402,13 @@ export default function Onboarding({ onClose }) {
           {(current.type === 'preview' || current.type === 'intro' || current.type === 'age' || current.type === 'multi') && (
             isLast ? (
               <button onClick={finish} disabled={!canAdvance() || saving}
-                className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-200 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-sm">
+                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30">
                 {saving ? 'Saving…' : 'Finish setup'}
                 {!saving && <Check className="w-4 h-4" />}
               </button>
             ) : (
               <button onClick={() => setStep(s => s + 1)} disabled={!canAdvance()}
-                className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-200 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-sm">
+                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30">
                 {current.type === 'preview' ? 'Get started' : 'Next'} <ArrowRight className="w-4 h-4" />
               </button>
             )
@@ -416,7 +417,7 @@ export default function Onboarding({ onClose }) {
           {/* For single-select last step */}
           {current.type === 'single' && isLast && answers[current.field] && (
             <button onClick={finish} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-200 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm ml-auto">
+              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30 ml-auto">
               {saving ? 'Saving…' : 'Finish setup'}
               {!saving && <Check className="w-4 h-4" />}
             </button>

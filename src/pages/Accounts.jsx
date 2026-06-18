@@ -112,8 +112,8 @@ function NetWorthChart({ snapshots }) {
             interval="preserveStartEnd" />
           <YAxis
             tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} tickLine={false} axisLine={false}
-            tickFormatter={v => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`}
-            width={48}
+            tickFormatter={v => { const a = Math.abs(v); const s = v < 0 ? '-' : ''; return a >= 1000 ? `${s}$${(a / 1000).toFixed(0)}k` : `${s}$${a}` }}
+            width={46}
           />
           <ReferenceLine y={0} stroke="rgba(255,255,255,0.15)" strokeDasharray="4 2" />
           <Tooltip content={<NetWorthTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.2)' }} />

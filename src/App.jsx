@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { GardenProvider } from '@/context/GardenContext'
@@ -11,16 +12,22 @@ import Debt from '@/pages/Debt'
 import AIAdvisor from '@/pages/AIAdvisor'
 import Accounts from '@/pages/Accounts'
 import Plan from '@/pages/Plan'
-import GardenPreview from '@/pages/GardenPreview'
+const GardenPreview = lazy(() => import('@/pages/GardenPreview'))
 import { Sprout, Compass } from 'lucide-react'
 
 function AppLoader() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 flex flex-col items-center justify-center gap-4">
-      <div className="w-14 h-14 bg-green-500 rounded-2xl flex items-center justify-center shadow-lg">
-        <Sprout className="w-8 h-8 text-white" />
+    <div
+      className="min-h-dvh flex flex-col items-center justify-center gap-5"
+      style={{ background: 'linear-gradient(155deg, #020c05 0%, #031508 30%, #04101a 60%, #030b14 100%)' }}
+    >
+      <div
+        className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl animate-pulse"
+        style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+      >
+        <Sprout className="w-8 h-8 text-white" strokeWidth={2.5} />
       </div>
-      <div className="w-6 h-6 border-3 border-green-500 border-t-transparent rounded-full animate-spin" style={{ borderWidth: 2.5 }} />
+      <div className="w-6 h-6 border-emerald-400/80 border-t-transparent rounded-full animate-spin" style={{ borderWidth: 2.5 }} />
     </div>
   )
 }
@@ -41,19 +48,26 @@ function PublicRoute({ children }) {
 
 function NotFound() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 flex flex-col items-center justify-center gap-5 p-6 text-center">
-      <div className="w-14 h-14 bg-green-500 rounded-2xl flex items-center justify-center shadow-lg">
-        <Compass className="w-8 h-8 text-white" />
+    <div
+      className="min-h-dvh flex flex-col items-center justify-center gap-5 p-6 text-center"
+      style={{ background: 'linear-gradient(155deg, #020c05 0%, #031508 30%, #04101a 60%, #030b14 100%)' }}
+    >
+      <div
+        className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl"
+        style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+      >
+        <Compass className="w-8 h-8 text-white" strokeWidth={2.5} />
       </div>
       <div>
-        <h1 className="text-lg font-bold text-gray-900">Page not found</h1>
-        <p className="text-sm text-gray-500 mt-1 max-w-sm">
+        <h1 className="font-display text-2xl font-medium text-white tracking-tight">Page not found</h1>
+        <p className="text-sm text-white/45 mt-1.5 max-w-sm">
           This corner of the garden doesn’t exist. Let’s get you back home.
         </p>
       </div>
       <Link
         to="/"
-        className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors"
+        className="inline-flex items-center gap-2 px-5 py-2.5 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-900/30 transition-all hover:scale-[1.02]"
+        style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
       >
         Back to your garden
       </Link>
@@ -69,7 +83,7 @@ export default function App() {
           <BrowserRouter>
             <Routes>
               {import.meta.env.DEV && (
-                <Route path="/garden-preview" element={<GardenPreview />} />
+                <Route path="/garden-preview" element={<Suspense fallback={null}><GardenPreview /></Suspense>} />
               )}
               <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
               <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
