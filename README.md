@@ -1,5 +1,7 @@
 # 🌱 Garden Financial
 
+**Live demo:** [garden-financial.vercel.app](https://garden-financial.vercel.app)
+
 Personal finance, visualized as a living garden. Track budgets, goals, debt and net
 worth — and watch a real-time 3D garden flourish as your finances improve. An AI advisor,
 grounded in your actual numbers, turns guidance into editable, step-by-step plans.
