@@ -1,4 +1,4 @@
-@import '@fontsource-variable/plus-jakarta-sans';
+@import '@fontsource-variable/inter';
 @import '@fontsource-variable/fraunces';
 
 @tailwind base;
@@ -164,10 +164,12 @@ button:focus-visible {
     @apply border-border outline-ring/50;
   }
   html {
-    font-family: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', system-ui, sans-serif;
+    font-family: 'Inter Variable', Inter, system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    /* Inter's tweaks: contextual alternates + disambiguated l/I and tabular-friendly */
+    font-feature-settings: 'cv05' 1, 'cv08' 1, 'ss01' 1;
   }
   body {
     @apply bg-background text-foreground;

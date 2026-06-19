@@ -753,7 +753,7 @@ function Signpost({ name, progress, type = 'savings', icon, yOffset = 0 }) {
       <Html position={[0, 1.06 + yOffset, 0]} center zIndexRange={[20, 0]}
         style={{ pointerEvents: 'none', userSelect: 'none' }}>
         <div style={{
-          fontFamily: 'Plus Jakarta Sans Variable, system-ui, sans-serif',
+          fontFamily: 'Inter Variable, system-ui, sans-serif',
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
         }}>
           {/* Progress ring (conic) wrapping the glossy icon chip */}
@@ -1018,7 +1018,7 @@ function ZoneLabel({ position, label, icon, accent, tier = 0, to, onZone }) {
         onClick={clickable ? () => onZone(to) : undefined}
         title={clickable ? `Open ${label}` : undefined}
         style={{
-          fontFamily: 'Plus Jakarta Sans Variable, system-ui, sans-serif',
+          fontFamily: 'Inter Variable, system-ui, sans-serif',
           display: 'flex', alignItems: 'center', gap: '5px',
           background: 'rgba(18,26,16,0.62)', backdropFilter: 'blur(3px)',
           border: `1.5px solid ${accent}`, borderRadius: '20px', padding: '3px 10px',

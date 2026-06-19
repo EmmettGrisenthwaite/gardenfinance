@@ -22,7 +22,7 @@ grounded in your actual numbers, turns guidance into editable, step-by-step plan
 ## Tech stack
 
 - **React 18 + Vite** (SPA)
-- **Tailwind CSS** + Radix UI primitives — dark-glass design system (Fraunces + Plus Jakarta)
+- **Tailwind CSS** + Radix UI primitives — dark-glass design system (Fraunces display serif + Inter body)
 - **React Three Fiber** + drei + postprocessing for the 3D garden
 - **Recharts** (charts) · **Framer Motion** (motion) · **lucide-react** (icons)
 - **Supabase** — Postgres, Auth, and Edge Functions (Deno)
