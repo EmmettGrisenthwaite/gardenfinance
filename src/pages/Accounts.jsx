@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Plus, Trash2, Pencil, Check, X, Wallet, TrendingUp, Shield, PiggyBank, LineChart, Sprout, ArrowRight } from 'lucide-react'
+import { Plus, Trash2, Pencil, Check, X, Wallet, TrendingUp, Shield, PiggyBank, LineChart, Sprout, ArrowRight, Banknote, Landmark, Building2, HeartPulse, Bitcoin } from 'lucide-react'
+import CountUp from '@/components/CountUp'
 import { motion } from 'framer-motion'
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
@@ -34,6 +35,14 @@ const GROUPS = [
 function typeLabel(value) {
   return ACCOUNT_TYPES.find(t => t.value === value)?.label ?? value
 }
+
+// A glyph per account type (Copilot-style), tinted with its group's color.
+const TYPE_ICONS = {
+  checking: Banknote, savings: PiggyBank, emergency: Shield, money_market: Landmark,
+  roth_ira: PiggyBank, trad_ira: PiggyBank, '401k': Building2, '403b': Building2,
+  hsa: HeartPulse, pension: Landmark, brokerage: LineChart, crypto: Bitcoin, other: Wallet,
+}
+function typeIcon(value) { return TYPE_ICONS[value] ?? Wallet }
 
 // ─── Custom tooltip ────────────────────────────────────────────────────────────
 function NetWorthTooltip({ active, payload, label }) {
@@ -371,17 +380,18 @@ export default function Accounts() {
       <div className="grid grid-cols-3 gap-2 md:gap-4">
         <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] p-3 md:p-4 min-w-0">
           <div className="text-xs font-semibold text-emerald-300 mb-1">Assets</div>
-          <div className="text-base md:text-2xl font-bold tabular-nums leading-tight text-emerald-300">${totalAssets.toLocaleString()}</div>
+          <CountUp value={totalAssets} format={n => `$${Math.round(n).toLocaleString()}`}
+            className="text-base md:text-2xl font-bold tabular-nums leading-tight text-emerald-300" />
         </div>
         <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] p-3 md:p-4 min-w-0">
           <div className="text-xs font-semibold text-rose-300 mb-1">Debt</div>
-          <div className="text-base md:text-2xl font-bold tabular-nums leading-tight text-rose-300">${totalDebt.toLocaleString()}</div>
+          <CountUp value={totalDebt} format={n => `$${Math.round(n).toLocaleString()}`}
+            className="text-base md:text-2xl font-bold tabular-nums leading-tight text-rose-300" />
         </div>
         <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] p-3 md:p-4 min-w-0">
           <div className={`text-xs font-semibold mb-1 ${netWorth >= 0 ? 'text-sky-300' : 'text-amber-300'}`}>Net Worth</div>
-          <div className={`text-base md:text-2xl font-bold tabular-nums leading-tight ${netWorth >= 0 ? 'text-sky-300' : 'text-amber-300'}`}>
-            {netWorth >= 0 ? '' : '-'}${Math.abs(netWorth).toLocaleString()}
-          </div>
+          <CountUp value={netWorth} format={n => `${n >= 0 ? '' : '-'}$${Math.abs(Math.round(n)).toLocaleString()}`}
+            className={`block text-base md:text-2xl font-bold tabular-nums leading-tight ${netWorth >= 0 ? 'text-sky-300' : 'text-amber-300'}`} />
         </div>
       </div>
 
@@ -415,11 +425,16 @@ export default function Accounts() {
                   <span className={`text-sm font-bold ${color}`}>${subtotal.toLocaleString()}</span>
                 </div>
                 <div className="divide-y divide-gray-50">
-                  {grpAccounts.map(acct => (
-                    <div key={acct.id} className="flex items-center justify-between px-4 py-3 hover:bg-white/5/60 group">
-                      <div className="min-w-0">
+                  {grpAccounts.map(acct => {
+                    const TI = typeIcon(acct.type)
+                    return (
+                    <div key={acct.id} className="flex items-center gap-3 px-4 py-3 hover:bg-white/5/60 group">
+                      <span className={`inline-flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0 ${bg} ${color}`}>
+                        <TI className="w-[18px] h-[18px]" strokeWidth={2} />
+                      </span>
+                      <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium text-white truncate">{acct.name}</div>
-                        <div className="text-xs text-white/40">
+                        <div className="text-xs text-white/40 truncate">
                           {typeLabel(acct.type)}{acct.institution ? ` · ${acct.institution}` : ''}
                         </div>
                       </div>
@@ -431,7 +446,7 @@ export default function Accounts() {
                         </button>
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
             )

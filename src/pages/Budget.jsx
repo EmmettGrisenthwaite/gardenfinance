@@ -4,6 +4,8 @@ import { useAuth } from '@/context/AuthContext'
 import {
   Plus, Trash2, TrendingUp, TrendingDown, DollarSign, RefreshCw, Zap,
   Pencil, Check, X, BarChart3, Receipt, ChevronDown, ChevronUp, Sprout,
+  Home, Utensils, Car, HeartPulse, Clapperboard, Plug, PiggyBank,
+  Briefcase, Laptop, LineChart, Sparkles, CircleDashed,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import DebtManager from '@/components/DebtManager'
@@ -11,17 +13,38 @@ import DebtManager from '@/components/DebtManager'
 const EXPENSE_CATEGORIES = ['Housing', 'Food', 'Transport', 'Healthcare', 'Entertainment', 'Utilities', 'Savings', 'Other']
 const INCOME_CATEGORIES  = ['Salary', 'Freelance', 'Investment', 'Side Hustle', 'Other']
 
-const CAT_COLORS = {
-  Housing:       { bar: 'bg-blue-500',   light: 'bg-sky-500/15',   text: 'text-sky-300',   over: 'bg-red-500' },
-  Food:          { bar: 'bg-orange-500', light: 'bg-amber-500/15', text: 'text-amber-300', over: 'bg-red-500' },
-  Transport:     { bar: 'bg-yellow-500', light: 'bg-yellow-500/15', text: 'text-yellow-300', over: 'bg-red-500' },
-  Healthcare:    { bar: 'bg-pink-500',   light: 'bg-pink-500/15',   text: 'text-pink-300',   over: 'bg-red-500' },
-  Entertainment: { bar: 'bg-purple-500', light: 'bg-violet-500/15', text: 'text-violet-300', over: 'bg-red-500' },
-  Utilities:     { bar: 'bg-teal-500',   light: 'bg-teal-500/15',   text: 'text-teal-300',   over: 'bg-red-500' },
-  Savings:       { bar: 'bg-emerald-500',  light: 'bg-emerald-500/15',  text: 'text-emerald-300',  over: 'bg-red-500' },
-  Other:         { bar: 'bg-white/30',   light: 'bg-white/5',   text: 'text-white/60',   over: 'bg-red-500' },
+// Each category carries an icon + a refined, harmonious color (Copilot-style):
+// a soft chip for the icon and a matching solid for progress bars.
+const CAT_META = {
+  // Expenses
+  Housing:       { icon: Home,         bar: 'bg-sky-400/90',     chip: 'bg-sky-500/15 text-sky-300' },
+  Food:          { icon: Utensils,     bar: 'bg-amber-400/90',   chip: 'bg-amber-500/15 text-amber-300' },
+  Transport:     { icon: Car,          bar: 'bg-violet-400/90',  chip: 'bg-violet-500/15 text-violet-300' },
+  Healthcare:    { icon: HeartPulse,   bar: 'bg-rose-400/90',    chip: 'bg-rose-500/15 text-rose-300' },
+  Entertainment: { icon: Clapperboard, bar: 'bg-fuchsia-400/90', chip: 'bg-fuchsia-500/15 text-fuchsia-300' },
+  Utilities:     { icon: Plug,         bar: 'bg-teal-400/90',    chip: 'bg-teal-500/15 text-teal-300' },
+  Savings:       { icon: PiggyBank,    bar: 'bg-emerald-400/90', chip: 'bg-emerald-500/15 text-emerald-300' },
+  // Income
+  Salary:        { icon: Briefcase,    bar: 'bg-emerald-400/90', chip: 'bg-emerald-500/15 text-emerald-300' },
+  Freelance:     { icon: Laptop,       bar: 'bg-cyan-400/90',    chip: 'bg-cyan-500/15 text-cyan-300' },
+  Investment:    { icon: LineChart,    bar: 'bg-indigo-400/90',  chip: 'bg-indigo-500/15 text-indigo-300' },
+  'Side Hustle': { icon: Sparkles,     bar: 'bg-amber-400/90',   chip: 'bg-amber-500/15 text-amber-300' },
+  Other:         { icon: CircleDashed, bar: 'bg-white/35',       chip: 'bg-white/10 text-white/55' },
 }
-function catColor(cat) { return CAT_COLORS[cat] ?? CAT_COLORS.Other }
+function catColor(cat) { return CAT_META[cat] ?? CAT_META.Other }
+
+// Category glyph in a soft colored chip — the signature Copilot-style touch.
+function CatIcon({ cat, size = 'md' }) {
+  const m = catColor(cat)
+  const Icon = m.icon
+  const box = size === 'sm' ? 'w-6 h-6' : 'w-9 h-9'
+  const ic  = size === 'sm' ? 'w-3.5 h-3.5' : 'w-[18px] h-[18px]'
+  return (
+    <span className={`inline-flex items-center justify-center ${box} rounded-lg flex-shrink-0 ${m.chip}`}>
+      <Icon className={ic} strokeWidth={2} />
+    </span>
+  )
+}
 
 // ─── Entry add form ────────────────────────────────────────────────────────────
 function EntryForm({ type, onAdd }) {
@@ -164,8 +187,9 @@ function EntryList({ entries, onDelete, onEdit }) {
   return (
     <div className="space-y-1">
       {entries.map(entry => (
-        <div key={entry.id} className="flex items-center justify-between min-h-[48px] py-2 px-3 rounded-lg hover:bg-white/5 group">
-          <div>
+        <div key={entry.id} className="flex items-center gap-3 min-h-[48px] py-2 px-3 rounded-lg hover:bg-white/5 group">
+          <CatIcon cat={entry.category} />
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-medium text-white">{entry.name}</span>
               {entry.recurring === false && (
@@ -174,7 +198,7 @@ function EntryList({ entries, onDelete, onEdit }) {
             </div>
             <div className="text-xs text-white/40">{entry.category}</div>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <span className="text-sm font-semibold text-white/80 mr-1">${Number(entry.amount).toLocaleString()}</span>
             <button onClick={() => onEdit(entry)}
               className="p-2 text-white/40 hover:text-sky-400 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 min-h-[44px] min-w-[44px] flex items-center justify-center">
@@ -290,9 +314,9 @@ function SpendingBreakdown({ expenses, limits, onSetLimit, transactions }) {
 
           return (
             <div key={cat}>
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${c.bar}`} />
+                  <CatIcon cat={cat} size="sm" />
                   <span className="text-sm font-medium text-white">{cat}</span>
                   {over && (
                     <span className="text-xs font-bold text-rose-400 bg-rose-500/15 px-1.5 py-0.5 rounded">
@@ -440,19 +464,21 @@ function TransactionLogger({ transactions, loading, onAdd, onDelete }) {
                         <div className="space-y-1 max-h-64 overflow-y-auto">
                           {[...transactions].sort((a, b) => b.date?.localeCompare(a.date ?? '') ?? 0).map(t => (
                             <div key={t.id} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white/5 group">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${catColor(t.category).bar}`} />
-                                  <span className="text-sm font-medium text-white truncate">
-                                    {t.note || t.category}
-                                  </span>
-                                  <span className="text-xs text-white/40">{t.category}</span>
-                                </div>
-                                {t.date && (
-                                  <div className="text-xs text-white/40 ml-3.5">
-                                    {new Date(t.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <CatIcon cat={t.category} size="sm" />
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium text-white truncate">
+                                      {t.note || t.category}
+                                    </span>
+                                    <span className="text-xs text-white/40 flex-shrink-0">{t.category}</span>
                                   </div>
-                                )}
+                                  {t.date && (
+                                    <div className="text-xs text-white/40">
+                                      {new Date(t.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
                                 <span className="text-sm font-semibold text-white/80">${Number(t.amount).toLocaleString()}</span>

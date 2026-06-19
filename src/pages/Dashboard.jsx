@@ -5,6 +5,7 @@ import { useGarden } from '@/context/GardenContext'
 import { computeScores } from '@/lib/gardenUtils'
 import { Sprout } from 'lucide-react'
 import Onboarding from '@/components/Onboarding'
+import CountUp from '@/components/CountUp'
 
 // Lazy-load the 3D garden so Three.js ships as its own chunk — keeps first
 // paint (login, other routes) fast and lets us show a branded loading state.
@@ -266,12 +267,12 @@ export default function Dashboard() {
   const stats = [
     {
       to: '/accounts', icon: Wallet,
-      label: 'Balances', value: `$${acctAssets.toLocaleString()}`,
+      label: 'Balances', value: <CountUp value={acctAssets} format={n => `$${Math.round(n).toLocaleString()}`} />,
       sub: accounts.length > 0 ? `${accounts.length} account${accounts.length === 1 ? '' : 's'}` : 'Add your accounts',
     },
     {
       to: '/accounts', icon: TrendingUp,
-      label: 'Net Worth', value: `${netWorth < 0 ? '-' : ''}$${Math.abs(netWorth).toLocaleString()}`,
+      label: 'Net Worth', value: <CountUp value={netWorth} format={n => `${n < 0 ? '-' : ''}$${Math.abs(Math.round(n)).toLocaleString()}`} />,
       sub: nwDelta === undefined || nwDelta === null ? 'Tracking starts today'
          : nwDelta === 0 ? 'No change since last visit'
          : `${nwDelta > 0 ? '▲' : '▼'} $${Math.abs(nwDelta).toLocaleString()} since last visit`,
@@ -279,7 +280,7 @@ export default function Dashboard() {
     },
     {
       to: '/budget#debt', icon: CreditCard,
-      label: 'Debt', value: `$${totalDebt.toLocaleString()}`,
+      label: 'Debt', value: <CountUp value={totalDebt} format={n => `$${Math.round(n).toLocaleString()}`} />,
       sub: totalDebt === 0 ? 'Debt-free' : `${debts.length} account${debts.length === 1 ? '' : 's'}`,
       subColor: totalDebt === 0 ? 'text-emerald-300' : undefined,
     },
