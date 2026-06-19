@@ -2,15 +2,19 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { computeScores } from '@/lib/gardenUtils'
-import { callClaude, requestPlan, suggestGoal, chatConfigured } from '@/lib/claude'
+import { callClaude, requestPlan, requestGuide, suggestGoal, chatConfigured } from '@/lib/claude'
 import { savePlan, applyStep, addGoal, normalizeSteps, listPlans } from '@/lib/advisorPlans'
 import { loadRetirement, deriveDefaults, computeRetirement } from '@/lib/retirement'
 import PlanCard from '@/components/PlanCard'
+import GuideCard from '@/components/GuideCard'
 import GoalSuggestionCard from '@/components/GoalSuggestionCard'
 
 // Loosely gates the (extra) goal-suggestion call to messages that sound like a
 // savings/financial intent — the tool itself makes the final decision.
 const GOAL_INTENT = /\b(sav(e|ing|ings)|buy|buying|afford|down\s?-?payment|house|home|condo|apartment|car|vehicle|truck|trip|travel|vacation|holiday|honeymoon|wedding|ring|baby|college|tuition|degree|invest|investing|brokerage|roth|ira|401k|fund|goal|retire|retirement|emergency)\b/i
+// "I want to actually set something up" — gates the (extra) how-to guide call;
+// the guide tool itself makes the final yes/no decision.
+const GUIDE_INTENT = /\b(open|start|set\s?up|sign\s?up|create|switch|roll\s?over|move|transfer|enroll)\b[^.?!]*\b(roth|ira|401k|403b|hsa|brokerage|savings? account|hysa|high.?yield|index fund|etf|mutual fund|emergency fund|life insurance|will|credit|account|invest)\b|\bwalk me through\b|\bstep[-\s]?by[-\s]?step\b|\bhow (do|can) i (open|start|set\s?up|sign\s?up|get|invest)\b/i
 import {
   Send, Bot, ChevronDown, ChevronUp, Sparkles, RefreshCw, Scan, ArrowDown,
   Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Lightbulb, Shield, Sprout,
@@ -21,11 +25,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 // ─── Quick questions ───────────────────────────────────────────────────────────
 const SUGGESTIONS = [
   { label: "What should I prioritize right now?", icon: Target },
+  { label: "Help me open a Roth IRA",             icon: Sparkles },
   { label: "How's my budget looking?",            icon: BarChart3 },
-  { label: "Am I saving enough?",                 icon: PiggyBank },
   { label: "How do I tackle my debt?",            icon: CreditCard },
+  { label: "Am I saving enough?",                 icon: PiggyBank },
   { label: "Should I start investing?",           icon: TrendingUp },
-  { label: "What is a Roth IRA?",                 icon: Lightbulb },
   { label: "How big should my emergency fund be?",icon: Shield },
   { label: "How can I grow my garden score?",     icon: Sprout },
 ]
@@ -565,6 +569,7 @@ export default function AIAdvisor() {
   const [pendingPlan, setPendingPlan]   = useState(null)   // proposed plan card in the thread
   const [buildingPlan, setBuildingPlan] = useState(false)
   const [pendingGoal, setPendingGoal]   = useState(null)   // inline goal suggestion card
+  const [pendingGuide, setPendingGuide] = useState(null)   // inline how-to guide card
   const bottomRef    = useRef(null)
   const inputRef     = useRef(null)
   const scrollRef    = useRef(null)
@@ -657,7 +662,8 @@ export default function AIAdvisor() {
     setMessages(next)
     setInput('')
     setAtBottom(true)
-    setPendingGoal(null)   // clear any prior suggestion
+    setPendingGoal(null)    // clear any prior suggestion
+    setPendingGuide(null)
     if (opts.analyzing) setAnalyzing(true); else setLoading(true)
 
     try {
@@ -668,9 +674,12 @@ export default function AIAdvisor() {
       })
       const convo = [...next, { role: 'assistant', content: reply }]
       setMessages(convo)
-      // If they expressed a savings/financial goal, offer to add it (async,
-      // appears just after the reply — the tool decides if it's worth it).
-      if (GOAL_INTENT.test(text)) {
+      // After the reply, offer the most relevant one-tap follow-up (the tool
+      // makes the final call). A "set something up" request → a how-to guide
+      // with provider links; otherwise a "track this goal" suggestion.
+      if (GUIDE_INTENT.test(text)) {
+        requestGuide(convo, systemPrompt).then(g => { if (g) setPendingGuide(g) })
+      } else if (GOAL_INTENT.test(text)) {
         suggestGoal(convo, systemPrompt).then(g => { if (g) setPendingGoal(g) })
       }
     } catch (err) {
@@ -712,6 +721,12 @@ export default function AIAdvisor() {
   async function handleSavePlan() {
     await savePlan(user.id, pendingPlan)
     setPendingPlan(p => ({ ...p, saved: true }))
+  }
+
+  async function handleSaveGuide() {
+    // A guide is stored as a Plan checklist (its steps keep their resource links).
+    await savePlan(user.id, { title: pendingGuide.title, steps: pendingGuide.steps })
+    setPendingGuide(p => ({ ...p, saved: true }))
   }
 
   const applyPlanStep = async (step) => {
@@ -756,6 +771,7 @@ export default function AIAdvisor() {
                   setError(null)
                   setPendingPlan(null)
                   setPendingGoal(null)
+                  setPendingGuide(null)
                   localStorage.removeItem(STORAGE_KEY)
                   supabase.from('conversations').delete().eq('user_id', user.id).then(() => {})
                 }}
@@ -835,6 +851,14 @@ export default function AIAdvisor() {
             <div className="flex items-center gap-2 mb-4 text-sm text-emerald-200/80">
               <Loader2 className="w-4 h-4 animate-spin" /> Building your action plan…
             </div>
+          )}
+
+          {/* Inline how-to guide — saveable as a Plan checklist with links */}
+          {pendingGuide && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
+              <GuideCard guide={pendingGuide} saved={pendingGuide.saved}
+                onSave={handleSaveGuide} onDismiss={() => setPendingGuide(null)} />
+            </motion.div>
           )}
 
           {/* Inline goal suggestion — adds to Goals + appears in the Plan */}

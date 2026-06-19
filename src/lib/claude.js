@@ -101,6 +101,35 @@ export async function requestPlan(messages, systemPrompt) {
   return plan
 }
 
+// Asks Claude (via tool-use) for a do-it-today how-to guide when the user wants
+// to set something up (open an IRA, HYSA, etc.). Returns { title, summary,
+// estimated_minutes, steps: [{ text, detail?, resources? }] } or null.
+export async function requestGuide(messages, systemPrompt) {
+  if (!CHAT_ENDPOINT) return null
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) return null
+
+  // Forced tool-use requires the turn to end with a user message.
+  const probe = messages[messages.length - 1]?.role === 'assistant'
+    ? [...messages, { role: 'user', content: 'If my latest request is about actually setting something up (opening an account, starting investing, etc.), build me a step-by-step guide with reputable provider links; otherwise set should_guide to false.' }]
+    : messages
+
+  try {
+    const res = await fetch(CHAT_ENDPOINT, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ messages: probe, system: systemPrompt, maxTokens: 1536, tool: 'guide' }),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const r = data?.result
+    return r?.should_guide && Array.isArray(r.steps) && r.steps.length ? r : null
+  } catch {
+    return null
+  }
+}
+
 // Asks Claude (via tool-use) whether the latest message implies a concrete goal
 // worth tracking. Returns the structured suggestion, or null if none.
 export async function suggestGoal(messages, systemPrompt) {

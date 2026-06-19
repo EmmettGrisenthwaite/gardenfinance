@@ -7,6 +7,12 @@ export function normalizeSteps(steps = []) {
     text:    s.text ?? '',
     detail:  s.detail ?? null,
     apply:   s.apply ?? null,
+    // Optional reputable links (e.g. provider sign-up pages) for how-to guides.
+    resources: Array.isArray(s.resources)
+      ? s.resources
+          .filter(r => r && typeof r.url === 'string' && /^https?:\/\//i.test(r.url))
+          .map(r => ({ label: r.label || r.url, url: r.url, note: r.note || null }))
+      : null,
     done:    Boolean(s.done),
     applied: Boolean(s.applied),
   }))

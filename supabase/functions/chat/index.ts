@@ -124,7 +124,46 @@ Deno.serve(async (req) => {
     },
   }
 
-  const TOOLS: Record<string, unknown> = { action_plan: ACTION_PLAN_TOOL, suggest_goal: SUGGEST_GOAL_TOOL }
+  const CREATE_GUIDE_TOOL = {
+    name: 'create_guide',
+    description: 'Use when the user wants to TAKE A CONCRETE SETUP ACTION — e.g. open a Roth IRA, open a high-yield savings account, start investing in index funds, roll over an old 401(k), open an HSA, get term life insurance, freeze their credit, set up automatic transfers. Produce a short do-it-today walkthrough: 3–6 ordered steps. On the step where they pick a provider, list 2–4 reputable, genuinely top-rated options with their OFFICIAL website URLs — use only primary official domains you are confident about (e.g. fidelity.com, vanguard.com, schwab.com, ally.com, marcus.com, sofi.com, wealthfront.com, irs.gov). Never invent URLs. Ground the recommendations in the user’s real situation (age, income, existing accounts). If the latest message is NOT a request to actually set something up, set should_guide=false and leave the rest blank.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        should_guide:      { type: 'boolean', description: 'true only if the user wants step-by-step help doing a concrete financial task' },
+        title:             { type: 'string',  description: 'Imperative task title, e.g. "Open a Roth IRA"' },
+        summary:           { type: 'string',  description: 'One friendly sentence on why this is the right move for them right now' },
+        estimated_minutes: { type: 'number',  description: 'Rough minutes to complete, e.g. 20' },
+        steps: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              text:   { type: 'string', description: 'The action, imperative and specific' },
+              detail: { type: 'string', description: 'One short sentence of how/why' },
+              resources: {
+                type: 'array',
+                description: 'Optional reputable links for this step (e.g. provider sign-up pages). Official domains only.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    label: { type: 'string', description: 'Provider/resource name, e.g. "Fidelity"' },
+                    url:   { type: 'string', description: 'Official https URL' },
+                    note:  { type: 'string', description: 'Optional why-this-one, ≤6 words, e.g. "no fees, great app"' },
+                  },
+                  required: ['label', 'url'],
+                },
+              },
+            },
+            required: ['text'],
+          },
+        },
+      },
+      required: ['should_guide'],
+    },
+  }
+
+  const TOOLS: Record<string, unknown> = { action_plan: ACTION_PLAN_TOOL, suggest_goal: SUGGEST_GOAL_TOOL, guide: CREATE_GUIDE_TOOL }
 
   const body: Record<string, unknown> = { model, max_tokens, system, messages }
   if (tool && TOOLS[tool]) {

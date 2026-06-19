@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ClipboardList, Check, Plus, Loader2, Bookmark, Trash2, ArrowRight, PartyPopper } from 'lucide-react'
 import { applyLabel } from '@/lib/advisorPlans'
+import ResourceLinks from '@/components/ResourceLinks'
 
 function timeAgo(iso) {
   if (!iso) return ''
@@ -38,6 +39,7 @@ function StepRow({ step, onToggle, onApply }) {
           {step.text}
         </div>
         {step.detail && !step.done && <div className="text-xs text-white/45 mt-0.5 leading-snug">{step.detail}</div>}
+        {!step.done && <ResourceLinks resources={step.resources} />}
         {label && !step.done && (
           applied ? (
             <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-300">
