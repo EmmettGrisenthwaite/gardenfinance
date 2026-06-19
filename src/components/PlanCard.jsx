@@ -166,14 +166,17 @@ export default function PlanCard({ plan, variant = 'chat', saved = false, onSave
           {saved ? (
             <Link to="/plan"
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-colors">
-              <Check className="w-3.5 h-3.5" /> Saved — view in your Plan <ArrowRight className="w-3.5 h-3.5" />
+              <Check className="w-3.5 h-3.5" /> Added to your Plan — track it as you go <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           ) : (
-            <button onClick={handleSave} disabled={saving}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-900/30 transition-colors disabled:opacity-60">
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bookmark className="w-3.5 h-3.5" />}
-              Save to my Plan
-            </button>
+            <>
+              <p className="text-xs text-white/75 mb-2">Would you like me to add this to your Plan so you can check it off as you go?</p>
+              <button onClick={handleSave} disabled={saving}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-900/30 transition-colors disabled:opacity-60">
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bookmark className="w-3.5 h-3.5" />}
+                Yes, add to my Plan
+              </button>
+            </>
           )}
         </div>
       )}

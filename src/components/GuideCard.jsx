@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpenCheck, Check, Loader2, Bookmark, ArrowRight, Clock, X } from 'lucide-react'
+import { BookOpenCheck, Check, Loader2, Bookmark, ArrowRight, Clock } from 'lucide-react'
 import ResourceLinks from '@/components/ResourceLinks'
 
 // Inline advisor card: a concrete "do it today" walkthrough with reputable
@@ -27,12 +27,6 @@ export default function GuideCard({ guide, saved = false, onSave, onDismiss }) {
             <Clock className="w-3 h-3" /> {Math.round(guide.estimated_minutes)} min
           </span>
         )}
-        {onDismiss && (
-          <button onClick={onDismiss} aria-label="Dismiss guide"
-            className="p-0.5 -mr-1 text-white/35 hover:text-white/60 transition-colors flex-shrink-0">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        )}
       </div>
 
       <ol className="px-4 py-1.5 divide-y divide-white/5">
@@ -50,20 +44,31 @@ export default function GuideCard({ guide, saved = false, onSave, onDismiss }) {
         ))}
       </ol>
 
-      <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between gap-2">
+      <div className="px-4 py-3 border-t border-white/10">
         {saved ? (
           <Link to="/plan"
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-colors">
-            <Check className="w-3.5 h-3.5" /> Saved — track it in your Plan <ArrowRight className="w-3.5 h-3.5" />
+            <Check className="w-3.5 h-3.5" /> Added to your Plan — track it as you go <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         ) : (
-          <button onClick={handleSave} disabled={saving}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-900/30 transition-colors disabled:opacity-60">
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bookmark className="w-3.5 h-3.5" />}
-            Save as a checklist
-          </button>
+          <>
+            <p className="text-xs text-white/75 mb-2">Would you like me to add this to your Plan so you can check it off as you go?</p>
+            <div className="flex items-center gap-2">
+              <button onClick={handleSave} disabled={saving}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-900/30 transition-colors disabled:opacity-60">
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bookmark className="w-3.5 h-3.5" />}
+                Yes, add to my Plan
+              </button>
+              {onDismiss && (
+                <button onClick={onDismiss}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold text-white/50 hover:text-white/80 hover:bg-white/5 transition-colors">
+                  Not now
+                </button>
+              )}
+            </div>
+            <p className="text-[10px] text-white/30 mt-2 leading-tight">Links open official sites — verify before entering info.</p>
+          </>
         )}
-        <span className="text-[10px] text-white/30 text-right leading-tight">Links open official sites — verify before entering info.</span>
       </div>
     </div>
   )
