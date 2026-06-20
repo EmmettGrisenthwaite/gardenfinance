@@ -291,12 +291,13 @@ export default function Dashboard() {
     },
   ]
 
-  // Setup checklist — prompts each tab so the garden has something to grow from.
+  // Setup checklist — prompts the core data tabs so the garden has something to
+  // grow from. Once all three are filled in, the card disappears and the
+  // advisor/plan nudge below takes over.
   const setupSteps = [
-    { key: 'accounts', done: accounts.length > 0,                 label: 'Add accounts', to: '/accounts',   icon: Wallet },
-    { key: 'budget',   done: budgets.some(b => b.type === 'income'), label: 'Set budget',  to: '/budget',     icon: DollarSign },
-    { key: 'goals',    done: goals.length > 0,                    label: 'Plant a goal', to: '/plan#goals', icon: Target },
-    { key: 'advisor',  done: hasPlan,                             label: 'Get a plan',   to: '/advisor',    icon: Bot },
+    { key: 'accounts', done: accounts.length > 0,                    label: 'Add accounts', to: '/accounts',   icon: Wallet },
+    { key: 'budget',   done: budgets.some(b => b.type === 'income'), label: 'Set budget',   to: '/budget',     icon: DollarSign },
+    { key: 'goals',    done: goals.length > 0,                       label: 'Plant a goal', to: '/plan#goals', icon: Target },
   ]
   const setupDone = setupSteps.every(s => s.done)
 
