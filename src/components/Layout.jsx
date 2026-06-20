@@ -166,7 +166,7 @@ export default function Layout({ children }) {
         className="md:hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="flex items-center gap-1 bg-black/40 backdrop-blur-2xl rounded-2xl border border-white/[0.08] px-2 py-1.5"
+        <div className="flex items-center gap-0.5 bg-black/40 backdrop-blur-2xl rounded-2xl border border-white/[0.08] px-1.5 py-1.5"
           style={{ boxShadow: '0 12px 36px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.10)' }}>
           {HUD_ITEMS.map(({ to, label, icon: Icon }) => (
             <NavLink
@@ -174,7 +174,7 @@ export default function Layout({ children }) {
               to={to}
               end={to === '/'}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 px-3.5 py-1.5 rounded-xl transition-all duration-200 ${
+                `flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-xl transition-all duration-200 ${
                   isActive
                     ? 'bg-gradient-to-b from-green-400/25 to-emerald-500/10 ring-1 ring-green-300/30 text-white'
                     : 'text-white/45 hover:text-white hover:bg-white/10'
@@ -185,7 +185,7 @@ export default function Layout({ children }) {
                 <>
                   <Icon className={`w-5 h-5 transition-all duration-200 ${
                     isActive ? 'text-green-300 scale-110 drop-shadow-[0_0_6px_rgba(134,239,172,0.6)]' : ''}`} />
-                  <span className={`text-[8.5px] font-bold tracking-widest transition-all duration-200 ${
+                  <span className={`text-[8.5px] font-bold tracking-wide transition-all duration-200 ${
                     isActive ? 'text-green-100' : 'text-white/45'}`}>
                     {label.toUpperCase()}
                   </span>

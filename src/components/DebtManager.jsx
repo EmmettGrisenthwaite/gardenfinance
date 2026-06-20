@@ -273,7 +273,7 @@ function PayoffCalculator({ debts }) {
           <span className="text-sm font-semibold text-white">Payoff Calculator</span>
         </div>
         <button onClick={() => setShowDetails(v => !v)}
-          className="flex items-center gap-1 text-xs text-white/40 hover:text-white/60 transition-colors">
+          className="flex items-center gap-1 text-xs text-white/40 hover:text-white/60 transition-colors py-2 -my-2">
           {showDetails ? <><ChevronUp className="w-3 h-3" /> Hide order</> : <><ChevronDown className="w-3 h-3" /> Show order</>}
         </button>
       </div>

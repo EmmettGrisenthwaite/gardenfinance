@@ -260,7 +260,7 @@ function LimitEditor({ category, limit, onSave }) {
 
   return (
     <button onClick={() => { setVal(limit ? String(limit) : ''); setEditing(true) }}
-      className="flex items-center gap-1 text-xs text-white/40 hover:text-white/60 transition-colors">
+      className="flex items-center gap-1 text-xs text-white/40 hover:text-white/60 transition-colors py-2 -my-2">
       <Pencil className="w-2.5 h-2.5" />
       {limit ? `Limit: $${Number(limit).toLocaleString()}` : 'Set limit'}
     </button>
