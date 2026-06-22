@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Wallet, Pencil, Check, X, Plus, Trash2, CreditCard, TrendingUp, TrendingDown } from 'lucide-react'
+import { Wallet, Pencil, Check, X, Plus, Trash2, CreditCard, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from 'lucide-react'
 
 const fmt = (n) => `$${Math.round(Number(n) || 0).toLocaleString()}`
 
@@ -50,6 +50,7 @@ function EditableStat({ label, value, onSave, color = 'text-white', prefix = '$'
 export default function MoneyCard({ income, expenses, netWorth, balance, debts = [], onSaveMoney, onSaveBalance, onAddDebt, onDeleteDebt }) {
   const surplus = Number(income || 0) - Number(expenses || 0)
   const totalDebt = debts.reduce((s, d) => s + Number(d.balance || 0), 0)
+  const [open, setOpen] = useState(false)
   const [addingDebt, setAddingDebt] = useState(false)
   const [dName, setDName] = useState('')
   const [dBal, setDBal] = useState('')
@@ -64,12 +65,21 @@ export default function MoneyCard({ income, expenses, netWorth, balance, debts =
 
   return (
     <div className="bg-white/[0.055] rounded-2xl border border-white/[0.08] overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10 bg-white/[0.03]">
-        <Wallet className="w-4 h-4 text-emerald-300" />
-        <span className="text-sm font-semibold text-white flex-1">Your money</span>
-        <span className="text-[10px] text-white/40">tap a number to edit · feeds your advisor</span>
-      </div>
+      <button onClick={() => setOpen(o => !o)}
+        className={`w-full flex items-center gap-2 px-4 py-2.5 bg-white/[0.03] hover:bg-white/[0.05] transition-colors ${open ? 'border-b border-white/10' : ''}`}>
+        <Wallet className="w-4 h-4 text-emerald-300 flex-shrink-0" />
+        <span className="text-sm font-semibold text-white">Your money</span>
+        {!open && (
+          <span className="ml-auto flex items-center gap-2 text-[11px] tabular-nums">
+            <span className={surplus >= 0 ? 'text-sky-300' : 'text-rose-300'}>{surplus < 0 ? '-' : '+'}{fmt(Math.abs(surplus))}/mo</span>
+            <span className="text-white/30">·</span>
+            <span className="text-white/70">{fmt(netWorth)} net</span>
+          </span>
+        )}
+        {open ? <ChevronUp className="w-4 h-4 text-white/40 ml-auto" /> : <ChevronDown className="w-4 h-4 text-white/40 flex-shrink-0" />}
+      </button>
 
+      {open && (<>
       {/* Income · Expenses · Surplus */}
       <div className="grid grid-cols-3 gap-3 px-4 py-3.5">
         <EditableStat label="Income / mo"   value={income}   onSave={v => onSaveMoney({ monthly_income: v })}   color="text-emerald-300" />
@@ -140,6 +150,7 @@ export default function MoneyCard({ income, expenses, netWorth, balance, debts =
           <p className="text-[11px] text-white/35">No debts tracked — nice. Add any loans or cards so your advisor can plan payoff.</p>
         )}
       </div>
+      </>)}
     </div>
   )
 }

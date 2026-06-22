@@ -1,8 +1,43 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ClipboardList, Check, Plus, Loader2, Bookmark, Trash2, ArrowRight, PartyPopper } from 'lucide-react'
+import { ClipboardList, Check, Plus, Loader2, Bookmark, Trash2, ArrowRight, PartyPopper, Calendar, X } from 'lucide-react'
 import { applyLabel } from '@/lib/advisorPlans'
 import ResourceLinks from '@/components/ResourceLinks'
+
+// Friendly relative label + urgency color for a due date.
+function dueMeta(due) {
+  if (!due) return null
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const d = new Date(due + 'T00:00:00')
+  const days = Math.round((d - today) / 86400000)
+  const label = days < 0 ? `${Math.abs(days)}d overdue`
+    : days === 0 ? 'Due today' : days === 1 ? 'Due tomorrow'
+    : days <= 7 ? `Due in ${days}d`
+    : `Due ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+  const color = days < 0 ? 'text-rose-200 bg-rose-500/15 border-rose-400/30'
+    : days <= 2 ? 'text-amber-200 bg-amber-400/15 border-amber-400/30'
+    : 'text-white/60 bg-white/[0.06] border-white/10'
+  return { label, color }
+}
+
+// A due-date chip: tap to pick a date (native picker), × to clear.
+function DueChip({ due, onSet }) {
+  const meta = dueMeta(due)
+  return (
+    <span className="inline-flex items-center mt-1.5">
+      <label className={`inline-flex items-center gap-1 pl-2 pr-2 py-0.5 rounded-md border text-[10px] font-semibold cursor-pointer transition-colors ${meta ? meta.color : 'text-white/40 bg-white/[0.04] border-white/10 hover:text-white/65 hover:border-white/20'}`}>
+        <Calendar className="w-3 h-3" />
+        {meta ? meta.label : 'Add due date'}
+        <input type="date" value={due || ''} onChange={e => onSet(e.target.value || null)}
+          className="sr-only" aria-label="Set due date" />
+      </label>
+      {due && (
+        <button onClick={() => onSet(null)} aria-label="Clear due date"
+          className="ml-1 p-0.5 text-white/30 hover:text-white/60"><X className="w-3 h-3" /></button>
+      )}
+    </span>
+  )
+}
 
 function timeAgo(iso) {
   if (!iso) return ''
@@ -15,7 +50,7 @@ function timeAgo(iso) {
 }
 
 // A single action step row: optional checkbox, text + detail, one-tap apply.
-function StepRow({ step, onToggle, onApply }) {
+function StepRow({ step, onToggle, onApply, onSetDue }) {
   const [busy, setBusy] = useState(false)
   const [applied, setApplied] = useState(step.applied)
   const label = applyLabel(step.apply)
@@ -40,6 +75,12 @@ function StepRow({ step, onToggle, onApply }) {
         </div>
         {step.detail && !step.done && <div className="text-xs text-white/45 mt-0.5 leading-snug">{step.detail}</div>}
         {!step.done && <ResourceLinks resources={step.resources} />}
+        <div className="flex items-center flex-wrap gap-x-2">
+          {onSetDue && !step.done && <DueChip due={step.due} onSet={d => onSetDue(step.id, d)} />}
+          {step.done && step.due && (
+            <span className="mt-1.5 text-[10px] text-white/30">done</span>
+          )}
+        </div>
         {label && !step.done && (
           applied ? (
             <span className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-300">
@@ -94,7 +135,7 @@ function AddStepRow({ onAdd }) {
 
 // Plan card. variant 'chat' shows a Save button; 'page' shows checkboxes,
 // a progress bar, an "add your own step" row, and a completion celebration.
-export default function PlanCard({ plan, variant = 'chat', saved = false, onSave, onApply, onToggle, onDelete, onAddStep }) {
+export default function PlanCard({ plan, variant = 'chat', saved = false, onSave, onApply, onToggle, onDelete, onAddStep, onSetDue }) {
   const [saving, setSaving] = useState(false)
   const steps = plan.steps ?? []
   const doneCount = steps.filter(s => s.done).length
@@ -142,6 +183,7 @@ export default function PlanCard({ plan, variant = 'chat', saved = false, onSave
           <StepRow key={step.id}
             step={step}
             onToggle={variant === 'page' ? onToggle : undefined}
+            onSetDue={variant === 'page' ? onSetDue : undefined}
             onApply={onApply} />
         ))}
       </div>

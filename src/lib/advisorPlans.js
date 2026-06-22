@@ -13,6 +13,7 @@ export function normalizeSteps(steps = []) {
           .filter(r => r && typeof r.url === 'string' && /^https?:\/\//i.test(r.url))
           .map(r => ({ label: r.label || r.url, url: r.url, note: r.note || null }))
       : null,
+    due:     s.due ?? null,   // optional YYYY-MM-DD target date
     done:    Boolean(s.done),
     applied: Boolean(s.applied),
   }))

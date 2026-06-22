@@ -98,8 +98,10 @@ export default function Plan() {
     editPlan(planId, steps => steps.map(s => s.id === step.id ? { ...s, applied: true } : s))
   }
   const addStep = (planId, text) => editPlan(planId, steps => [...steps, {
-    id: `u_${Math.random().toString(36).slice(2, 8)}`, text, detail: null, apply: null, done: false, applied: false,
+    id: `u_${Math.random().toString(36).slice(2, 8)}`, text, detail: null, apply: null, due: null, done: false, applied: false,
   }])
+  const setDue = (planId, stepId, due) =>
+    editPlan(planId, steps => steps.map(s => s.id === stepId ? { ...s, due } : s))
   function removePlan(planId) {
     setPlans(prev => prev.filter(p => p.id !== planId))
     deletePlan(planId).catch(() => {})
@@ -267,6 +269,7 @@ export default function Plan() {
                     onToggle={(stepId) => toggleStep(plan.id, stepId)}
                     onApply={(step) => applyAndMark(plan.id, step)}
                     onAddStep={(text) => addStep(plan.id, text)}
+                    onSetDue={(stepId, due) => setDue(plan.id, stepId, due)}
                     onDelete={() => removePlan(plan.id)} />
                 ))}
               </div>
