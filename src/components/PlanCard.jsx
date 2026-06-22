@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ClipboardList, Check, Plus, Loader2, Bookmark, Trash2, ArrowRight, PartyPopper, Calendar, X } from 'lucide-react'
+import { ClipboardList, Check, Plus, Loader2, Bookmark, Trash2, ArrowRight, PartyPopper, Calendar, X, ArrowUpRight } from 'lucide-react'
 import { applyLabel } from '@/lib/advisorPlans'
 import ResourceLinks from '@/components/ResourceLinks'
 
@@ -50,7 +50,7 @@ function timeAgo(iso) {
 }
 
 // A single action step row: optional checkbox, text + detail, one-tap apply.
-function StepRow({ step, onToggle, onApply, onSetDue }) {
+function StepRow({ step, onToggle, onApply, onSetDue, onHowTo }) {
   const [busy, setBusy] = useState(false)
   const [applied, setApplied] = useState(step.applied)
   const label = applyLabel(step.apply)
@@ -75,10 +75,13 @@ function StepRow({ step, onToggle, onApply, onSetDue }) {
         </div>
         {step.detail && !step.done && <div className="text-xs text-white/45 mt-0.5 leading-snug">{step.detail}</div>}
         {!step.done && <ResourceLinks resources={step.resources} />}
-        <div className="flex items-center flex-wrap gap-x-2">
+        <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5">
           {onSetDue && !step.done && <DueChip due={step.due} onSet={d => onSetDue(step.id, d)} />}
-          {step.done && step.due && (
-            <span className="mt-1.5 text-[10px] text-white/30">done</span>
+          {onHowTo && !step.done && (
+            <button onClick={() => onHowTo(step)}
+              className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-300 hover:text-emerald-200 transition-colors">
+              Show me how <ArrowUpRight className="w-3 h-3" />
+            </button>
           )}
         </div>
         {label && !step.done && (
@@ -135,7 +138,7 @@ function AddStepRow({ onAdd }) {
 
 // Plan card. variant 'chat' shows a Save button; 'page' shows checkboxes,
 // a progress bar, an "add your own step" row, and a completion celebration.
-export default function PlanCard({ plan, variant = 'chat', saved = false, onSave, onApply, onToggle, onDelete, onAddStep, onSetDue }) {
+export default function PlanCard({ plan, variant = 'chat', saved = false, onSave, onApply, onToggle, onDelete, onAddStep, onSetDue, onHowTo }) {
   const [saving, setSaving] = useState(false)
   const steps = plan.steps ?? []
   const doneCount = steps.filter(s => s.done).length
@@ -184,6 +187,7 @@ export default function PlanCard({ plan, variant = 'chat', saved = false, onSave
             step={step}
             onToggle={variant === 'page' ? onToggle : undefined}
             onSetDue={variant === 'page' ? onSetDue : undefined}
+            onHowTo={variant === 'page' ? onHowTo : undefined}
             onApply={onApply} />
         ))}
       </div>

@@ -197,6 +197,10 @@ export default function Plan() {
     if (data) setGoals(gs => [...gs, data])
   }
   const askAdvisor = (q) => navigate('/advisor', { state: { ask: q } })
+  // "Show me how" on a step → advisor builds a tailored, step-by-step guide
+  // (it already knows the user's numbers, so it can recommend amounts).
+  const howTo = (step) => askAdvisor(
+    `Walk me through exactly how to do this, step by step: "${step.text}". Give me the specific actions to take, and based on my situation tell me roughly how much I should aim to put in or contribute.`)
 
   const stepsLeft   = totalSteps - completedSteps
   const isComplete  = p => p.steps.length > 0 && p.steps.every(s => s.done)
@@ -270,6 +274,7 @@ export default function Plan() {
                     onApply={(step) => applyAndMark(plan.id, step)}
                     onAddStep={(text) => addStep(plan.id, text)}
                     onSetDue={(stepId, due) => setDue(plan.id, stepId, due)}
+                    onHowTo={howTo}
                     onDelete={() => removePlan(plan.id)} />
                 ))}
               </div>

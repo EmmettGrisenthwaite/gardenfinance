@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -23,6 +24,19 @@ export default function Layout({ children }) {
   // (no main padding): the garden dashboard and the advisor chat.
   const isGarden    = pathname === '/'
   const isImmersive = isGarden || pathname === '/advisor'
+
+  // Hide the floating nav while a text field is focused (mobile keyboard up) so
+  // it never covers an input's save button.
+  const [typing, setTyping] = useState(false)
+  useEffect(() => {
+    const isField = el => el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' ||
+      (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'range', 'file'].includes(el.type)))
+    const onIn  = e => { if (isField(e.target)) setTyping(true) }
+    const onOut = () => setTimeout(() => { if (!isField(document.activeElement)) setTyping(false) }, 0)
+    document.addEventListener('focusin', onIn)
+    document.addEventListener('focusout', onOut)
+    return () => { document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut) }
+  }, [])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -153,9 +167,10 @@ export default function Layout({ children }) {
         </div>
       </div>
 
-      {/* ── Mobile HUD: floating pill nav ── */}
+      {/* ── Mobile HUD: floating pill nav (hides while typing) ── */}
       <nav
-        className="md:hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50"
+        className={`md:hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ${
+          typing ? 'opacity-0 translate-y-8 pointer-events-none' : 'translate-y-0'}`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="flex items-center gap-0.5 bg-black/40 backdrop-blur-2xl rounded-2xl border border-white/[0.08] px-1.5 py-1.5"
