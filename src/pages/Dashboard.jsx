@@ -82,6 +82,13 @@ export default function Dashboard() {
     load().catch(() => setLoading(false))
   }, [user.id])
 
+  // After onboarding seeds account value, refetch so the stat isn't stale at $0.
+  useEffect(() => {
+    if (!profile?.onboarding_complete) return
+    supabase.from('accounts').select('balance').eq('user_id', user.id)
+      .then(({ data }) => setAccounts(data ?? []))
+  }, [profile?.onboarding_complete, user.id])
+
   // ── Milestone counts ──────────────────────────────────────────────────────────
   const completedSteps = plans.reduce((n, p) => n + p.steps.filter(s => s.done).length, 0)
   const totalSteps     = plans.reduce((n, p) => n + p.steps.length, 0)
