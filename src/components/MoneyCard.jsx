@@ -47,7 +47,7 @@ function EditableStat({ label, value, onSave, color = 'text-white', prefix = '$'
 // Compact "Your money" card — ingrained budget. Monthly income/expenses → surplus,
 // a single net-worth number, and a simple debts list. Feeds the advisor + the
 // garden's weather. Not a tab.
-export default function MoneyCard({ income, expenses, netWorth, debts = [], onSaveMoney, onAddDebt, onDeleteDebt }) {
+export default function MoneyCard({ income, expenses, netWorth, balance, debts = [], onSaveMoney, onSaveBalance, onAddDebt, onDeleteDebt }) {
   const surplus = Number(income || 0) - Number(expenses || 0)
   const totalDebt = debts.reduce((s, d) => s + Number(d.balance || 0), 0)
   const [addingDebt, setAddingDebt] = useState(false)
@@ -83,8 +83,10 @@ export default function MoneyCard({ income, expenses, netWorth, debts = [], onSa
         </div>
       </div>
 
-      {/* Net worth */}
-      <div className="px-4 pb-3 pt-1 border-t border-white/[0.06]">
+      {/* Account value · Net worth */}
+      <div className="grid grid-cols-2 gap-3 px-4 pb-3 pt-1 border-t border-white/[0.06]">
+        <EditableStat label="Account value" value={balance}
+          onSave={v => onSaveBalance(v)} color="text-emerald-200" />
         <EditableStat label="Net worth" value={netWorth}
           onSave={v => onSaveMoney({ net_worth: v })}
           color={Number(netWorth) >= 0 ? 'text-white' : 'text-rose-300'} />

@@ -20,6 +20,7 @@ export default function Plan() {
   const [goals,   setGoals]   = useState([])
   const [debts,   setDebts]   = useState([])
   const [money,   setMoney]   = useState({ income: 0, expenses: 0, netWorth: 0 })
+  const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal,   setModal]   = useState(null)   // null | 'new' | goal
   const [growth,  setGrowth]  = useState(null)   // garden-grew celebration
@@ -31,14 +32,16 @@ export default function Plan() {
 
   useEffect(() => {
     async function load() {
-      const [g, d, pl] = await Promise.all([
+      const [g, d, pl, ac] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id).order('created_at'),
         supabase.from('debts').select('*').eq('user_id', user.id),
         listPlans(user.id),
+        supabase.from('accounts').select('*').eq('user_id', user.id),
       ])
       setGoals(g.data ?? [])
       setDebts(d.data ?? [])
       setPlans(pl)
+      setAccounts(ac.data ?? [])
       setMoney({
         income:   Number(profile?.monthly_income)   || 0,
         expenses: Number(profile?.monthly_expenses) || 0,
@@ -140,6 +143,23 @@ export default function Plan() {
     const { data } = await supabase.from('profiles')
       .update(fields).eq('id', user.id).select().single()
     if (data) setProfile(data)   // keep advisor context fresh
+  }
+
+  // Account value = total cash/balances (stored in the accounts table, which the
+  // advisor also reads). Edited as one simple number; backed by a single row.
+  const accountValue = accounts.reduce((s, a) => s + Number(a.balance || 0), 0)
+  async function saveBalance(v) {
+    const val = Math.max(0, Number(v) || 0)
+    if (accounts.length > 0) {
+      const id = accounts[0].id
+      setAccounts(prev => prev.map((a, i) => i === 0 ? { ...a, balance: val } : a))
+      await supabase.from('accounts').update({ balance: val }).eq('id', id)
+    } else {
+      const { data } = await supabase.from('accounts')
+        .insert({ user_id: user.id, name: 'Savings & cash', type: 'savings', balance: val })
+        .select().single()
+      if (data) setAccounts([data])
+    }
   }
   async function addDebt(d) {
     const { data } = await supabase.from('debts').insert({ user_id: user.id, ...d }).select().single()
@@ -256,8 +276,9 @@ export default function Plan() {
           {/* ── Your money (ingrained budget) ── */}
           <section id="money" className="scroll-mt-16">
             <MoneyCard
-              income={money.income} expenses={money.expenses} netWorth={money.netWorth} debts={debts}
-              onSaveMoney={saveMoney} onAddDebt={addDebt} onDeleteDebt={deleteDebt} />
+              income={money.income} expenses={money.expenses} netWorth={money.netWorth}
+              balance={accountValue} debts={debts}
+              onSaveMoney={saveMoney} onSaveBalance={saveBalance} onAddDebt={addDebt} onDeleteDebt={deleteDebt} />
           </section>
 
           {/* ── Goals ── */}

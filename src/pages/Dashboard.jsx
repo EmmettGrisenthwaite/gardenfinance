@@ -58,6 +58,7 @@ export default function Dashboard() {
   const [plans,   setPlans]   = useState([])
   const [goals,   setGoals]   = useState([])
   const [debts,   setDebts]   = useState([])
+  const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [growth,  setGrowth]  = useState(null)
@@ -66,14 +67,16 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function load() {
-      const [g, d, pl] = await Promise.all([
+      const [g, d, pl, ac] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
         listPlans(user.id),
+        supabase.from('accounts').select('balance').eq('user_id', user.id),
       ])
       setGoals(g.data ?? [])
       setDebts(d.data ?? [])
       setPlans(pl)
+      setAccounts(ac.data ?? [])
       setLoading(false)
     }
     load().catch(() => setLoading(false))
@@ -89,6 +92,8 @@ export default function Dashboard() {
   const expenses       = Number(profile?.monthly_expenses) || 0
   const surplusRatio   = income > 0 ? (income - expenses) / income : 0
   const netWorth       = Number(profile?.net_worth) || 0
+  const accountValue   = accounts.reduce((s, a) => s + Number(a.balance || 0), 0)
+  const fmt$           = (n) => `${n < 0 ? '-' : ''}$${Math.abs(Math.round(n)).toLocaleString()}`
 
   // Keep the garden in sync with live state.
   useEffect(() => {
@@ -124,6 +129,20 @@ export default function Dashboard() {
       {/* ── Top: greeting + a single focused nudge ── */}
       <div className="max-w-xl mx-auto w-full px-4 pt-1 pb-2 space-y-2.5 flex-shrink-0">
         <h1 className="font-display text-[22px] font-medium text-white drop-shadow-lg leading-tight">{greeting}, {name}</h1>
+
+        {/* Account value + net worth — tap to edit in the Plan */}
+        {!loading && (
+          <Link to="/plan#money" className="grid grid-cols-2 gap-2.5 group">
+            <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] px-3 py-2 group-hover:bg-white/[0.08] transition-colors">
+              <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide">Account value</div>
+              <div className="text-base font-bold tabular-nums text-emerald-200 leading-tight">{fmt$(accountValue)}</div>
+            </div>
+            <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] px-3 py-2 group-hover:bg-white/[0.08] transition-colors">
+              <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide">Net worth</div>
+              <div className={`text-base font-bold tabular-nums leading-tight ${netWorth >= 0 ? 'text-white' : 'text-rose-300'}`}>{fmt$(netWorth)}</div>
+            </div>
+          </Link>
+        )}
 
         {/* Finish profile (powers the advisor) */}
         {profileIncomplete && !loading && (
