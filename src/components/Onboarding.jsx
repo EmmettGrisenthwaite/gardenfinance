@@ -101,24 +101,19 @@ const STEPS = [
 function PreviewStep() {
   const features = [
     {
-      emoji: '🌱',
-      title: 'Your garden grows with you',
-      desc: 'A living 3D garden that reflects your financial health in real time — lush when things are good, stormy when they need attention.',
-    },
-    {
       emoji: '🤖',
-      title: 'An advisor who knows your numbers',
-      desc: 'Not generic tips. Real advice built around your actual income, goals, and debt — powered by Claude AI.',
+      title: 'Ask your advisor',
+      desc: 'Real advice built around your actual money, goals, and debt — powered by Claude AI. It turns guidance into a plan you can follow.',
     },
     {
-      emoji: '📈',
-      title: 'Net worth tracking, automatically',
-      desc: 'Your wealth is charted every day. Watch the line go up as your habits improve.',
+      emoji: '✅',
+      title: 'Build your plan',
+      desc: 'One tap adds the advisor’s steps to your plan. Open a Roth IRA, build an emergency fund — concrete, checkable steps.',
     },
     {
-      emoji: '🎯',
-      title: 'Goals, debt, and budget — unified',
-      desc: 'Everything in one place. Set goals, model debt payoff strategies, and see exactly where your money goes.',
+      emoji: '🌱',
+      title: 'Grow your garden',
+      desc: 'Every step you check off makes your living 3D garden grow — from barren to flourishing. Your progress, visualized.',
     },
   ]
 

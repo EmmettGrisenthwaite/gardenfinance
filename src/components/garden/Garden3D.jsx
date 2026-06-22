@@ -1492,8 +1492,8 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal, onZone })
           plots); back banners float over the rim behind the gardens. */}
       <ZoneLabel position={[-2.7, 0.45,  6.95]} label="Savings"     icon="🌱" accent="rgba(134,239,172,0.65)" tier={savingsTier}        to="/plan#goals" onZone={onZone} />
       <ZoneLabel position={[ 2.7, 0.45,  6.95]} label="Investments" icon="📈" accent="rgba(251,191,36,0.65)"  tier={investTier}         to="/plan#goals" onZone={onZone} />
-      <ZoneLabel position={[-2.9, 1.10, -6.95]} label="Emergency"   icon="🛟" accent="rgba(125,211,252,0.65)" tier={emergencyFill * 4}  to="/accounts" onZone={onZone} />
-      <ZoneLabel position={[ 2.9, 1.10, -6.95]} label="Debt"        icon="💳" accent="rgba(248,180,180,0.65)" tier={(1 - debtLevel) * 4} to="/budget#debt" onZone={onZone} />
+      <ZoneLabel position={[-2.9, 1.10, -6.95]} label="Emergency"   icon="🛟" accent="rgba(125,211,252,0.65)" tier={emergencyFill * 4}  to="/plan" onZone={onZone} />
+      <ZoneLabel position={[ 2.9, 1.10, -6.95]} label="Debt"        icon="💳" accent="rgba(248,180,180,0.65)" tier={(1 - debtLevel) * 4} to="/plan#money" onZone={onZone} />
 
       {/* Back-left: Emergency fund — one tidy compound that plants up with your buffer */}
       <QuadrantGarden position={[-3.4, 0.95, -3.95]} growth={emergencyFill}
@@ -1612,7 +1612,9 @@ function Scene({ goals, debts, stage, weather, onSelectGoal, onAddGoal, onZone }
         </>
       )}
       {hasDeficit && <RainSystem severity={deficitSeverity} />}
-      <EffectComposer multisampling={4}>
+      {/* multisampling=0 — multisampled render targets flicker on mobile GLES
+          (iOS Safari especially); the Canvas keeps antialias for edges */}
+      <EffectComposer multisampling={0}>
         <Bloom intensity={0.42} luminanceThreshold={0.60} luminanceSmoothing={0.85} mipmapBlur radius={0.66} />
         {/* Hay Day "candy" grade — lush saturation + gentle contrast */}
         <HueSaturation saturation={TOD.isNight ? 0.05 : 0.18} />

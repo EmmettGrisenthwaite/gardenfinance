@@ -1,26 +1,18 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Sprout, LayoutDashboard, Target, DollarSign, Bot, LogOut, Wallet } from 'lucide-react'
+import { Sprout, LayoutDashboard, Target, Bot, LogOut } from 'lucide-react'
 import Onboarding from '@/components/Onboarding'
 
-// Plan holds goals + retirement + steps; Budget holds income, expenses + debt.
+// Three focused tabs. The Plan holds steps + the ingrained money card + goals;
+// budget lives there, not as its own tab. Advisor builds the plan; the garden
+// grows as you check steps off.
 const NAV_ITEMS = [
   { to: '/',        label: 'Garden',  icon: LayoutDashboard },
-  { to: '/plan',    label: 'Plan',    icon: Target },
-  { to: '/budget',  label: 'Budget',  icon: DollarSign },
-  { to: '/accounts',label: 'Accounts',icon: Wallet },
   { to: '/advisor', label: 'Advisor', icon: Bot },
-]
-
-// Bottom HUD shows 5 items (Debt is reachable via its garden zone)
-const HUD_ITEMS = [
-  { to: '/',        label: 'Garden',  icon: LayoutDashboard },
   { to: '/plan',    label: 'Plan',    icon: Target },
-  { to: '/advisor', label: 'Advisor', icon: Bot },
-  { to: '/budget',  label: 'Budget',  icon: DollarSign },
-  { to: '/accounts',label: 'Accounts',icon: Wallet },
 ]
+const HUD_ITEMS = NAV_ITEMS
 
 export default function Layout({ children }) {
   const { user, profile, loading } = useAuth()

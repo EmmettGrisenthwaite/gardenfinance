@@ -1,4 +1,3 @@
-import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { GardenProvider } from '@/context/GardenContext'
@@ -7,11 +6,8 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 import Layout from '@/components/Layout'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
-import Budget from '@/pages/Budget'
 import AIAdvisor from '@/pages/AIAdvisor'
-import Accounts from '@/pages/Accounts'
 import Plan from '@/pages/Plan'
-const GardenPreview = lazy(() => import('@/pages/GardenPreview'))
 import { Sprout, Compass } from 'lucide-react'
 
 function AppLoader() {
@@ -81,17 +77,15 @@ export default function App() {
         <GardenProvider>
           <BrowserRouter>
             <Routes>
-              {import.meta.env.DEV && (
-                <Route path="/garden-preview" element={<Suspense fallback={null}><GardenPreview /></Suspense>} />
-              )}
               <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
               <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-              <Route path="/budget" element={<ProtectedRoute><Budget /></ProtectedRoute>} />
-              <Route path="/goals" element={<Navigate to="/plan" replace />} />
-              <Route path="/debt" element={<Navigate to="/budget" replace />} />
-              <Route path="/accounts" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
               <Route path="/advisor" element={<ProtectedRoute><AIAdvisor /></ProtectedRoute>} />
               <Route path="/plan" element={<ProtectedRoute><Plan /></ProtectedRoute>} />
+              {/* Streamlined: budget/debt/accounts/goals all live on the Plan now */}
+              <Route path="/budget"   element={<Navigate to="/plan#money" replace />} />
+              <Route path="/debt"     element={<Navigate to="/plan#money" replace />} />
+              <Route path="/accounts" element={<Navigate to="/plan#money" replace />} />
+              <Route path="/goals"    element={<Navigate to="/plan#goals" replace />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

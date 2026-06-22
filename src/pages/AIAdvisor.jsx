@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { computeScores } from '@/lib/gardenUtils'
 import { callClaude, requestPlan, requestGuide, suggestGoal, chatConfigured } from '@/lib/claude'
 import { savePlan, applyStep, addGoal, normalizeSteps, listPlans } from '@/lib/advisorPlans'
-import { loadRetirement, deriveDefaults, computeRetirement } from '@/lib/retirement'
 import PlanCard from '@/components/PlanCard'
 import GuideCard from '@/components/GuideCard'
 import GoalSuggestionCard from '@/components/GoalSuggestionCard'
@@ -171,89 +170,28 @@ RESPONSE FORMAT RULES
 - Be encouraging. Never shame. Frame everything as "here's the opportunity" not "here's what you did wrong."`
 }
 
-const STAGE_NAMES = ['Barren', 'Sprouting', 'Greening', 'Growing', 'Thriving', 'Flourishing']
-const stageOf = (s) => s >= 90 ? 5 : s >= 70 ? 4 : s >= 50 ? 3 : s >= 30 ? 2 : s >= 12 ? 1 : 0
+function buildContext(money, goals, debts, profile, extras = {}) {
+  const { income = 0, expenses = 0, netWorth = 0 } = money
+  const net = income - expenses
+  const totalDebt = debts.reduce((s, d) => s + Number(d.balance || 0), 0)
 
-function buildContext(scores, goals, debts, budgets, accounts, profile, extras = {}) {
-  const { totalScore, budgetScore, goalsScore, debtScore, recurringIncome, recurringExpenses, surplusRatio } = scores
-  const net = recurringIncome - recurringExpenses
-
-  if (recurringIncome === 0 && goals.length === 0 && debts.length === 0 && accounts.length === 0) {
-    return 'The user has not added any financial data yet. Encourage them to add their income and expenses in the Budget tab, their savings goals in the Goals tab, their debts in the Debt tab, and their account balances in the Accounts tab. The more data they add, the more specific your advice can be.'
+  if (income === 0 && expenses === 0 && goals.length === 0 && debts.length === 0 && !netWorth) {
+    return 'The user has not added any financial data yet. Encourage them to fill in their monthly income, expenses, and net worth in the "Your money" card on the Plan tab, set a savings goal, and — most valuably — ask you to build them an action plan. Their garden grows as they complete plan steps.'
   }
 
+  let ctx = ''
+
+  // ── Money snapshot (from the "Your money" card on the Plan tab) ─────────────
   const surplus = net >= 0 ? `+$${net.toLocaleString()} surplus` : `-$${Math.abs(net).toLocaleString()} DEFICIT`
-  let ctx = `GARDEN HEALTH: ${totalScore}/100 (Budget ${Math.round(budgetScore)}/33 · Goals ${Math.round(goalsScore)}/34 · Debt ${Math.round(debtScore)}/33)\n\n`
-  ctx += `MONTHLY CASH FLOW:\n`
-  ctx += `  Recurring income:   $${recurringIncome.toLocaleString()}/month\n`
-  ctx += `  Recurring expenses: $${recurringExpenses.toLocaleString()}/month\n`
-  ctx += `  Net: ${surplus} (${Math.round(surplusRatio * 100)}% of income)\n\n`
-
-  // ── Accounts ──────────────────────────────────────────────────────────────
-  if (accounts.length > 0) {
-    const totalAssets = accounts.reduce((s, a) => s + Number(a.balance), 0)
-    const totalDebtAmt = debts.reduce((s, d) => s + Number(d.balance), 0)
-    const netWorth = totalAssets - totalDebtAmt
-
-    const cashAccounts       = accounts.filter(a => ['checking','savings','emergency','money_market'].includes(a.type))
-    const retirementAccounts = accounts.filter(a => ['roth_ira','trad_ira','401k','403b','hsa','pension'].includes(a.type))
-    const investAccounts     = accounts.filter(a => ['brokerage','crypto'].includes(a.type))
-    const otherAccounts      = accounts.filter(a => a.type === 'other')
-
-    const totalLiquid     = cashAccounts.reduce((s, a) => s + Number(a.balance), 0)
-    const totalRetirement = retirementAccounts.reduce((s, a) => s + Number(a.balance), 0)
-
-    ctx += `ACCOUNT BALANCES:\n`
-
-    if (cashAccounts.length > 0) {
-      ctx += `  Cash & Savings ($${totalLiquid.toLocaleString()} total):\n`
-      cashAccounts.forEach(a => {
-        ctx += `    • ${a.name}${a.institution ? ` (${a.institution})` : ''}: $${Number(a.balance).toLocaleString()}\n`
-      })
-    }
-    if (retirementAccounts.length > 0) {
-      ctx += `  Retirement ($${totalRetirement.toLocaleString()} total):\n`
-      retirementAccounts.forEach(a => {
-        ctx += `    • ${a.name}${a.institution ? ` (${a.institution})` : ''}: $${Number(a.balance).toLocaleString()}\n`
-      })
-    }
-    if (investAccounts.length > 0) {
-      const totalInvest = investAccounts.reduce((s, a) => s + Number(a.balance), 0)
-      ctx += `  Investments ($${totalInvest.toLocaleString()} total):\n`
-      investAccounts.forEach(a => {
-        ctx += `    • ${a.name}${a.institution ? ` (${a.institution})` : ''}: $${Number(a.balance).toLocaleString()}\n`
-      })
-    }
-    if (otherAccounts.length > 0) {
-      otherAccounts.forEach(a => {
-        ctx += `  • ${a.name}: $${Number(a.balance).toLocaleString()}\n`
-      })
-    }
-
-    ctx += `  Total assets: $${totalAssets.toLocaleString()}\n`
-    ctx += `  Net worth: ${netWorth >= 0 ? '+' : '-'}$${Math.abs(netWorth).toLocaleString()} (assets $${totalAssets.toLocaleString()} − debt $${totalDebtAmt.toLocaleString()})\n`
-
-    if (recurringExpenses > 0) {
-      const monthsCovered = totalLiquid / recurringExpenses
-      const targetMonths  = 3
-      const targetAmt     = recurringExpenses * targetMonths
-      if (monthsCovered < targetMonths) {
-        ctx += `  ⚠️ Emergency fund: ${monthsCovered.toFixed(1)} months covered ($${totalLiquid.toLocaleString()} liquid ÷ $${recurringExpenses.toLocaleString()}/mo expenses). Target: 3–6 months ($${targetAmt.toLocaleString()}–$${(recurringExpenses * 6).toLocaleString()}).\n`
-      } else {
-        ctx += `  ✓ Emergency fund: ${monthsCovered.toFixed(1)} months covered — meets the 3-month minimum.\n`
-      }
-    }
-
-    if (retirementAccounts.length === 0) {
-      ctx += `  ⚠️ No retirement accounts found — this is a key gap to address.\n`
-    } else {
-      ctx += `  ✓ Has retirement accounts — good foundation.\n`
-    }
-
-    ctx += '\n'
-  } else {
-    ctx += 'ACCOUNT BALANCES: Not yet added (ask the user to add their checking, savings, and retirement account balances in the Accounts tab for better advice)\n\n'
+  ctx += `MONTHLY MONEY:\n`
+  ctx += `  Income:   $${income.toLocaleString()}/mo\n`
+  ctx += `  Expenses: $${expenses.toLocaleString()}/mo\n`
+  ctx += `  Net: ${surplus}${income > 0 ? ` (${Math.round((net / income) * 100)}% of income)` : ''}\n`
+  ctx += `  Net worth: ${netWorth >= 0 ? '+' : '-'}$${Math.abs(netWorth).toLocaleString()}\n`
+  if (income > 0 && expenses > 0) {
+    ctx += `  (Spending is ${Math.round((expenses / income) * 100)}% of income — target ≤80%, leaving ≥20% for savings/debt.)\n`
   }
+  ctx += '\n'
 
   // ── Goals ─────────────────────────────────────────────────────────────────
   if (goals.length > 0) {
@@ -269,12 +207,13 @@ function buildContext(scores, goals, debts, budgets, accounts, profile, extras =
 
   // ── Debts ─────────────────────────────────────────────────────────────────
   if (debts.length > 0) {
-    const totalDebt = debts.reduce((s, d) => s + Number(d.balance), 0)
-    ctx += `DEBTS ($${totalDebt.toLocaleString()} total — sorted highest to lowest APR):\n`
-    ;[...debts].sort((a, b) => Number(b.interest_rate) - Number(a.interest_rate)).forEach(d => {
-      const urgency = Number(d.interest_rate) > 10 ? ' ⚠️ HIGH INTEREST' : Number(d.interest_rate) > 6 ? ' (moderate)' : ' (low rate)'
-      ctx += `  • ${d.name}: $${Number(d.balance).toLocaleString()} at ${d.interest_rate}% APR${urgency}`
-      if (d.minimum_payment) ctx += `, min $${Number(d.minimum_payment).toLocaleString()}/mo`
+    ctx += `DEBTS ($${totalDebt.toLocaleString()} total${debts.some(d => d.interest_rate) ? ' — sorted highest to lowest APR' : ''}):\n`
+    ;[...debts].sort((a, b) => Number(b.interest_rate || 0) - Number(a.interest_rate || 0)).forEach(d => {
+      ctx += `  • ${d.name}: $${Number(d.balance).toLocaleString()}`
+      if (d.interest_rate) {
+        const urgency = Number(d.interest_rate) > 10 ? ' ⚠️ HIGH INTEREST' : Number(d.interest_rate) > 6 ? ' (moderate)' : ' (low rate)'
+        ctx += ` at ${d.interest_rate}% APR${urgency}`
+      }
       ctx += '\n'
     })
     ctx += '\n'
@@ -282,44 +221,18 @@ function buildContext(scores, goals, debts, budgets, accounts, profile, extras =
     ctx += 'DEBTS: None tracked\n\n'
   }
 
-  // ── Expense breakdown ──────────────────────────────────────────────────────
-  const expensesByCategory = {}
-  budgets.filter(b => b.recurring !== false && b.type === 'expense').forEach(b => {
-    expensesByCategory[b.category || 'Other'] = (expensesByCategory[b.category || 'Other'] ?? 0) + Number(b.amount)
-  })
-  if (Object.keys(expensesByCategory).length > 0) {
-    ctx += 'EXPENSE BREAKDOWN (recurring):\n'
-    Object.entries(expensesByCategory).sort((a, b) => b[1] - a[1]).forEach(([cat, amt]) => {
-      const pct = recurringIncome > 0 ? Math.round((amt / recurringIncome) * 100) : 0
-      ctx += `  • ${cat}: $${amt.toLocaleString()}/mo (${pct}% of income)\n`
-    })
-    ctx += '\n'
-    if (recurringIncome > 0) {
-      ctx += `NOTE: Total expenses are ${Math.round((recurringExpenses / recurringIncome) * 100)}% of income. Target is ≤80% (leaving 20% for savings/debt payoff).\n`
-    }
-  }
-
-  // ── Cross-feature state: retirement projection + saved plan ────────────────
-  // So the advisor speaks to the whole app, not just raw numbers.
-  ctx += `GARDEN STAGE: ${stageOf(totalScore)}/5 (${STAGE_NAMES[stageOf(totalScore)]}) — the app shows their finances as a living garden; better habits grow it.\n`
-  if (extras.retirement) {
-    const r = extras.retirement
-    ctx += `RETIREMENT PLAN: ${Math.round(r.onTrack * 100)}% on track — projected $${r.projected.toLocaleString()} by retirement vs a $${r.target.toLocaleString()} target (4% rule).`
-    ctx += r.onTrack >= 1 ? ' On track.\n' : ` Behind by ~$${r.monthlyGap.toLocaleString()}/mo.\n`
-  } else {
-    ctx += `RETIREMENT PLAN: Not set up yet — the Plan tab has an interactive Retirement Planner; suggest it when relevant.\n`
-  }
+  // ── Their plan — the heart of the app (garden grows as steps complete) ─────
   if (extras.plans?.length) {
-    ctx += `SAVED ACTION PLAN (on the Plan tab — reference it and build on it, don't duplicate):\n`
+    ctx += `THEIR PLAN (the user's checklist — their garden grows as they check steps off; reference it, acknowledge progress, build on it — don't duplicate):\n`
     extras.plans.forEach(p => {
       const done = p.steps.filter(s => s.done).length
       const pending = p.steps.filter(s => !s.done).map(s => s.text).slice(0, 4)
-      ctx += `  • "${p.title}" — ${done}/${p.steps.length} done${pending.length ? `. Pending: ${pending.join('; ')}` : ' (complete)'}\n`
+      ctx += `  • "${p.title}" — ${done}/${p.steps.length} done${pending.length ? `. Next: ${pending.join('; ')}` : ' ✓ complete!'}\n`
     })
+    ctx += `When you give actionable advice, OFFER TO ADD IT TO THEIR PLAN — that is the single most valued action in this app.\n\n`
   } else {
-    ctx += `SAVED ACTION PLAN: None yet — you can offer to build one (the "Build action plan" button saves a checklist to their Plan tab).\n`
+    ctx += `THEIR PLAN: empty. Your most valuable move is to build them a short, concrete action plan — the "Build action plan" button saves a checklist to their Plan, and checking steps off grows their garden. Offer this early.\n\n`
   }
-  ctx += '\n'
 
   // ── Profile (prepended at top) ─────────────────────────────────────────────
   if (profile) {
@@ -443,11 +356,12 @@ function MessageBubble({ msg }) {
 }
 
 // ─── Snapshot bar ──────────────────────────────────────────────────────────────
-function Snapshot({ scores, goals, debts, open, onToggle }) {
-  const { totalScore, recurringIncome, recurringExpenses, budgetScore, goalsScore, debtScore } = scores
-  const net = recurringIncome - recurringExpenses
+function Snapshot({ money, goals, debts, plans, open, onToggle }) {
+  const net = (money.income || 0) - (money.expenses || 0)
   const totalDebt  = debts.reduce((s, d) => s + Number(d.balance), 0)
   const totalSaved = goals.reduce((s, g) => s + Number(g.current_amount), 0)
+  const allSteps   = plans.flatMap(p => p.steps)
+  const doneSteps  = allSteps.filter(s => s.done).length
 
   return (
     <div className="border-b border-white/10 bg-emerald-500/[0.07]">
@@ -455,7 +369,7 @@ function Snapshot({ scores, goals, debts, open, onToggle }) {
         className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-emerald-200 hover:bg-white/5 transition-colors">
         <span className="flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
-          What your advisor can see · Health score {totalScore}/100
+          What your advisor can see · {allSteps.length ? `${doneSteps}/${allSteps.length} plan steps done` : 'your money, goals & plan'}
         </span>
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
@@ -466,9 +380,9 @@ function Snapshot({ scores, goals, debts, open, onToggle }) {
             <div className="px-4 pb-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
               {[
                 { label: 'Monthly net',  value: `${net >= 0 ? '+' : ''}$${net.toLocaleString()}`,  color: net >= 0 ? 'text-emerald-300' : 'text-rose-300' },
-                { label: 'Total saved',  value: `$${totalSaved.toLocaleString()}`,  color: 'text-sky-300' },
+                { label: 'Net worth',    value: `${money.netWorth >= 0 ? '' : '-'}$${Math.abs(money.netWorth || 0).toLocaleString()}`, color: 'text-sky-300' },
                 { label: 'Total debt',   value: `$${totalDebt.toLocaleString()}`,   color: totalDebt > 0 ? 'text-rose-300' : 'text-emerald-300' },
-                { label: 'Score split',  value: `B${Math.round(budgetScore)} · G${Math.round(goalsScore)} · D${Math.round(debtScore)}`, color: 'text-white/80' },
+                { label: 'Saved in goals', value: `$${totalSaved.toLocaleString()}`, color: 'text-emerald-300' },
               ].map(({ label, value, color }) => (
                 <div key={label} className="bg-white/[0.07] rounded-lg p-2.5 border border-white/10">
                   <div className="text-white/40 mb-0.5">{label}</div>
@@ -494,8 +408,8 @@ function WelcomeScreen({ hasData, onAnalyze, onSuggest, analyzing, onBuildPlan, 
       <h2 className="font-display text-[20px] font-medium text-white mb-2">Your personal financial advisor</h2>
       <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed mb-6">
         {hasData
-          ? "I've looked at your numbers. Want me to tell you exactly where you stand and what to do next?"
-          : "Add your budget, goals, and debts first — then I can give you advice that's actually about you, not generic tips."}
+          ? "I've looked at your numbers. Want me to tell you exactly where you stand and build you a plan?"
+          : "Ask me anything — and I'll build you a plan you can check off to grow your garden. Add your money & goals on the Plan tab for advice that's about you."}
       </p>
 
       {hasData && (
@@ -547,6 +461,7 @@ function WelcomeScreen({ hasData, onAnalyze, onSuggest, analyzing, onBuildPlan, 
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export default function AIAdvisor() {
   const { user, profile } = useAuth()
+  const location = useLocation()
   const STORAGE_KEY = `advisor-chat-${user.id}`
 
   // Init from localStorage immediately (no flicker), then sync from Supabase
@@ -558,10 +473,7 @@ export default function AIAdvisor() {
   const [analyzing, setAnalyzing]       = useState(false)
   const [historyLoading, setHistoryLoading] = useState(true)
   const [goals,    setGoals]            = useState([])
-  const [budgets,  setBudgets]          = useState([])
   const [debts,    setDebts]            = useState([])
-  const [accounts, setAccounts]         = useState([])
-  const [retire,   setRetire]           = useState(null)
   const [plans,    setPlans]            = useState([])
   const [snapshotOpen, setSnapshotOpen] = useState(false)
   const [error, setError]               = useState(null)
@@ -578,20 +490,14 @@ export default function AIAdvisor() {
 
   useEffect(() => {
     async function load() {
-      const [g, b, d, a, conv, ret, pl] = await Promise.all([
+      const [g, d, conv, pl] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id),
-        supabase.from('budgets').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
-        supabase.from('accounts').select('*').eq('user_id', user.id),
         supabase.from('conversations').select('messages').eq('user_id', user.id).single(),
-        loadRetirement(user.id),
         listPlans(user.id),
       ])
       setGoals(g.data ?? [])
-      setBudgets(b.data ?? [])
       setDebts(d.data ?? [])
-      setAccounts(a.data ?? [])
-      setRetire(ret)
       setPlans(pl ?? [])
 
       // Merge Supabase history: use whichever has more messages
@@ -606,6 +512,15 @@ export default function AIAdvisor() {
     }
     load()
   }, [user.id])
+
+  // A Plan "Smart next step" can route here with a pre-filled question — auto-ask it.
+  useEffect(() => {
+    const ask = location.state?.ask
+    if (!ask || historyLoading) return
+    window.history.replaceState({}, '')   // consume so it doesn't re-fire on re-render
+    send(ask)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyLoading, location.state])
 
   // Persist to localStorage + Supabase when messages settle (not mid-stream)
   useEffect(() => {
@@ -633,25 +548,20 @@ export default function AIAdvisor() {
     setAtBottom(distFromBottom < 80)
   }, [])
 
-  const scores = useMemo(() => computeScores(budgets, goals, debts, accounts), [budgets, goals, debts, accounts])
-
-  // Cross-feature extras so the advisor knows the user's whole picture.
-  const extras = useMemo(() => {
-    const defaults = deriveDefaults({ accounts, goals, budgets, profile })
-    const inputs   = { ...defaults, ...(retire?.settings ?? {}) }
-    const r        = computeRetirement(inputs)
-    // Only treat retirement as "set up" once they have some investment savings or saved settings
-    const hasRet = (retire?.settings && Object.keys(retire.settings).length > 0) || inputs.currentSaved > 0
-    return { retirement: hasRet ? r : null, plans }
-  }, [accounts, goals, budgets, profile, retire, plans])
+  // The "Your money" snapshot lives on the profile (edited in the Plan's money card).
+  const money = useMemo(() => ({
+    income:   Number(profile?.monthly_income)   || 0,
+    expenses: Number(profile?.monthly_expenses) || 0,
+    netWorth: Number(profile?.net_worth)         || 0,
+  }), [profile])
 
   const systemPrompt = useMemo(
-    () => buildSystemPrompt(buildContext(scores, goals, debts, budgets, accounts, profile, extras)),
-    [scores, goals, debts, budgets, accounts, profile, extras]
+    () => buildSystemPrompt(buildContext(money, goals, debts, profile, { plans })),
+    [money, goals, debts, profile, plans]
   )
 
   const noKey  = !chatConfigured
-  const hasData = goals.length > 0 || budgets.length > 0 || debts.length > 0 || accounts.length > 0
+  const hasData = goals.length > 0 || debts.length > 0 || plans.length > 0 || money.income > 0 || money.expenses > 0 || money.netWorth !== 0
 
   async function send(text, opts = {}) {
     if (!text.trim() || loading || noKey) return
@@ -787,7 +697,7 @@ export default function AIAdvisor() {
 
       {/* Snapshot */}
       <div className="flex-shrink-0 max-w-3xl w-full mx-auto">
-        <Snapshot scores={scores} goals={goals} debts={debts}
+        <Snapshot money={money} goals={goals} debts={debts} plans={plans}
           open={snapshotOpen} onToggle={() => setSnapshotOpen(o => !o)} />
       </div>
 
