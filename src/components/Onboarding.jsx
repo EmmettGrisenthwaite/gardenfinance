@@ -81,6 +81,12 @@ const STEPS = [
     ],
   },
   {
+    id: 'money',
+    question: 'Now the numbers — rough is fine.',
+    sub: 'This powers your dashboard and lets your advisor give advice about the real you. You can change it anytime.',
+    type: 'money',
+  },
+  {
     id: 'goal',
     question: "What's your #1 financial priority right now?",
     sub: "Your advisor will focus around this — you can change it anytime.",
@@ -182,6 +188,9 @@ export default function Onboarding({ onClose }) {
     investment_types: profile?.investment_types ?? [],
     health_insurance: profile?.health_insurance ?? '',
     primary_goal:     profile?.primary_goal    ?? '',
+    monthly_income:   profile?.monthly_income   ? String(profile.monthly_income)   : '',
+    monthly_expenses: profile?.monthly_expenses ? String(profile.monthly_expenses) : '',
+    balance:          '',
   })
 
   const current = STEPS[step]
@@ -205,6 +214,7 @@ export default function Onboarding({ onClose }) {
     if (current.type === 'preview') return true
     if (current.type === 'intro')   return true
     if (current.type === 'age')     return answers.age && Number(answers.age) > 0 && Number(answers.age) < 120
+    if (current.type === 'money')   return true   // all optional — rough or skip
     if (current.type === 'multi')   return answers[current.field]?.length > 0
     return !!answers[current.field]
   }
@@ -226,6 +236,8 @@ export default function Onboarding({ onClose }) {
       investment_types: answers.investment_types,
       health_insurance: answers.health_insurance,
       primary_goal:     answers.primary_goal,
+      monthly_income:   Number(answers.monthly_income)   || 0,
+      monthly_expenses: Number(answers.monthly_expenses) || 0,
       onboarding_complete: true,
     }
     const { data } = await supabase
@@ -234,6 +246,13 @@ export default function Onboarding({ onClose }) {
       .select()
       .single()
     setProfile(data)
+    // Seed account value (stored in the accounts table the rest of the app reads).
+    const bal = Number(answers.balance) || 0
+    if (bal > 0) {
+      await supabase.from('accounts')
+        .insert({ user_id: user.id, name: 'Savings & cash', type: 'savings', balance: bal })
+        .then(() => {}, () => {})
+    }
     setSaving(false)
     onClose?.()
   }
@@ -348,6 +367,32 @@ export default function Onboarding({ onClose }) {
                 </div>
               )}
 
+              {/* Money inputs */}
+              {current.type === 'money' && (
+                <div className="space-y-3">
+                  {[
+                    { field: 'monthly_income',   label: 'Monthly income',     hint: 'after tax', auto: true },
+                    { field: 'monthly_expenses', label: 'Monthly expenses',   hint: 'rent, food, bills…' },
+                    { field: 'balance',          label: 'Total in your accounts', hint: 'cash + savings' },
+                  ].map(({ field, label, hint, auto }) => (
+                    <label key={field} className="block">
+                      <span className="text-sm font-medium text-white/80">{label}</span>
+                      <span className="text-xs text-white/40 ml-1.5">{hint}</span>
+                      <div className="mt-1 flex items-center bg-white/[0.05] border-2 border-white/15 rounded-xl px-3 py-2.5 focus-within:border-emerald-500 transition-colors">
+                        <span className="text-white/40 text-lg mr-1">$</span>
+                        <input type="number" inputMode="decimal" min="0" step="50"
+                          autoFocus={auto}
+                          value={answers[field]}
+                          onChange={e => set(field, e.target.value)}
+                          placeholder="0"
+                          className="w-full bg-transparent text-lg font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                      </div>
+                    </label>
+                  ))}
+                  <p className="text-[11px] text-white/35">Estimates are fine — you can fine-tune these in your Plan later.</p>
+                </div>
+              )}
+
               {/* Single select */}
               {current.type === 'single' && (
                 <div className="space-y-2">
@@ -394,7 +439,7 @@ export default function Onboarding({ onClose }) {
           </div>
 
           {/* Show Next/Finish for non-auto-advance steps */}
-          {(current.type === 'preview' || current.type === 'intro' || current.type === 'age' || current.type === 'multi') && (
+          {(current.type === 'preview' || current.type === 'intro' || current.type === 'age' || current.type === 'multi' || current.type === 'money') && (
             isLast ? (
               <button onClick={finish} disabled={!canAdvance() || saving}
                 className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30">
