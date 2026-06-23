@@ -147,20 +147,22 @@ export default function Plan() {
     if (data) setProfile(data)   // keep advisor context fresh
   }
 
-  // Account value = total cash/balances (stored in the accounts table, which the
-  // advisor also reads). Edited as one simple number; backed by a single row.
-  const accountValue = accounts.reduce((s, a) => s + Number(a.balance || 0), 0)
-  async function saveBalance(v) {
+  // Balances by type (stored in the accounts table the advisor reads). One
+  // canonical row per type, so editing is a single clean number each.
+  const balanceOf = (t) => Number(accounts.find(a => a.type === t)?.balance) || 0
+  const balances = { checking: balanceOf('checking'), savings: balanceOf('savings'), brokerage: balanceOf('brokerage') }
+  async function saveTypeBalance(type, v) {
     const val = Math.max(0, Number(v) || 0)
-    if (accounts.length > 0) {
-      const id = accounts[0].id
-      setAccounts(prev => prev.map((a, i) => i === 0 ? { ...a, balance: val } : a))
-      await supabase.from('accounts').update({ balance: val }).eq('id', id)
+    const existing = accounts.find(a => a.type === type)
+    if (existing) {
+      setAccounts(prev => prev.map(a => a.id === existing.id ? { ...a, balance: val } : a))
+      await supabase.from('accounts').update({ balance: val }).eq('id', existing.id)
     } else {
+      const names = { checking: 'Checking', savings: 'Savings', brokerage: 'Investments' }
       const { data } = await supabase.from('accounts')
-        .insert({ user_id: user.id, name: 'Savings & cash', type: 'savings', balance: val })
+        .insert({ user_id: user.id, name: names[type] || 'Account', type, balance: val })
         .select().single()
-      if (data) setAccounts([data])
+      if (data) setAccounts(prev => [...prev, data])
     }
   }
   async function addDebt(d) {
@@ -285,8 +287,8 @@ export default function Plan() {
           <section id="money" className="scroll-mt-16">
             <MoneyCard
               income={money.income} expenses={money.expenses} netWorth={money.netWorth}
-              balance={accountValue} debts={debts}
-              onSaveMoney={saveMoney} onSaveBalance={saveBalance} onAddDebt={addDebt} onDeleteDebt={deleteDebt} />
+              balances={balances} debts={debts}
+              onSaveMoney={saveMoney} onSaveTypeBalance={saveTypeBalance} onAddDebt={addDebt} onDeleteDebt={deleteDebt} />
           </section>
 
           {/* ── Goals ── */}

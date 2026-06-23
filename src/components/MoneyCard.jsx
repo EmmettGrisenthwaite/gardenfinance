@@ -47,7 +47,7 @@ function EditableStat({ label, value, onSave, color = 'text-white', prefix = '$'
 // Compact "Your money" card — ingrained budget. Monthly income/expenses → surplus,
 // a single net-worth number, and a simple debts list. Feeds the advisor + the
 // garden's weather. Not a tab.
-export default function MoneyCard({ income, expenses, netWorth, balance, debts = [], onSaveMoney, onSaveBalance, onAddDebt, onDeleteDebt }) {
+export default function MoneyCard({ income, expenses, netWorth, balances = {}, debts = [], onSaveMoney, onSaveTypeBalance, onAddDebt, onDeleteDebt }) {
   const surplus = Number(income || 0) - Number(expenses || 0)
   const totalDebt = debts.reduce((s, d) => s + Number(d.balance || 0), 0)
   const [open, setOpen] = useState(false)
@@ -93,10 +93,18 @@ export default function MoneyCard({ income, expenses, netWorth, balance, debts =
         </div>
       </div>
 
-      {/* Account value · Net worth */}
-      <div className="grid grid-cols-2 gap-3 px-4 pb-3 pt-1 border-t border-white/[0.06]">
-        <EditableStat label="Account value" value={balance}
-          onSave={v => onSaveBalance(v)} color="text-emerald-200" />
+      {/* Accounts by type — feeds the advisor (liquid cash vs invested) */}
+      <div className="px-4 pb-2 pt-2 border-t border-white/[0.06]">
+        <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-2">Accounts</div>
+        <div className="grid grid-cols-3 gap-3">
+          <EditableStat label="Checking"    value={balances.checking}  onSave={v => onSaveTypeBalance('checking', v)}  color="text-sky-200" />
+          <EditableStat label="Savings"     value={balances.savings}   onSave={v => onSaveTypeBalance('savings', v)}   color="text-emerald-200" />
+          <EditableStat label="Investments" value={balances.brokerage} onSave={v => onSaveTypeBalance('brokerage', v)} color="text-violet-200" />
+        </div>
+      </div>
+
+      {/* Net worth */}
+      <div className="px-4 pb-3 pt-1 border-t border-white/[0.06]">
         <EditableStat label="Net worth" value={netWorth}
           onSave={v => onSaveMoney({ net_worth: v })}
           color={Number(netWorth) >= 0 ? 'text-white' : 'text-rose-300'} />

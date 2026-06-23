@@ -174,8 +174,10 @@ function buildContext(money, goals, debts, profile, extras = {}) {
   const { income = 0, expenses = 0, netWorth = 0 } = money
   const net = income - expenses
   const totalDebt = debts.reduce((s, d) => s + Number(d.balance || 0), 0)
+  const accounts = extras.accounts ?? []
+  const acctTotal = accounts.reduce((s, a) => s + Number(a.balance || 0), 0)
 
-  if (income === 0 && expenses === 0 && goals.length === 0 && debts.length === 0 && !netWorth) {
+  if (income === 0 && expenses === 0 && goals.length === 0 && debts.length === 0 && !netWorth && acctTotal === 0) {
     return 'The user has not added any financial data yet. Encourage them to fill in their monthly income, expenses, and net worth in the "Your money" card on the Plan tab, set a savings goal, and — most valuably — ask you to build them an action plan. Their garden grows as they complete plan steps.'
   }
 
@@ -192,6 +194,26 @@ function buildContext(money, goals, debts, profile, extras = {}) {
     ctx += `  (Spending is ${Math.round((expenses / income) * 100)}% of income — target ≤80%, leaving ≥20% for savings/debt.)\n`
   }
   ctx += '\n'
+
+  // ── Accounts by type (from the "Your money" card) ──────────────────────────
+  if (acctTotal > 0) {
+    const bal = (t) => accounts.filter(a => a.type === t).reduce((s, a) => s + Number(a.balance || 0), 0)
+    const checking = bal('checking'), savings = bal('savings'), invest = bal('brokerage')
+    const liquid = checking + savings
+    ctx += 'ACCOUNTS:\n'
+    if (checking) ctx += `  Checking: $${checking.toLocaleString()}\n`
+    if (savings)  ctx += `  Savings:  $${savings.toLocaleString()}\n`
+    if (invest)   ctx += `  Investments (brokerage): $${invest.toLocaleString()}\n`
+    ctx += `  Liquid cash (checking + savings): $${liquid.toLocaleString()}\n`
+    if (expenses > 0) {
+      const months = liquid / expenses
+      ctx += months >= 3
+        ? `  ✓ Emergency fund: ${months.toFixed(1)} months of expenses covered.\n`
+        : `  ⚠️ Emergency fund: only ${months.toFixed(1)} months covered — target 3–6 months ($${(expenses * 3).toLocaleString()}–$${(expenses * 6).toLocaleString()}).\n`
+    }
+    ctx += invest > 0 ? '  ✓ Has money invested.\n' : '  ⚠️ Nothing invested yet — a key gap once cash flow and emergency fund allow.\n'
+    ctx += '\n'
+  }
 
   // ── Goals ─────────────────────────────────────────────────────────────────
   if (goals.length > 0) {
@@ -475,6 +497,7 @@ export default function AIAdvisor() {
   const [goals,    setGoals]            = useState([])
   const [debts,    setDebts]            = useState([])
   const [plans,    setPlans]            = useState([])
+  const [accounts, setAccounts]         = useState([])
   const [snapshotOpen, setSnapshotOpen] = useState(false)
   const [error, setError]               = useState(null)
   const [atBottom, setAtBottom]         = useState(true)
@@ -490,15 +513,17 @@ export default function AIAdvisor() {
 
   useEffect(() => {
     async function load() {
-      const [g, d, conv, pl] = await Promise.all([
+      const [g, d, conv, pl, ac] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
         supabase.from('conversations').select('messages').eq('user_id', user.id).single(),
         listPlans(user.id),
+        supabase.from('accounts').select('*').eq('user_id', user.id),
       ])
       setGoals(g.data ?? [])
       setDebts(d.data ?? [])
       setPlans(pl ?? [])
+      setAccounts(ac.data ?? [])
 
       // Merge Supabase history: use whichever has more messages
       if (conv.data?.messages?.length) {
@@ -556,8 +581,8 @@ export default function AIAdvisor() {
   }), [profile])
 
   const systemPrompt = useMemo(
-    () => buildSystemPrompt(buildContext(money, goals, debts, profile, { plans })),
-    [money, goals, debts, profile, plans]
+    () => buildSystemPrompt(buildContext(money, goals, debts, profile, { plans, accounts })),
+    [money, goals, debts, profile, plans, accounts]
   )
 
   const noKey  = !chatConfigured
