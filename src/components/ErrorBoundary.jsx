@@ -1,24 +1,41 @@
 import { Component } from 'react'
 import { Sprout, RefreshCw } from 'lucide-react'
+import { isChunkError, reloadOnce } from '@/lib/chunkReload'
 
 // Top-level boundary: catches render/runtime errors anywhere in the tree and
-// shows a friendly recovery screen instead of a white page.
+// shows a friendly recovery screen instead of a white page. A stale-chunk error
+// after a deploy self-heals by reloading once.
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props)
-    this.state = { error: null }
+    this.state = { error: null, recovering: false }
   }
 
   static getDerivedStateFromError(error) {
-    return { error }
+    return { error, recovering: isChunkError(error) }
   }
 
   componentDidCatch(error, info) {
+    // A new version was deployed while this tab was open — reload to fetch it.
+    if (isChunkError(error)) { reloadOnce(); return }
     if (import.meta.env.DEV) console.error('App error boundary caught:', error, info)
     // TODO (Track 5.5): forward to error monitoring once configured.
   }
 
   render() {
+    // Stale-chunk recovery: a reload is already firing — show a calm loader, not
+    // the scary error screen.
+    if (this.state.recovering) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center gap-3"
+          style={{ background: 'linear-gradient(155deg, #021109 0%, #04261a 30%, #02140f 62%, #020c0a 100%)' }}>
+          <div className="w-12 h-12 bg-green-500/90 rounded-2xl flex items-center justify-center shadow-lg animate-pulse">
+            <Sprout className="w-6 h-6 text-white" />
+          </div>
+          <span className="text-sm font-medium text-white/55">Updating to the latest version…</span>
+        </div>
+      )
+    }
     if (this.state.error) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 flex flex-col items-center justify-center gap-5 p-6 text-center">

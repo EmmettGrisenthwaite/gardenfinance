@@ -9,9 +9,16 @@ import { listPlans, updatePlanSteps } from '@/lib/advisorPlans'
 import { netWorthTrend } from '@/lib/netWorth'
 import Onboarding from '@/components/Onboarding'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
+import { isChunkError, reloadOnce } from '@/lib/chunkReload'
 
-// Lazy-load the 3D garden so Three.js ships as its own chunk.
-const Garden3D = lazy(() => import('@/components/garden/Garden3D'))
+// Lazy-load the 3D garden so Three.js ships as its own chunk. If the chunk fails
+// to load after a deploy (stale hash), reload once to fetch the fresh manifest.
+const Garden3D = lazy(() =>
+  import('@/components/garden/Garden3D').catch(err => {
+    if (isChunkError(err) && reloadOnce()) return new Promise(() => {})
+    throw err
+  })
+)
 
 function GardenLoading() {
   return (
