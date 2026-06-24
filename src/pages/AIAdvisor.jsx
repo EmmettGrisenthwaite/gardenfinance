@@ -491,6 +491,7 @@ export default function AIAdvisor() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? [] } catch { return [] }
   })
   const [input, setInput]               = useState('')
+  const [inputFocused, setInputFocused] = useState(false)
   const [loading, setLoading]           = useState(false)
   const [analyzing, setAnalyzing]       = useState(false)
   const [historyLoading, setHistoryLoading] = useState(true)
@@ -827,15 +828,19 @@ export default function AIAdvisor() {
         </div>
       </div>
 
-      {/* Input — the frosted bar wraps only the form; the clearance below is
-          transparent so the floating mobile nav sits over the page, not a band */}
-      <div className="flex-shrink-0 pb-[76px] md:pb-0">
+      {/* Input — docked to the bottom of the shell. The transparent clearance
+          below leaves room for the floating mobile nav; while the field is
+          focused the nav hides (Layout), so we collapse the clearance too — the
+          box sits flush above the keyboard with no dead gap. */}
+      <div className={`flex-shrink-0 transition-[padding] duration-200 ${inputFocused ? 'pb-0' : 'pb-[76px]'} md:pb-0`}>
         <div className="border-t border-white/10 bg-white/5 backdrop-blur-md">
         <form onSubmit={e => { e.preventDefault(); send(input) }} className="max-w-3xl mx-auto px-4 py-3 md:py-4">
           <div className="flex gap-2 items-end">
             <div className="flex-1 bg-white/10 border border-white/[0.08] rounded-2xl px-4 py-3 focus-within:border-emerald-400/50 focus-within:ring-1 focus-within:ring-emerald-400/20 transition-all">
               <textarea ref={inputRef} value={input}
                 onChange={e => setInput(e.target.value)}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}
                 placeholder={noKey ? 'Add your API key to start…' : 'Ask anything about your finances…'}
                 disabled={noKey || loading || analyzing}

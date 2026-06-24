@@ -47,28 +47,28 @@ export default function Layout({ children }) {
     <div className="relative min-h-screen">
       {needsOnboarding && <Onboarding />}
 
-      {/* ── Premium ambient background ── */}
+      {/* ── Premium ambient background — deep forest-green (Fidelity-inspired) ── */}
       <div
         className="fixed inset-0 z-0 overflow-hidden"
-        style={{ background: 'linear-gradient(155deg, #020c05 0%, #031508 30%, #04101a 60%, #030b14 100%)' }}
+        style={{ background: 'linear-gradient(155deg, #021109 0%, #04261a 30%, #02140f 62%, #020c0a 100%)' }}
       >
-        {/* Orb 1 — soft emerald, top-left (single-hue palette keeps it calm) */}
+        {/* Orb 1 — forest green (#006044), top-left */}
         <div
           className="absolute rounded-full animate-orb-1 pointer-events-none"
           style={{
             top: '-25%', left: '-20%',
             width: '75%', height: '75%',
-            background: 'radial-gradient(circle at center, rgba(16,185,129,0.16) 0%, transparent 68%)',
+            background: 'radial-gradient(circle at center, rgba(0,96,68,0.30) 0%, transparent 68%)',
             filter: 'blur(48px)',
           }}
         />
-        {/* Orb 2 — deep sage, bottom-right */}
+        {/* Orb 2 — bright lime accent (#76a923), bottom-right */}
         <div
           className="absolute rounded-full animate-orb-2 pointer-events-none"
           style={{
             bottom: '-30%', right: '-20%',
             width: '70%', height: '70%',
-            background: 'radial-gradient(circle at center, rgba(52,153,124,0.13) 0%, transparent 68%)',
+            background: 'radial-gradient(circle at center, rgba(118,169,35,0.12) 0%, transparent 68%)',
             filter: 'blur(48px)',
           }}
         />

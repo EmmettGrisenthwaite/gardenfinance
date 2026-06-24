@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden, milestonesToStage, STAGE_NAMES, STAGE_THRESHOLDS } from '@/context/GardenContext'
 import { listPlans, updatePlanSteps } from '@/lib/advisorPlans'
+import { netWorthTrend } from '@/lib/netWorth'
 import Onboarding from '@/components/Onboarding'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
 
@@ -62,6 +63,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [growth,  setGrowth]  = useState(null)
+  const [trend,   setTrend]   = useState(null)
 
   const profileIncomplete = isProfileIncompleteFn(profile)
 
@@ -108,6 +110,12 @@ export default function Dashboard() {
     updateGarden({ completedSteps, totalSteps, goalsReached, surplusRatio, netWorth, goals, debts })
   }, [completedSteps, totalSteps, goalsReached, surplusRatio, netWorth, loading]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Record today's net-worth snapshot + read the change since ~30 days ago.
+  useEffect(() => {
+    if (loading) return
+    netWorthTrend(user.id, netWorth).then(setTrend).catch(() => {})
+  }, [loading, netWorth, user.id])
+
   // Next 1–2 uncompleted steps (across plans) — checkable right from the garden.
   const nextSteps = plans.flatMap(p => p.steps.filter(s => !s.done).map(s => ({ planId: p.id, step: s }))).slice(0, 2)
 
@@ -145,7 +153,15 @@ export default function Dashboard() {
               <div className="text-base font-bold tabular-nums text-emerald-200 leading-tight">{fmt$(accountValue)}</div>
             </div>
             <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] px-3 py-2 group-hover:bg-white/[0.08] transition-colors">
-              <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide">Net worth</div>
+              <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide flex items-center justify-between gap-1">
+                Net worth
+                {trend?.has && trend.delta !== 0 && (
+                  <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold tabular-nums normal-case tracking-normal ${trend.delta > 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {trend.delta > 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                    {fmt$(Math.abs(trend.delta))}
+                  </span>
+                )}
+              </div>
               <div className={`text-base font-bold tabular-nums leading-tight ${netWorth >= 0 ? 'text-white' : 'text-rose-300'}`}>{fmt$(netWorth)}</div>
             </div>
           </Link>

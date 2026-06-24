@@ -1,12 +1,38 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Wallet, Pencil, Check, X, Plus, Trash2, CreditCard, TrendingUp, TrendingDown, ChevronDown, ChevronUp } from 'lucide-react'
 
 const fmt = (n) => `$${Math.round(Number(n) || 0).toLocaleString()}`
 
-// One inline-editable money figure.
+// Fidelity-style allocation donut (SVG ring → transparent center on glass).
+function AllocationDonut({ parts, size = 52, stroke = 9 }) {
+  const total = parts.reduce((s, p) => s + p.value, 0)
+  const r = (size - stroke) / 2
+  const c = 2 * Math.PI * r
+  let offset = 0
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0 -rotate-90">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
+      {total > 0 && parts.map((p, i) => {
+        if (!p.value) return null
+        const len = (p.value / total) * c
+        const el = (
+          <circle key={i} cx={size / 2} cy={size / 2} r={r} fill="none"
+            stroke={p.color} strokeWidth={stroke} strokeLinecap="butt"
+            strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset} />
+        )
+        offset += len
+        return el
+      })}
+    </svg>
+  )
+}
+
+// One inline-editable money figure. Commits on Enter, the check button, OR blur
+// (tabbing/clicking away) so a typed value is never silently lost. Escape cancels.
 function EditableStat({ label, value, onSave, color = 'text-white', prefix = '$' }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState(String(value ?? 0))
+  const cancelled = useRef(false)
 
   function commit() {
     const n = parseFloat(val)
@@ -23,10 +49,11 @@ function EditableStat({ label, value, onSave, color = 'text-white', prefix = '$'
             {prefix && <span className="text-white/40 text-sm">{prefix}</span>}
             <input autoFocus type="number" inputMode="decimal" value={val}
               onChange={e => setVal(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+              onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { cancelled.current = true; setEditing(false) } }}
+              onBlur={() => { if (cancelled.current) { cancelled.current = false; return } commit() }}
               className="w-full bg-transparent text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
           </div>
-          <button onClick={commit} aria-label="Save" className="p-1 text-emerald-400 hover:text-emerald-300"><Check className="w-3.5 h-3.5" /></button>
+          <button onMouseDown={e => e.preventDefault()} onClick={commit} aria-label="Save" className="p-1 text-emerald-400 hover:text-emerald-300"><Check className="w-3.5 h-3.5" /></button>
         </div>
       </div>
     )
@@ -93,13 +120,20 @@ export default function MoneyCard({ income, expenses, netWorth, balances = {}, d
         </div>
       </div>
 
-      {/* Accounts by type — feeds the advisor (liquid cash vs invested) */}
+      {/* Accounts by type — donut + editable amounts (feeds the advisor) */}
       <div className="px-4 pb-2 pt-2 border-t border-white/[0.06]">
         <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-2">Accounts</div>
-        <div className="grid grid-cols-3 gap-3">
-          <EditableStat label="Checking"    value={balances.checking}  onSave={v => onSaveTypeBalance('checking', v)}  color="text-sky-200" />
-          <EditableStat label="Savings"     value={balances.savings}   onSave={v => onSaveTypeBalance('savings', v)}   color="text-emerald-200" />
-          <EditableStat label="Investments" value={balances.brokerage} onSave={v => onSaveTypeBalance('brokerage', v)} color="text-violet-200" />
+        <div className="flex items-center gap-3.5">
+          <AllocationDonut parts={[
+            { value: Number(balances.checking) || 0,  color: '#38bdf8' },
+            { value: Number(balances.savings) || 0,   color: '#34d399' },
+            { value: Number(balances.brokerage) || 0, color: '#a78bfa' },
+          ]} />
+          <div className="flex-1 grid grid-cols-3 gap-2 min-w-0">
+            <EditableStat label="Checking"    value={balances.checking}  onSave={v => onSaveTypeBalance('checking', v)}  color="text-sky-200" />
+            <EditableStat label="Savings"     value={balances.savings}   onSave={v => onSaveTypeBalance('savings', v)}   color="text-emerald-200" />
+            <EditableStat label="Investments" value={balances.brokerage} onSave={v => onSaveTypeBalance('brokerage', v)} color="text-violet-200" />
+          </div>
         </div>
       </div>
 
