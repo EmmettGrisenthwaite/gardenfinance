@@ -203,7 +203,15 @@ function buildContext(money, goals, debts, profile, extras = {}) {
     ctx += 'ACCOUNTS:\n'
     if (checking) ctx += `  Checking: $${checking.toLocaleString()}\n`
     if (savings)  ctx += `  Savings:  $${savings.toLocaleString()}\n`
-    if (invest)   ctx += `  Investments (brokerage): $${invest.toLocaleString()}\n`
+    if (invest) {
+      const investAccts = accounts.filter(a => a.type === 'brokerage' && Number(a.balance) > 0)
+      if (investAccts.length > 1) {
+        ctx += `  Investments: $${invest.toLocaleString()} across ${investAccts.length} accounts —\n`
+        investAccts.forEach(a => { ctx += `    • ${a.name}: $${Number(a.balance).toLocaleString()}\n` })
+      } else {
+        ctx += `  Investments: $${invest.toLocaleString()}\n`
+      }
+    }
     ctx += `  Liquid cash (checking + savings): $${liquid.toLocaleString()}\n`
     if (expenses > 0) {
       const months = liquid / expenses

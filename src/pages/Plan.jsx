@@ -147,10 +147,14 @@ export default function Plan() {
     if (data) setProfile(data)   // keep advisor context fresh
   }
 
-  // Balances by type (stored in the accounts table the advisor reads). One
-  // canonical row per type, so editing is a single clean number each.
+  // Balances by type (stored in the accounts table the advisor reads). Checking
+  // and savings are one canonical row each. Investments can be itemized into
+  // several accounts (Roth IRA, 401k, brokerage…) — all stored as type
+  // 'brokerage' and distinguished by name; the displayed total is their sum.
   const balanceOf = (t) => Number(accounts.find(a => a.type === t)?.balance) || 0
-  const balances = { checking: balanceOf('checking'), savings: balanceOf('savings'), brokerage: balanceOf('brokerage') }
+  const investAccounts = accounts.filter(a => a.type === 'brokerage')
+  const investTotal = investAccounts.reduce((s, a) => s + Number(a.balance || 0), 0)
+  const balances = { checking: balanceOf('checking'), savings: balanceOf('savings'), brokerage: investTotal }
   async function saveTypeBalance(type, v) {
     const val = Math.max(0, Number(v) || 0)
     const existing = accounts.find(a => a.type === type)
@@ -164,6 +168,24 @@ export default function Plan() {
         .select().single()
       if (data) setAccounts(prev => [...prev, data])
     }
+  }
+  // Itemized investment accounts (all type 'brokerage', named).
+  async function addInvestAccount({ name, balance }) {
+    const { data } = await supabase.from('accounts')
+      .insert({ user_id: user.id, name: name.trim() || 'Investment', type: 'brokerage', balance: Math.max(0, Number(balance) || 0) })
+      .select().single()
+    if (data) setAccounts(prev => [...prev, data])
+  }
+  async function updateInvestAccount(id, fields) {
+    const patch = {}
+    if ('name' in fields)    patch.name = fields.name.trim() || 'Investment'
+    if ('balance' in fields) patch.balance = Math.max(0, Number(fields.balance) || 0)
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a))
+    await supabase.from('accounts').update(patch).eq('id', id)
+  }
+  function deleteInvestAccount(id) {
+    setAccounts(prev => prev.filter(a => a.id !== id))
+    supabase.from('accounts').delete().eq('id', id).then(() => {})
   }
   async function addDebt(d) {
     const { data } = await supabase.from('debts').insert({ user_id: user.id, ...d }).select().single()
@@ -287,8 +309,10 @@ export default function Plan() {
           <section id="money" className="scroll-mt-16">
             <MoneyCard
               income={money.income} expenses={money.expenses} netWorth={money.netWorth}
-              balances={balances} debts={debts}
-              onSaveMoney={saveMoney} onSaveTypeBalance={saveTypeBalance} onAddDebt={addDebt} onDeleteDebt={deleteDebt} />
+              balances={balances} debts={debts} investAccounts={investAccounts}
+              onSaveMoney={saveMoney} onSaveTypeBalance={saveTypeBalance}
+              onAddInvest={addInvestAccount} onUpdateInvest={updateInvestAccount} onDeleteInvest={deleteInvestAccount}
+              onAddDebt={addDebt} onDeleteDebt={deleteDebt} />
           </section>
 
           {/* ── Goals ── */}
