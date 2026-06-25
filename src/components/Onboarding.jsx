@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -83,8 +84,14 @@ const STEPS = [
   {
     id: 'money',
     question: 'Now the numbers — rough is fine.',
-    sub: 'This powers your dashboard and lets your advisor give advice about the real you. You can change it anytime.',
+    sub: 'Income, spending, and what\'s in your accounts. This powers your dashboard and lets your advisor give advice about the real you.',
     type: 'money',
+  },
+  {
+    id: 'debts',
+    question: 'Any debts to track?',
+    sub: 'Credit cards, student loans, car loans — add what you owe so your advisor can plan payoff. Skip if you have none.',
+    type: 'debts',
   },
   {
     id: 'goal',
@@ -174,6 +181,54 @@ function OptionCard({ option, selected, onClick, multi }) {
   )
 }
 
+// ─── Debts step — add-as-you-go list (optional) ────────────────────────────────
+function DebtsStep({ debts, setDebts }) {
+  const [name, setName] = useState('')
+  const [bal,  setBal]  = useState('')
+
+  function add() {
+    const b = parseFloat(bal)
+    if (!name.trim() || isNaN(b) || b <= 0) return
+    setDebts([...debts, { name: name.trim(), balance: b }])
+    setName(''); setBal('')
+  }
+
+  return (
+    <div className="space-y-3">
+      {debts.length > 0 && (
+        <div className="space-y-1.5">
+          {debts.map((d, i) => (
+            <div key={i} className="flex items-center justify-between bg-white/[0.05] border border-white/10 rounded-lg px-3 py-2">
+              <span className="text-sm text-white/85 truncate">{d.name}</span>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-sm font-semibold text-rose-300 tabular-nums">${Math.round(d.balance).toLocaleString()}</span>
+                <button type="button" onClick={() => setDebts(debts.filter((_, j) => j !== i))}
+                  className="text-white/30 hover:text-rose-400 transition-colors text-lg leading-none">×</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2 items-stretch">
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Visa, student loan"
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border-2 border-white/15 bg-white/[0.05] text-white text-sm focus:outline-none focus:border-emerald-500 transition-colors" />
+        <div className="flex items-center bg-white/[0.05] border-2 border-white/15 rounded-xl px-2.5 w-24 focus-within:border-emerald-500 transition-colors">
+          <span className="text-white/40 text-sm mr-0.5">$</span>
+          <input type="number" inputMode="decimal" min="0" value={bal} onChange={e => setBal(e.target.value)} placeholder="0"
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+            className="w-full min-w-0 bg-transparent text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+        </div>
+        <button type="button" onClick={add} disabled={!name.trim() || !(parseFloat(bal) > 0)}
+          className="px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 text-white text-sm font-semibold transition-colors">
+          Add
+        </button>
+      </div>
+      <p className="text-[11px] text-white/35">No debts? Just hit Next — nice work.</p>
+    </div>
+  )
+}
+
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export default function Onboarding({ onClose }) {
   const { user, profile, setProfile } = useAuth()
@@ -190,7 +245,10 @@ export default function Onboarding({ onClose }) {
     primary_goal:     profile?.primary_goal    ?? '',
     monthly_income:   profile?.monthly_income   ? String(profile.monthly_income)   : '',
     monthly_expenses: profile?.monthly_expenses ? String(profile.monthly_expenses) : '',
-    balance:          '',
+    checking:         '',
+    savings:          '',
+    brokerage:        '',
+    debts:            [],   // [{ name, balance }]
   })
 
   const current = STEPS[step]
@@ -215,6 +273,7 @@ export default function Onboarding({ onClose }) {
     if (current.type === 'intro')   return true
     if (current.type === 'age')     return answers.age && Number(answers.age) > 0 && Number(answers.age) < 120
     if (current.type === 'money')   return true   // all optional — rough or skip
+    if (current.type === 'debts')   return true   // optional
     if (current.type === 'multi')   return answers[current.field]?.length > 0
     return !!answers[current.field]
   }
@@ -227,6 +286,43 @@ export default function Onboarding({ onClose }) {
 
   async function finish() {
     setSaving(true)
+    const checking  = Number(answers.checking)  || 0
+    const savings   = Number(answers.savings)   || 0
+    const brokerage = Number(answers.brokerage) || 0
+    const validDebts = (answers.debts || []).filter(d => d.name?.trim() && Number(d.balance) > 0)
+    const totalDebt  = validDebts.reduce((s, d) => s + Number(d.balance), 0)
+    // Net worth = what you own (accounts) minus what you owe (debts).
+    const netWorth = checking + savings + brokerage - totalDebt
+
+    // Seed accounts + debts FIRST, then flip the profile. The dashboard refetches
+    // accounts the moment `onboarding_complete` flips, so the rows must exist by
+    // then — otherwise account value shows a stale $0.
+
+    // Typed account balances (one canonical row per type) — feeds the allocation
+    // donut + advisor context. Update-or-insert so re-running setup never creates
+    // duplicate rows (which would double the summed account value).
+    const accountRows = [
+      { type: 'checking',  name: 'Checking',    balance: checking },
+      { type: 'savings',   name: 'Savings',     balance: savings },
+      { type: 'brokerage', name: 'Investments', balance: brokerage },
+    ].filter(a => a.balance > 0)
+    if (accountRows.length) {
+      try {
+        const { data: existing } = await supabase.from('accounts').select('id, type').eq('user_id', user.id)
+        for (const a of accountRows) {
+          const match = existing?.find(e => e.type === a.type)
+          if (match) await supabase.from('accounts').update({ balance: a.balance, name: a.name }).eq('id', match.id)
+          else       await supabase.from('accounts').insert({ ...a, user_id: user.id })
+        }
+      } catch { /* non-blocking */ }
+    }
+    // Seed debts so the advisor can plan payoff from day one.
+    if (validDebts.length) {
+      await supabase.from('debts')
+        .insert(validDebts.map(d => ({ user_id: user.id, name: d.name.trim(), balance: Number(d.balance) })))
+        .then(() => {}, () => {})
+    }
+
     const payload = {
       id: user.id,
       first_name: user.user_metadata?.full_name?.split(' ')[0] ?? null,
@@ -238,6 +334,7 @@ export default function Onboarding({ onClose }) {
       primary_goal:     answers.primary_goal,
       monthly_income:   Number(answers.monthly_income)   || 0,
       monthly_expenses: Number(answers.monthly_expenses) || 0,
+      net_worth:        netWorth,
       onboarding_complete: true,
     }
     const { data } = await supabase
@@ -246,13 +343,6 @@ export default function Onboarding({ onClose }) {
       .select()
       .single()
     setProfile(data)
-    // Seed account value (stored in the accounts table the rest of the app reads).
-    const bal = Number(answers.balance) || 0
-    if (bal > 0) {
-      await supabase.from('accounts')
-        .insert({ user_id: user.id, name: 'Savings & cash', type: 'savings', balance: bal })
-        .then(() => {}, () => {})
-    }
     setSaving(false)
     onClose?.()
   }
@@ -271,7 +361,9 @@ export default function Onboarding({ onClose }) {
   const dotsSteps = STEPS.slice(1) // dots = everything after the preview
   const dotsStep  = Math.max(0, step - 1)
 
-  return (
+  // Portal to <body> so the modal escapes the page's z-10 stacking context and
+  // sits above the floating mobile nav (z-50), which otherwise overlaps the footer.
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4">
       <motion.div
         initial={{ opacity: 0, y: 40 }}
@@ -367,13 +459,12 @@ export default function Onboarding({ onClose }) {
                 </div>
               )}
 
-              {/* Money inputs */}
+              {/* Money inputs — cash flow + typed account balances */}
               {current.type === 'money' && (
                 <div className="space-y-3">
                   {[
-                    { field: 'monthly_income',   label: 'Monthly income',     hint: 'after tax', auto: true },
-                    { field: 'monthly_expenses', label: 'Monthly expenses',   hint: 'rent, food, bills…' },
-                    { field: 'balance',          label: 'Total in your accounts', hint: 'cash + savings' },
+                    { field: 'monthly_income',   label: 'Monthly income',   hint: 'after tax', auto: true },
+                    { field: 'monthly_expenses', label: 'Monthly expenses', hint: 'rent, food, bills…' },
                   ].map(({ field, label, hint, auto }) => (
                     <label key={field} className="block">
                       <span className="text-sm font-medium text-white/80">{label}</span>
@@ -389,8 +480,33 @@ export default function Onboarding({ onClose }) {
                       </div>
                     </label>
                   ))}
+                  <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide pt-1">What's in your accounts</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { field: 'checking',  label: 'Checking',    color: 'focus-within:border-sky-400' },
+                      { field: 'savings',   label: 'Savings',     color: 'focus-within:border-emerald-400' },
+                      { field: 'brokerage', label: 'Investments', color: 'focus-within:border-violet-400' },
+                    ].map(({ field, label, color }) => (
+                      <label key={field} className="block">
+                        <span className="text-xs font-medium text-white/70">{label}</span>
+                        <div className={`mt-1 flex items-center bg-white/[0.05] border-2 border-white/15 rounded-lg px-2 py-2 transition-colors ${color}`}>
+                          <span className="text-white/40 text-sm mr-0.5">$</span>
+                          <input type="number" inputMode="decimal" min="0" step="50"
+                            value={answers[field]}
+                            onChange={e => set(field, e.target.value)}
+                            placeholder="0"
+                            className="w-full min-w-0 bg-transparent text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                        </div>
+                      </label>
+                    ))}
+                  </div>
                   <p className="text-[11px] text-white/35">Estimates are fine — you can fine-tune these in your Plan later.</p>
                 </div>
+              )}
+
+              {/* Debts — optional list */}
+              {current.type === 'debts' && (
+                <DebtsStep debts={answers.debts} setDebts={d => set('debts', d)} />
               )}
 
               {/* Single select */}
@@ -439,7 +555,7 @@ export default function Onboarding({ onClose }) {
           </div>
 
           {/* Show Next/Finish for non-auto-advance steps */}
-          {(current.type === 'preview' || current.type === 'intro' || current.type === 'age' || current.type === 'multi' || current.type === 'money') && (
+          {(current.type === 'preview' || current.type === 'intro' || current.type === 'age' || current.type === 'multi' || current.type === 'money' || current.type === 'debts') && (
             isLast ? (
               <button onClick={finish} disabled={!canAdvance() || saving}
                 className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30">
@@ -464,6 +580,7 @@ export default function Onboarding({ onClose }) {
           )}
         </div>
       </motion.div>
-    </div>
+    </div>,
+    document.body
   )
 }
