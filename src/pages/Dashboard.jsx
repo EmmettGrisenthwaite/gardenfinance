@@ -184,7 +184,7 @@ export default function Dashboard() {
           </button>
         )}
 
-        {!loading && !profileIncomplete && (
+        {!loading && (
           hasPlan ? (
             nextSteps.length > 0 ? (
               <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] p-2.5 space-y-1.5">
@@ -213,12 +213,26 @@ export default function Dashboard() {
               </Link>
             )
           ) : (
-            <Link to="/advisor"
-              className="flex items-center gap-2.5 px-3 py-2 bg-emerald-500/15 rounded-xl border border-emerald-400/25 hover:bg-emerald-500/25 transition-all group">
-              <Bot className="w-4 h-4 text-emerald-300 flex-shrink-0" />
-              <span className="flex-1 min-w-0 text-xs font-semibold text-white truncate">Talk to your advisor to grow your first plan</span>
-              <ArrowRight className="w-3.5 h-3.5 text-emerald-300 flex-shrink-0 group-hover:translate-x-0.5 transition-transform" />
-            </Link>
+            // First run: a single, unmistakable "start here" action.
+            <motion.div
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              className="relative">
+              <motion.span
+                aria-hidden className="absolute inset-0 rounded-2xl bg-emerald-400/30 -z-10"
+                animate={{ opacity: [0.35, 0.7, 0.35], scale: [1, 1.03, 1] }}
+                transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }} />
+              <Link to="/advisor"
+                className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 border border-emerald-300/40 shadow-lg shadow-emerald-900/40 transition-colors group">
+                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-100/90">Start here</div>
+                  <div className="text-sm font-semibold text-white leading-tight">Meet your advisor & build your first plan</div>
+                </div>
+                <ArrowRight className="w-5 h-5 text-white flex-shrink-0 group-hover:translate-x-0.5 transition-transform" />
+              </Link>
+            </motion.div>
           )
         )}
       </div>

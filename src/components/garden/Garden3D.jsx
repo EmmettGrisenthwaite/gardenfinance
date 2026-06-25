@@ -736,12 +736,12 @@ const LANTERN_POS = [
 ]
 
 // ─── Signpost — compact game-style marker: icon ringed by progress + name tag ──
-function Signpost({ name, progress, type = 'savings', icon, yOffset = 0 }) {
+function Signpost({ name, progress, type = 'savings', icon, yOffset = 0, empty = false }) {
   const isInv  = type === 'investment'
   const done   = progress >= 100
   const ring   = done ? '#fbbf24' : isInv ? '#f59e0b' : '#22c55e'
   const accent = done ? '#fde68a' : isInv ? '#fcd34d' : '#86efac'
-  const ic     = done ? '🏆' : (icon ?? (isInv ? '📈' : '🌱'))
+  const ic     = empty ? '+' : done ? '🏆' : (icon ?? (isInv ? '📈' : '🌱'))
   return (
     <group position={[0, 0.10, 1.28]}>
       {/* Slim grounding post */}
@@ -756,29 +756,35 @@ function Signpost({ name, progress, type = 'savings', icon, yOffset = 0 }) {
           fontFamily: 'Inter Variable, system-ui, sans-serif',
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
         }}>
-          {/* Progress ring (conic) wrapping the glossy icon chip */}
+          {/* Progress ring (conic) wrapping the glossy icon chip. Empty plots are
+              a dashed, muted "plant here" invitation — no ring fill, no %. */}
           <div style={{
             width: '30px', height: '30px', borderRadius: '50%', padding: '2.5px',
-            background: `conic-gradient(${ring} ${progress * 3.6}deg, rgba(255,255,255,0.30) 0deg)`,
-            boxShadow: '0 4px 10px rgba(0,0,0,0.40)',
+            background: empty ? 'transparent' : `conic-gradient(${ring} ${progress * 3.6}deg, rgba(255,255,255,0.30) 0deg)`,
+            border: empty ? '1.5px dashed rgba(255,255,255,0.45)' : 'none',
+            boxShadow: empty ? 'none' : '0 4px 10px rgba(0,0,0,0.40)',
           }}>
             <div style={{
               width: '100%', height: '100%', borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px',
-              background: isInv ? 'linear-gradient(135deg,#fde68a,#f59e0b)'
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: empty ? '15px' : '12px', fontWeight: 700,
+              color: empty ? 'rgba(255,255,255,0.75)' : undefined,
+              background: empty ? 'rgba(12,20,10,0.45)'
+                        : isInv ? 'linear-gradient(135deg,#fde68a,#f59e0b)'
                                 : 'linear-gradient(135deg,#bbf7d0,#34d399)',
-              boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.55)',
+              boxShadow: empty ? 'none' : 'inset 0 1px 2px rgba(255,255,255,0.55)',
             }}>{ic}</div>
           </div>
-          {/* Tiny name + % tag */}
+          {/* Tiny name + % tag (% hidden on empty invitations) */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: '3px',
             background: 'rgba(12,20,10,0.80)', border: '1px solid rgba(255,255,255,0.16)',
             borderRadius: '7px', padding: '1.5px 6px', whiteSpace: 'nowrap', backdropFilter: 'blur(3px)',
+            opacity: empty ? 0.85 : 1,
           }}>
-            <span style={{ fontSize: '9px', fontWeight: 800, color: '#fff', maxWidth: '52px',
+            <span style={{ fontSize: '9px', fontWeight: 800, color: empty ? 'rgba(255,255,255,0.8)' : '#fff', maxWidth: '64px',
               overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
-            <span style={{ fontSize: '8.5px', fontWeight: 800, color: accent }}>{progress}%</span>
+            {!empty && <span style={{ fontSize: '8.5px', fontWeight: 800, color: accent }}>{progress}%</span>}
           </div>
         </div>
       </Html>
@@ -851,7 +857,7 @@ function GoalPlot({ position, goal, onSelect, signYOffset = 0 }) {
   )
 }
 
-function EmptyPlot({ position, label, onSelect, signYOffset = 0 }) {
+function EmptyPlot({ position, label = 'Add a goal', onSelect, signYOffset = 0 }) {
   return (
     <InteractivePlot position={position} onSelect={onSelect}>
       <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.01,0]} receiveShadow>
@@ -862,7 +868,7 @@ function EmptyPlot({ position, label, onSelect, signYOffset = 0 }) {
         <circleGeometry args={[0.98, 40]} />
         <meshToonMaterial color="#6b3e1e" gradientMap={getToonGrad()} />
       </mesh>
-      <Signpost name={`+ ${label}`} progress={0} type="savings" icon={goalIcon(label, 'savings')} yOffset={signYOffset} />
+      <Signpost name={label} progress={0} type="savings" empty yOffset={signYOffset} />
     </InteractivePlot>
   )
 }
@@ -892,7 +898,7 @@ function InvestmentPlot({ position, goal, onSelect, signYOffset = 0 }) {
   )
 }
 
-function EmptyInvestmentPlot({ position, label, onSelect, signYOffset = 0 }) {
+function EmptyInvestmentPlot({ position, label = 'Add a goal', onSelect, signYOffset = 0 }) {
   return (
     <InteractivePlot position={position} onSelect={onSelect}>
       <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.01,0]} receiveShadow>
@@ -903,7 +909,7 @@ function EmptyInvestmentPlot({ position, label, onSelect, signYOffset = 0 }) {
         <circleGeometry args={[1.10, 6]} />
         <meshToonMaterial color="#d8d0bc" gradientMap={getToonGrad()} />
       </mesh>
-      <Signpost name={`+ ${label}`} progress={0} type="investment" icon={goalIcon(label, 'investment')} yOffset={signYOffset} />
+      <Signpost name={label} progress={0} type="investment" empty yOffset={signYOffset} />
     </InteractivePlot>
   )
 }
@@ -1190,8 +1196,6 @@ const SAVINGS_POSITIONS = [
   [-1.9, 0.93,  6.3],
 ]
 
-const EMPTY_INVEST_LABELS = ['Invest','Wealth','Growth','Future']
-const EMPTY_SAVE_LABELS   = ['House','Vacation','Fund']
 
 // Lush round-canopy tree — fuller + more Hay Day than the low-poly cones.
 // Supports autumn palettes and optional fruit.
@@ -1505,25 +1509,26 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal, onZone })
       {/* Animals wander the lawns once the garden is thriving */}
       {stage >= 3 && <FarmLife />}
 
-      {/* Investment plots — behind stream */}
+      {/* Investment plots — behind stream. One neutral "plant a goal" invitation
+          when empty (no fabricated goal names). */}
       {investGoals.slice(0, INVESTMENT_POSITIONS.length).map((g, i) => (
         <InvestmentPlot key={g.id} position={INVESTMENT_POSITIONS[i]} goal={g} signYOffset={INVEST_SIGN_OFFSET[i]}
           onSelect={onSelectGoal ? () => onSelectGoal(g) : undefined} />
       ))}
-      {investGoals.length === 0 && INVESTMENT_POSITIONS.slice(0, 2).map((pos, i) => (
-        <EmptyInvestmentPlot key={i} position={pos} label={EMPTY_INVEST_LABELS[i]} onSelect={onAddGoal}
-          signYOffset={INVEST_SIGN_OFFSET[i]} />
-      ))}
+      {investGoals.length === 0 && (
+        <EmptyInvestmentPlot position={INVESTMENT_POSITIONS[0]} onSelect={onAddGoal}
+          signYOffset={INVEST_SIGN_OFFSET[0]} />
+      )}
 
       {/* Savings plots — in front of stream */}
       {savingsGoals.slice(0, SAVINGS_POSITIONS.length).map((g, i) => (
         <GoalPlot key={g.id} position={SAVINGS_POSITIONS[i]} goal={g} signYOffset={SAVE_SIGN_OFFSET[i]}
           onSelect={onSelectGoal ? () => onSelectGoal(g) : undefined} />
       ))}
-      {savingsGoals.length === 0 && SAVINGS_POSITIONS.slice(0, 2).map((pos, i) => (
-        <EmptyPlot key={i} position={pos} label={EMPTY_SAVE_LABELS[i]} onSelect={onAddGoal}
-          signYOffset={SAVE_SIGN_OFFSET[i]} />
-      ))}
+      {savingsGoals.length === 0 && (
+        <EmptyPlot position={SAVINGS_POSITIONS[0]} onSelect={onAddGoal}
+          signYOffset={SAVE_SIGN_OFFSET[0]} />
+      )}
 
       {/* Savings orchard (front) — green trees that grow with total savings */}
       {SAVINGS_ZONE_TREES.slice(0, savingsTreeCount).map((t, i) => (
