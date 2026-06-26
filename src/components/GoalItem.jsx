@@ -51,7 +51,7 @@ export function GoalModal({ goal, onSave, onClose }) {
     })
   }
 
-  const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border border-white/[0.08] text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30'
+  const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border border-white/[0.11] text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30'
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-[60]">
       <div className="bg-[#0e1812] w-full sm:rounded-2xl sm:shadow-xl sm:w-full sm:max-w-md sm:mx-4 rounded-t-2xl shadow-2xl">
@@ -70,7 +70,7 @@ export function GoalModal({ goal, onSave, onClose }) {
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${
                     goalType === 'savings'
                       ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
-                      : 'border-white/[0.08] bg-[#0e1812] text-white/60 hover:border-white/10'
+                      : 'border-white/[0.11] bg-[#0e1812] text-white/60 hover:border-white/10'
                   }`}>
                   <Sprout className="w-4 h-4" /><span>Savings / Purchase</span>
                 </button>
@@ -78,7 +78,7 @@ export function GoalModal({ goal, onSave, onClose }) {
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${
                     goalType === 'investment'
                       ? 'border-amber-500 bg-amber-500/15 text-amber-300'
-                      : 'border-white/[0.08] bg-[#0e1812] text-white/60 hover:border-white/10'
+                      : 'border-white/[0.11] bg-[#0e1812] text-white/60 hover:border-white/10'
                   }`}>
                   <TrendingUp className="w-4 h-4" /><span>Investment / Wealth</span>
                 </button>
@@ -122,7 +122,7 @@ export function GoalModal({ goal, onSave, onClose }) {
 
             <div className="flex gap-3 pt-1">
               <button type="button" onClick={onClose}
-                className="flex-1 py-3 border border-white/[0.08] rounded-lg text-sm font-medium text-white/60 hover:bg-white/5 transition-colors">
+                className="flex-1 py-3 border border-white/[0.11] rounded-lg text-sm font-medium text-white/60 hover:bg-white/5 transition-colors">
                 Cancel
               </button>
               <button type="submit"
@@ -185,7 +185,7 @@ function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
               <input autoFocus type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)}
                 min="0" step="0.01" placeholder="Amount to add"
                 onKeyDown={e => e.key === 'Enter' && addMoney()}
-                className="w-full pl-6 pr-2.5 py-2 rounded-lg border border-white/[0.08] bg-white/[0.06] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
+                className="w-full pl-6 pr-2.5 py-2 rounded-lg border border-white/[0.11] bg-white/[0.085] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
             </div>
             <button onClick={addMoney} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
             <button onClick={() => setMode(null)} className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
@@ -194,7 +194,7 @@ function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
             <div className="flex items-center gap-2">
               <Wallet className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
               <select value={account} onChange={e => setAccount(e.target.value)}
-                className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-[#0e1812] text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30">
+                className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.11] bg-[#0e1812] text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30">
                 {accounts.map(a => (
                   <option key={a.id} value={a.id}>{a.name} — ${Number(a.balance).toLocaleString()}</option>
                 ))}
@@ -209,7 +209,7 @@ function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
         <div className="flex gap-2 items-center">
           <input autoFocus type="number" inputMode="decimal" value={absVal} onChange={e => setAbsVal(e.target.value)}
             min="0" step="0.01"
-            className="flex-1 px-2.5 py-2 rounded-lg border border-white/[0.08] bg-white/[0.06] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
+            className="flex-1 px-2.5 py-2 rounded-lg border border-white/[0.11] bg-white/[0.085] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
           <button onClick={saveAbs} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
           <button onClick={() => setMode(null)} className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
         </div>
@@ -234,7 +234,7 @@ function TimelineBadge({ goal }) {
   const proj = getProjection(goal)
   if (!proj) {
     return (
-      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/5 rounded-lg border border-dashed border-white/[0.08]">
+      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/5 rounded-lg border border-dashed border-white/[0.11]">
         <CalendarClock className="w-3 h-3 text-white/30" />
         <span className="text-xs text-white/40">Set a monthly contribution to see your timeline</span>
       </div>
@@ -258,7 +258,7 @@ function TimelineBadge({ goal }) {
   }
   const urgency = proj.monthsLeft <= 3  ? 'bg-emerald-500/15 border-emerald-400/30 text-emerald-300'
                 : proj.monthsLeft <= 12 ? 'bg-sky-500/15 border-sky-400/30 text-sky-300'
-                :                         'bg-white/5 border-white/[0.08] text-white/60'
+                :                         'bg-white/5 border-white/[0.11] text-white/60'
   return (
     <div className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${urgency}`}>
       <CalendarClock className="w-3 h-3" />
@@ -275,7 +275,7 @@ export function GoalItem({ goal, accounts, onEdit, onDelete, onUpdateProgress, o
   const isInv = goal.goal_type === 'investment'
   return (
     <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-      className="bg-white/[0.055] rounded-xl border border-white/[0.08] p-4 md:p-5">
+      className="bg-white/[0.075] rounded-xl border border-white/[0.11] p-4 md:p-5">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-0.5">

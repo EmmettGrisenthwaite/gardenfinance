@@ -138,7 +138,7 @@ function PreviewStep() {
           initial={{ opacity: 0, x: 16 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: i * 0.08, duration: 0.3 }}
-          className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/[0.07]"
+          className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.065] border border-white/[0.10]"
         >
           <div className="text-2xl flex-shrink-0 leading-none mt-0.5">{f.emoji}</div>
           <div>
@@ -161,7 +161,7 @@ function OptionCard({ option, selected, onClick, multi }) {
       className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border text-left transition-all ${
         active
           ? 'border-emerald-400/60 bg-emerald-500/[0.12] text-white'
-          : 'border-white/10 bg-white/[0.03] text-white/80 hover:border-emerald-400/40 hover:bg-emerald-500/[0.06]'
+          : 'border-white/10 bg-white/[0.045] text-white/80 hover:border-emerald-400/40 hover:bg-emerald-500/[0.06]'
       }`}
     >
       <span className="text-xl flex-shrink-0 w-7 text-center">{option.icon}</span>
@@ -198,7 +198,7 @@ function DebtsStep({ debts, setDebts }) {
       {debts.length > 0 && (
         <div className="space-y-1.5">
           {debts.map((d, i) => (
-            <div key={i} className="flex items-center justify-between bg-white/[0.05] border border-white/10 rounded-lg px-3 py-2">
+            <div key={i} className="flex items-center justify-between bg-white/[0.075] border border-white/10 rounded-lg px-3 py-2">
               <span className="text-sm text-white/85 truncate">{d.name}</span>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <span className="text-sm font-semibold text-rose-300 tabular-nums">${Math.round(d.balance).toLocaleString()}</span>
@@ -212,8 +212,8 @@ function DebtsStep({ debts, setDebts }) {
       <div className="flex gap-2 items-stretch">
         <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Visa, student loan"
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-          className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border-2 border-white/15 bg-white/[0.05] text-white text-sm focus:outline-none focus:border-emerald-500 transition-colors" />
-        <div className="flex items-center bg-white/[0.05] border-2 border-white/15 rounded-xl px-2.5 w-24 focus-within:border-emerald-500 transition-colors">
+          className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border-2 border-white/15 bg-white/[0.075] text-white text-sm focus:outline-none focus:border-emerald-500 transition-colors" />
+        <div className="flex items-center bg-white/[0.075] border-2 border-white/15 rounded-xl px-2.5 w-24 focus-within:border-emerald-500 transition-colors">
           <span className="text-white/40 text-sm mr-0.5">$</span>
           <input type="number" inputMode="decimal" min="0" value={bal} onChange={e => setBal(e.target.value)} placeholder="0"
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
@@ -369,7 +369,7 @@ export default function Onboarding({ onClose }) {
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28, ease: 'easeOut' }}
-        className="bg-[#0b140e] border border-white/[0.08] w-full sm:rounded-2xl sm:shadow-2xl sm:w-full sm:max-w-md overflow-hidden rounded-t-3xl shadow-2xl"
+        className="bg-[#0b140e] border border-white/[0.11] w-full sm:rounded-2xl sm:shadow-2xl sm:w-full sm:max-w-md overflow-hidden rounded-t-3xl shadow-2xl"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {/* Header */}
@@ -453,7 +453,7 @@ export default function Onboarding({ onClose }) {
                     onKeyDown={e => e.key === 'Enter' && canAdvance() && setStep(s => s + 1)}
                     placeholder="e.g. 24"
                     autoFocus
-                    className="w-32 px-4 py-3 text-2xl font-bold text-white bg-white/[0.05] border-2 border-white/15 rounded-xl focus:outline-none focus:border-emerald-500 text-center tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="w-32 px-4 py-3 text-2xl font-bold text-white bg-white/[0.075] border-2 border-white/15 rounded-xl focus:outline-none focus:border-emerald-500 text-center tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                   <span className="text-white/40 text-sm">years old</span>
                 </div>
@@ -469,7 +469,7 @@ export default function Onboarding({ onClose }) {
                     <label key={field} className="block">
                       <span className="text-sm font-medium text-white/80">{label}</span>
                       <span className="text-xs text-white/40 ml-1.5">{hint}</span>
-                      <div className="mt-1 flex items-center bg-white/[0.05] border-2 border-white/15 rounded-xl px-3 py-2.5 focus-within:border-emerald-500 transition-colors">
+                      <div className="mt-1 flex items-center bg-white/[0.075] border-2 border-white/15 rounded-xl px-3 py-2.5 focus-within:border-emerald-500 transition-colors">
                         <span className="text-white/40 text-lg mr-1">$</span>
                         <input type="number" inputMode="decimal" min="0" step="50"
                           autoFocus={auto}
@@ -489,7 +489,7 @@ export default function Onboarding({ onClose }) {
                     ].map(({ field, label, color }) => (
                       <label key={field} className="block">
                         <span className="text-xs font-medium text-white/70">{label}</span>
-                        <div className={`mt-1 flex items-center bg-white/[0.05] border-2 border-white/15 rounded-lg px-2 py-2 transition-colors ${color}`}>
+                        <div className={`mt-1 flex items-center bg-white/[0.075] border-2 border-white/15 rounded-lg px-2 py-2 transition-colors ${color}`}>
                           <span className="text-white/40 text-sm mr-0.5">$</span>
                           <input type="number" inputMode="decimal" min="0" step="50"
                             value={answers[field]}

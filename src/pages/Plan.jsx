@@ -247,7 +247,7 @@ export default function Plan() {
       </div>
 
       {loading ? (
-        <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-28 bg-white/[0.05] rounded-2xl animate-pulse" />)}</div>
+        <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-28 bg-white/[0.075] rounded-2xl animate-pulse" />)}</div>
       ) : (
         <>
           {/* Living headline */}
@@ -277,7 +277,7 @@ export default function Plan() {
             </div>
 
             {plans.length === 0 ? (
-              <div className="bg-white/[0.055] rounded-2xl border border-white/[0.08] p-8 text-center">
+              <div className="bg-white/[0.075] rounded-2xl border border-white/[0.11] p-8 text-center">
                 <div className="w-11 h-11 mx-auto mb-3 rounded-full bg-emerald-500/15 flex items-center justify-center">
                   <Sprout className="w-5 h-5 text-emerald-400" />
                 </div>
@@ -328,7 +328,7 @@ export default function Plan() {
             </div>
 
             {goals.length === 0 ? (
-              <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] p-6 text-center">
+              <div className="bg-white/[0.075] rounded-xl border border-white/[0.11] p-6 text-center">
                 <p className="text-white/55 text-xs max-w-xs mx-auto">
                   Saving toward something — a house, emergency fund, a trip? Add a goal to plant a tree. Reaching it grows your garden.
                 </p>

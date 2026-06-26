@@ -113,7 +113,7 @@ export default function SmartSuggestions({ money, profile, goals, debts, plans =
             <div key={s.id}
               className={`rounded-xl border p-3 ${s.urgent
                 ? 'bg-amber-400/[0.08] border-amber-400/25'
-                : 'bg-white/[0.055] border-white/[0.08]'}`}>
+                : 'bg-white/[0.075] border-white/[0.11]'}`}>
               <div className="flex items-start gap-3">
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${s.urgent ? 'bg-amber-400/15 text-amber-300' : 'bg-emerald-500/15 text-emerald-300'}`}>
                   <Icon className="w-4 h-4" />

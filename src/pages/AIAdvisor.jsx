@@ -15,7 +15,7 @@ const GOAL_INTENT = /\b(sav(e|ing|ings)|buy|buying|afford|down\s?-?payment|house
 // the guide tool itself makes the final yes/no decision.
 const GUIDE_INTENT = /\b(open|start|set\s?up|sign\s?up|create|switch|roll\s?over|move|transfer|enroll)\b[^.?!]*\b(roth|ira|401k|403b|hsa|brokerage|savings? account|hysa|high.?yield|index fund|etf|mutual fund|emergency fund|life insurance|will|credit|account|invest)\b|\bwalk me through\b|\bstep[-\s]?by[-\s]?step\b|\bhow (do|can) i (open|start|set\s?up|sign\s?up|get|invest)\b/i
 import {
-  Send, Bot, ChevronDown, ChevronUp, Sparkles, RefreshCw, Scan, ArrowDown,
+  Send, Bot, Sparkles, RefreshCw, ArrowDown,
   Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Lightbulb, Shield, Sprout,
   ClipboardList, Loader2,
 } from 'lucide-react'
@@ -385,50 +385,8 @@ function MessageBubble({ msg }) {
   )
 }
 
-// ─── Snapshot bar ──────────────────────────────────────────────────────────────
-function Snapshot({ money, goals, debts, plans, open, onToggle }) {
-  const net = (money.income || 0) - (money.expenses || 0)
-  const totalDebt  = debts.reduce((s, d) => s + Number(d.balance), 0)
-  const totalSaved = goals.reduce((s, g) => s + Number(g.current_amount), 0)
-  const allSteps   = plans.flatMap(p => p.steps)
-  const doneSteps  = allSteps.filter(s => s.done).length
-
-  return (
-    <div className="border-b border-white/10 bg-emerald-500/[0.07]">
-      <button onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-emerald-200 hover:bg-white/5 transition-colors">
-        <span className="flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
-          What your advisor can see · {allSteps.length ? `${doneSteps}/${allSteps.length} plan steps done` : 'your money, goals & plan'}
-        </span>
-        {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
-            <div className="px-4 pb-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-              {[
-                { label: 'Monthly net',  value: `${net >= 0 ? '+' : ''}$${net.toLocaleString()}`,  color: net >= 0 ? 'text-emerald-300' : 'text-rose-300' },
-                { label: 'Net worth',    value: `${money.netWorth >= 0 ? '' : '-'}$${Math.abs(money.netWorth || 0).toLocaleString()}`, color: 'text-sky-300' },
-                { label: 'Total debt',   value: `$${totalDebt.toLocaleString()}`,   color: totalDebt > 0 ? 'text-rose-300' : 'text-emerald-300' },
-                { label: 'Saved in goals', value: `$${totalSaved.toLocaleString()}`, color: 'text-emerald-300' },
-              ].map(({ label, value, color }) => (
-                <div key={label} className="bg-white/[0.07] rounded-lg p-2.5 border border-white/10">
-                  <div className="text-white/40 mb-0.5">{label}</div>
-                  <div className={`font-bold tabular-nums ${color}`}>{value}</div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
-
 // ─── Welcome / empty state ─────────────────────────────────────────────────────
-function WelcomeScreen({ hasData, onAnalyze, onSuggest, analyzing, onBuildPlan, building }) {
+function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building }) {
   return (
     <motion.div className="text-center py-6"
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -443,33 +401,21 @@ function WelcomeScreen({ hasData, onAnalyze, onSuggest, analyzing, onBuildPlan, 
       </p>
 
       {hasData && (
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 mb-6">
-          <motion.button
-            onClick={onAnalyze}
-            disabled={analyzing || building}
-            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-            className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-700/50 text-white rounded-xl font-semibold text-sm shadow-lg shadow-emerald-900/40 transition-colors"
-          >
-            {analyzing ? (
-              <>
-                <motion.div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
-                  animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} />
-                Analyzing your situation…
-              </>
-            ) : (
-              <><Scan className="w-4 h-4" /> Analyze my situation</>
-            )}
-          </motion.button>
+        <div className="flex justify-center mb-6">
           <motion.button
             onClick={onBuildPlan}
             disabled={analyzing || building}
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-            className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-white/10 border border-emerald-400/30 hover:bg-emerald-500/15 text-white rounded-xl font-semibold text-sm transition-colors"
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-700/50 text-white rounded-xl font-semibold text-sm shadow-lg shadow-emerald-900/40 transition-colors"
           >
             {building ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Building plan…</>
+              <>
+                <motion.div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                  animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} />
+                Analyzing your plan…
+              </>
             ) : (
-              <><ClipboardList className="w-4 h-4 text-emerald-300" /> Build my action plan</>
+              <><ClipboardList className="w-4 h-4" /> Analyze my plan & suggest steps</>
             )}
           </motion.button>
         </div>
@@ -479,7 +425,7 @@ function WelcomeScreen({ hasData, onAnalyze, onSuggest, analyzing, onBuildPlan, 
       <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:flex-wrap md:justify-center md:overflow-x-visible md:-mx-0 md:px-0 md:max-w-lg md:mx-auto">
         {SUGGESTIONS.map((s, i) => (
           <button key={i} onClick={() => onSuggest(s.label)}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-white/10 border border-white/[0.08] rounded-full text-sm text-white/70 hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-white transition-all">
+            className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-white/10 border border-white/[0.11] rounded-full text-sm text-white/70 hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-white transition-all">
             <s.icon className="w-3.5 h-3.5 text-emerald-300/80" />{s.label}
           </button>
         ))}
@@ -507,7 +453,6 @@ export default function AIAdvisor() {
   const [debts,    setDebts]            = useState([])
   const [plans,    setPlans]            = useState([])
   const [accounts, setAccounts]         = useState([])
-  const [snapshotOpen, setSnapshotOpen] = useState(false)
   const [error, setError]               = useState(null)
   const [atBottom, setAtBottom]         = useState(true)
   const [pendingPlan, setPendingPlan]   = useState(null)   // proposed plan card in the thread
@@ -636,12 +581,6 @@ export default function AIAdvisor() {
     }
   }
 
-  function handleAnalyze() {
-    send(
-      "I just opened the app. Can you look at my actual numbers and give me an honest picture of where I stand financially? Tell me what's good, what gaps you see, and what the most important thing I should be doing right now is.",
-      { analyzing: true }
-    )
-  }
 
   async function handleBuildPlan() {
     if (buildingPlan || loading || analyzing || noKey) return
@@ -729,12 +668,6 @@ export default function AIAdvisor() {
         </div>
       </div>
 
-      {/* Snapshot */}
-      <div className="flex-shrink-0 max-w-3xl w-full mx-auto">
-        <Snapshot money={money} goals={goals} debts={debts} plans={plans}
-          open={snapshotOpen} onToggle={() => setSnapshotOpen(o => !o)} />
-      </div>
-
       {/* Not-configured banner (only if Supabase URL is missing at build time) */}
       {noKey && (
         <div className="flex-shrink-0 max-w-3xl w-full mx-auto px-4 mt-4">
@@ -764,12 +697,11 @@ export default function AIAdvisor() {
             </motion.button>
           )}
         </AnimatePresence>
-        <div className="max-w-3xl mx-auto px-4 py-6">
+        <div className={`max-w-3xl mx-auto px-4 py-6 ${isEmpty ? 'min-h-full flex flex-col justify-center' : ''}`}>
 
           {isEmpty && !noKey && (
             <WelcomeScreen
               hasData={hasData}
-              onAnalyze={handleAnalyze}
               onSuggest={send}
               analyzing={analyzing}
               onBuildPlan={handleBuildPlan}
@@ -825,7 +757,7 @@ export default function AIAdvisor() {
             <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:flex-wrap md:overflow-x-visible md:-mx-0 md:px-0 mt-2 mb-2">
               {SUGGESTIONS.slice(0, 4).map((s, i) => (
                 <button key={i} onClick={() => send(s.label)}
-                  className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-white/10 border border-white/[0.08] rounded-full text-xs text-white/60 hover:border-emerald-400/50 hover:text-white transition-all">
+                  className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-white/10 border border-white/[0.11] rounded-full text-xs text-white/60 hover:border-emerald-400/50 hover:text-white transition-all">
                   <s.icon className="w-3 h-3 text-emerald-300/80" /> {s.label}
                 </button>
               ))}
@@ -844,7 +776,7 @@ export default function AIAdvisor() {
         <div className="border-t border-white/10 bg-white/5 backdrop-blur-md">
         <form onSubmit={e => { e.preventDefault(); send(input) }} className="max-w-3xl mx-auto px-4 py-3 md:py-4">
           <div className="flex gap-2 items-end">
-            <div className="flex-1 bg-white/10 border border-white/[0.08] rounded-2xl px-4 py-3 focus-within:border-emerald-400/50 focus-within:ring-1 focus-within:ring-emerald-400/20 transition-all">
+            <div className="flex-1 bg-white/10 border border-white/[0.11] rounded-2xl px-4 py-3 focus-within:border-emerald-400/50 focus-within:ring-1 focus-within:ring-emerald-400/20 transition-all">
               <textarea ref={inputRef} value={input}
                 onChange={e => setInput(e.target.value)}
                 onFocus={() => setInputFocused(true)}

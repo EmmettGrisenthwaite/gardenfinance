@@ -47,41 +47,15 @@ export default function Layout({ children }) {
     <div className="relative min-h-screen">
       {needsOnboarding && <Onboarding />}
 
-      {/* ── Premium ambient background — deep forest-green (Fidelity-inspired) ── */}
-      <div
-        className="fixed inset-0 z-0 overflow-hidden"
-        style={{ background: 'linear-gradient(155deg, #021109 0%, #04261a 30%, #02140f 62%, #020c0a 100%)' }}
-      >
-        {/* Orb 1 — forest green (#006044), top-left */}
-        <div
-          className="absolute rounded-full animate-orb-1 pointer-events-none"
-          style={{
-            top: '-25%', left: '-20%',
-            width: '75%', height: '75%',
-            background: 'radial-gradient(circle at center, rgba(0,96,68,0.30) 0%, transparent 68%)',
-            filter: 'blur(48px)',
-          }}
-        />
-        {/* Orb 2 — bright lime accent (#76a923), bottom-right */}
-        <div
-          className="absolute rounded-full animate-orb-2 pointer-events-none"
-          style={{
-            bottom: '-30%', right: '-20%',
-            width: '70%', height: '70%',
-            background: 'radial-gradient(circle at center, rgba(118,169,35,0.12) 0%, transparent 68%)',
-            filter: 'blur(48px)',
-          }}
-        />
-        {/* Dot grid */}
+      {/* ── Background — solid, professional deep green-charcoal ── */}
+      <div className="fixed inset-0 z-0 overflow-hidden" style={{ background: '#08110e' }}>
+        {/* A single whisper of depth up top so it never reads as flat */}
         <div
           className="absolute inset-0 pointer-events-none"
-          style={{
-            backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
-          }}
+          style={{ background: 'radial-gradient(110% 55% at 50% -8%, rgba(18,58,44,0.45) 0%, transparent 62%)' }}
         />
-        {/* Top & bottom vignette */}
-        <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/25 via-transparent to-black/35" />
+        {/* Subtle grounding vignette at the bottom */}
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-transparent via-transparent to-black/35" />
       </div>
 
       {/* ── UI layer: app shell fills the viewport; pages scroll inside main ── */}
@@ -89,10 +63,10 @@ export default function Layout({ children }) {
 
         {/* ── Desktop glass sidebar ── */}
         <aside className="hidden md:flex w-56 shrink-0 p-3">
-          <div className="flex flex-col w-full h-full bg-white/[0.06] backdrop-blur-md rounded-2xl border border-white/[0.12] shadow-2xl overflow-hidden">
+          <div className="flex flex-col w-full h-full bg-white/[0.085] backdrop-blur-md rounded-2xl border border-white/[0.12] shadow-2xl overflow-hidden">
 
             {/* Logo */}
-            <div className="px-4 py-4 border-b border-white/[0.08]">
+            <div className="px-4 py-4 border-b border-white/[0.11]">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 bg-green-500/90 rounded-xl flex items-center justify-center shadow-lg">
                   <Sprout className="w-4 h-4 text-white" />
@@ -126,7 +100,7 @@ export default function Layout({ children }) {
             </nav>
 
             {/* User + logout */}
-            <div className="p-2 border-t border-white/[0.08]">
+            <div className="p-2 border-t border-white/[0.11]">
               <div className="text-[10px] text-white/40 truncate px-3 mb-1">{user?.email}</div>
               <button
                 onClick={handleLogout}
@@ -173,7 +147,7 @@ export default function Layout({ children }) {
           typing ? 'opacity-0 translate-y-8 pointer-events-none' : 'translate-y-0'}`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="flex items-center gap-0.5 bg-black/40 backdrop-blur-2xl rounded-2xl border border-white/[0.08] px-1.5 py-1.5"
+        <div className="flex items-center gap-0.5 bg-black/40 backdrop-blur-2xl rounded-2xl border border-white/[0.11] px-1.5 py-1.5"
           style={{ boxShadow: '0 12px 36px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.10)' }}>
           {HUD_ITEMS.map(({ to, label, icon: Icon }) => (
             <NavLink

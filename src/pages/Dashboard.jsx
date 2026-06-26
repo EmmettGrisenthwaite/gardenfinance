@@ -155,11 +155,11 @@ export default function Dashboard() {
         {/* Account value + net worth — tap to edit in the Plan */}
         {!loading && (
           <Link to="/plan#money" className="grid grid-cols-2 gap-2.5 group">
-            <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] px-3 py-2 group-hover:bg-white/[0.08] transition-colors">
+            <div className="bg-white/[0.075] rounded-xl border border-white/[0.11] px-3 py-2 group-hover:bg-white/[0.11] transition-colors">
               <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide">Account value</div>
               <div className="text-base font-bold tabular-nums text-emerald-200 leading-tight">{fmt$(accountValue)}</div>
             </div>
-            <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] px-3 py-2 group-hover:bg-white/[0.08] transition-colors">
+            <div className="bg-white/[0.075] rounded-xl border border-white/[0.11] px-3 py-2 group-hover:bg-white/[0.11] transition-colors">
               <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide flex items-center justify-between gap-1">
                 Net worth
                 {trend?.has && trend.delta !== 0 && (
@@ -187,7 +187,7 @@ export default function Dashboard() {
         {!loading && (
           hasPlan ? (
             nextSteps.length > 0 ? (
-              <div className="bg-white/[0.055] rounded-xl border border-white/[0.08] p-2.5 space-y-1.5">
+              <div className="bg-white/[0.075] rounded-xl border border-white/[0.11] p-2.5 space-y-1.5">
                 <div className="flex items-center justify-between px-1">
                   <span className="text-[11px] font-semibold text-white/55 flex items-center gap-1.5">
                     <ClipboardList className="w-3.5 h-3.5 text-emerald-300" /> Next in your plan

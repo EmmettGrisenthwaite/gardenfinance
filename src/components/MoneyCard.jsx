@@ -45,7 +45,7 @@ function EditableStat({ label, value, onSave, color = 'text-white', prefix = '$'
       <div className="min-w-0">
         <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-1">{label}</div>
         <div className="flex items-center gap-1">
-          <div className="flex items-center bg-white/[0.06] border border-emerald-400/50 rounded-lg px-2 py-1 flex-1 min-w-0">
+          <div className="flex items-center bg-white/[0.085] border border-emerald-400/50 rounded-lg px-2 py-1 flex-1 min-w-0">
             {prefix && <span className="text-white/40 text-sm">{prefix}</span>}
             <input autoFocus type="number" inputMode="decimal" value={val}
               onChange={e => setVal(e.target.value)}
@@ -95,8 +95,8 @@ function InvestRow({ account, onUpdate, onDelete }) {
     <div className="flex items-center gap-2">
       <input value={name} onChange={e => setName(e.target.value)}
         onBlur={() => { if (name.trim() && name !== account.name) onUpdate(account.id, { name }) }}
-        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-white/[0.06] bg-white/[0.04] text-white/90 text-sm focus:outline-none focus:border-violet-400/40 transition-colors" />
-      <div className="flex items-center bg-white/[0.04] border border-white/[0.06] rounded-lg px-2 py-1.5 w-24 focus-within:border-violet-400/40 transition-colors">
+        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-white/[0.095] bg-white/[0.065] text-white/90 text-sm focus:outline-none focus:border-violet-400/40 transition-colors" />
+      <div className="flex items-center bg-white/[0.065] border border-white/[0.095] rounded-lg px-2 py-1.5 w-24 focus-within:border-violet-400/40 transition-colors">
         <span className="text-white/40 text-sm">$</span>
         <input type="number" inputMode="decimal" value={bal} onChange={e => setBal(e.target.value)}
           onBlur={() => { const n = parseFloat(bal); if (!isNaN(n) && n !== Number(account.balance)) onUpdate(account.id, { balance: n }) }}
@@ -122,7 +122,7 @@ function InvestmentsPanel({ accounts, onAdd, onUpdate, onDelete }) {
   }
 
   return (
-    <div className="mt-2.5 rounded-xl bg-white/[0.03] border border-white/[0.07] p-3 space-y-2.5">
+    <div className="mt-2.5 rounded-xl bg-white/[0.045] border border-white/[0.10] p-3 space-y-2.5">
       {accounts.length > 0 && (
         <div className="space-y-1.5">
           {accounts.map(a => <InvestRow key={a.id} account={a} onUpdate={onUpdate} onDelete={onDelete} />)}
@@ -132,7 +132,7 @@ function InvestmentsPanel({ accounts, onAdd, onUpdate, onDelete }) {
         {QUICK_NAMES.map(n => (
           <button key={n} type="button" onClick={() => setName(n)}
             className={`px-2 py-1 rounded-full text-[11px] font-medium border transition-colors ${
-              name === n ? 'border-violet-400/60 bg-violet-500/15 text-violet-100' : 'border-white/10 bg-white/[0.04] text-white/55 hover:text-white/85'}`}>
+              name === n ? 'border-violet-400/60 bg-violet-500/15 text-violet-100' : 'border-white/10 bg-white/[0.065] text-white/55 hover:text-white/85'}`}>
             {n}
           </button>
         ))}
@@ -140,8 +140,8 @@ function InvestmentsPanel({ accounts, onAdd, onUpdate, onDelete }) {
       <div className="flex gap-2 items-center">
         <input value={name} onChange={e => setName(e.target.value)} placeholder="Account name"
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-          className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.06] text-white text-sm focus:outline-none focus:ring-1 focus:ring-violet-400/30" />
-        <div className="flex items-center bg-white/[0.06] border border-white/[0.08] rounded-lg px-2 py-1.5 w-24">
+          className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.11] bg-white/[0.085] text-white text-sm focus:outline-none focus:ring-1 focus:ring-violet-400/30" />
+        <div className="flex items-center bg-white/[0.085] border border-white/[0.11] rounded-lg px-2 py-1.5 w-24">
           <span className="text-white/40 text-sm">$</span>
           <input type="number" inputMode="decimal" value={bal} onChange={e => setBal(e.target.value)} placeholder="0"
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
@@ -179,9 +179,9 @@ export default function MoneyCard({ income, expenses, netWorth, balances = {}, d
   }
 
   return (
-    <div className="bg-white/[0.055] rounded-2xl border border-white/[0.08] overflow-hidden">
+    <div className="bg-white/[0.075] rounded-2xl border border-white/[0.11] overflow-hidden">
       <button onClick={() => setOpen(o => !o)}
-        className={`w-full flex items-center gap-2 px-4 py-2.5 bg-white/[0.03] hover:bg-white/[0.05] transition-colors ${open ? 'border-b border-white/10' : ''}`}>
+        className={`w-full flex items-center gap-2 px-4 py-2.5 bg-white/[0.045] hover:bg-white/[0.075] transition-colors ${open ? 'border-b border-white/10' : ''}`}>
         <Wallet className="w-4 h-4 text-emerald-300 flex-shrink-0" />
         <span className="text-sm font-semibold text-white">Your money</span>
         {!open && (
@@ -209,7 +209,7 @@ export default function MoneyCard({ income, expenses, netWorth, balances = {}, d
       </div>
 
       {/* Accounts by type — donut + editable amounts (feeds the advisor) */}
-      <div className="px-4 pb-2 pt-2 border-t border-white/[0.06]">
+      <div className="px-4 pb-2 pt-2 border-t border-white/[0.095]">
         <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-2">Accounts</div>
         <div className="flex items-center gap-3.5">
           <AllocationDonut parts={[
@@ -241,14 +241,14 @@ export default function MoneyCard({ income, expenses, netWorth, balances = {}, d
       </div>
 
       {/* Net worth */}
-      <div className="px-4 pb-3 pt-1 border-t border-white/[0.06]">
+      <div className="px-4 pb-3 pt-1 border-t border-white/[0.095]">
         <EditableStat label="Net worth" value={netWorth}
           onSave={v => onSaveMoney({ net_worth: v })}
           color={Number(netWorth) >= 0 ? 'text-white' : 'text-rose-300'} />
       </div>
 
       {/* Debts */}
-      <div className="px-4 py-3 border-t border-white/10 bg-white/[0.015]">
+      <div className="px-4 py-3 border-t border-white/10 bg-white/[0.035]">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold text-white/70 flex items-center gap-1.5">
             <CreditCard className="w-3.5 h-3.5 text-white/45" /> Debts
@@ -282,8 +282,8 @@ export default function MoneyCard({ income, expenses, netWorth, balances = {}, d
         {addingDebt ? (
           <form onSubmit={submitDebt} className="flex gap-2 items-center">
             <input autoFocus value={dName} onChange={e => setDName(e.target.value)} placeholder="e.g. Visa"
-              className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.06] text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
-            <div className="flex items-center bg-white/[0.06] border border-white/[0.08] rounded-lg px-2 py-1.5 w-24">
+              className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.11] bg-white/[0.085] text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
+            <div className="flex items-center bg-white/[0.085] border border-white/[0.11] rounded-lg px-2 py-1.5 w-24">
               <span className="text-white/40 text-sm">$</span>
               <input type="number" inputMode="decimal" value={dBal} onChange={e => setDBal(e.target.value)} placeholder="0"
                 className="w-full bg-transparent text-sm text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
