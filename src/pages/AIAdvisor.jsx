@@ -697,7 +697,7 @@ export default function AIAdvisor() {
             </motion.button>
           )}
         </AnimatePresence>
-        <div className={`max-w-3xl mx-auto px-4 py-6 ${isEmpty ? 'min-h-full flex flex-col justify-center' : ''}`}>
+        <div className={`max-w-3xl mx-auto px-4 py-6 ${isEmpty ? 'min-h-full flex flex-col justify-end' : ''}`}>
 
           {isEmpty && !noKey && (
             <WelcomeScreen
