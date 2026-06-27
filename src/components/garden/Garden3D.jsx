@@ -914,6 +914,56 @@ function EmptyInvestmentPlot({ position, label = 'Add a goal', onSelect, signYOf
   )
 }
 
+// ─── Cemented accomplishment — a reached goal is set in stone ─────────────────
+// A stone plinth + gold plaque ring the plot, so a completed goal reads as a
+// permanent monument rather than an in-progress planting.
+function CementedBase() {
+  return (
+    <group>
+      <mesh position={[0, 0.07, 0]} receiveShadow castShadow>
+        <cylinderGeometry args={[1.08, 1.18, 0.18, 28]} />
+        <meshToonMaterial color="#9aa3ad" gradientMap={getToonGrad()} />
+      </mesh>
+      <mesh position={[0, 0.17, 0]} receiveShadow>
+        <cylinderGeometry args={[1.0, 1.04, 0.05, 28]} />
+        <meshToonMaterial color="#c6d0da" gradientMap={getToonGrad()} />
+      </mesh>
+      {/* gold plaque on the front lip */}
+      <mesh position={[0, 0.16, 0.96]} rotation={[-0.55, 0, 0]} castShadow>
+        <boxGeometry args={[0.54, 0.30, 0.05]} />
+        <meshToonMaterial color="#d9b945" emissive="#a8801a" emissiveIntensity={0.25} gradientMap={getToonGrad()} />
+      </mesh>
+    </group>
+  )
+}
+
+// ─── Unified goal plot — one growing plant per goal, cemented when reached ────
+function GoalSlot({ position, goal, onSelect, yOffset = 0 }) {
+  const p = goalPct(goal), st = plantStage(p), done = p >= 100
+  const isInv = goal.goal_type === 'investment'
+  const nm = goal.name.length > 8 ? goal.name.slice(0, 8) + '…' : goal.name
+  return (
+    <InteractivePlot position={position} onSelect={onSelect}>
+      <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.01,0]} receiveShadow>
+        <ringGeometry args={[0.98, 1.32, 40]} />
+        <meshToonMaterial color="#c8b890" gradientMap={getToonGrad()} />
+      </mesh>
+      <mesh rotation={[-Math.PI/2,0,0]} receiveShadow>
+        <circleGeometry args={[0.98, 40]} />
+        <meshToonMaterial color="#6b3e1e" gradientMap={getToonGrad()} />
+      </mesh>
+      <mesh position={[0, 0.024, 0]}>
+        <cylinderGeometry args={[0.98, 0.98, 0.048, 40]} />
+        <meshToonMaterial color="#7c4a22" gradientMap={getToonGrad()} />
+      </mesh>
+      {done && <CementedBase />}
+      {isInv ? <InvestPlant stage={st} /> : <SavingsPlant stage={st} />}
+      <Signpost name={nm} progress={p} type={isInv ? 'investment' : 'savings'}
+        icon={done ? '🏆' : goalIcon(goal.name, isInv ? 'investment' : 'savings')} yOffset={yOffset} />
+    </InteractivePlot>
+  )
+}
+
 // ─── Savings plants ───────────────────────────────────────────────────────────
 function SavingsPlant({ stage }) {
   if (stage === 0) return <GltfToon url="/models/plant-flat.glb"    position={[0,0.95,0]} scale={0.90} leafColor="#4ade80" trunkColor="#15803d" />
@@ -1196,6 +1246,18 @@ const SAVINGS_POSITIONS = [
   [-1.9, 0.93,  6.3],
 ]
 
+// Unified goal slots — one per quadrant first (front-left, front-right,
+// back-left, back-right), then a second ring further out for overflow. Goals
+// fill these in order so they spread across all four quadrants; the next free
+// slot shows the single "Add a goal" invitation. (Stream runs E-W at z=0, so
+// z>1.5 is front, z<-1.5 is back — all slots clear the water.)
+const QUADRANT_SLOTS = [
+  [-2.6, 0.93,  3.0], [ 2.6, 0.93,  3.0], [-2.6, 0.93, -3.4], [ 2.6, 0.93, -3.4],
+  [-4.4, 0.93,  3.8], [ 4.4, 0.93,  3.8], [-4.4, 0.93, -4.1], [ 4.4, 0.93, -4.1],
+]
+// Lift markers that would otherwise share a screen column with their neighbour.
+const SLOT_SIGN_OFFSET = [0, 0, 0.7, 0.7, 0, 0, 1.3, 1.3]
+
 
 // Lush round-canopy tree — fuller + more Hay Day than the low-poly cones.
 // Supports autumn palettes and optional fruit.
@@ -1466,8 +1528,8 @@ const DEBT_VEG      = ['#ef4444', '#f97316', '#fde047'] // tomato · pumpkin · 
 function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal, onZone }) {
   const { darkClouds, windStrength, netWorthTier = 0,
           savingsTier = 0, investTier = 0, debtLevel = 0, emergencyMonths = 0 } = weather
-  const investGoals  = goals.filter(g => g.goal_type === 'investment')
-  const savingsGoals = goals.filter(g => g.goal_type !== 'investment')
+  // Goals fill the quadrant slots in creation order (stable placement).
+  const sortedGoals = [...goals].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
   // Front quadrants greenery scales with the stage
   const bedCount    = stage < 2 ? 0 : stage < 4 ? 1 : FLOWER_BEDS.length
   const mushCount   = stage < 3 ? 0 : Math.min(2 + (netWorthTier >= 2 ? 2 : 0), MUSHROOM_DEFS.length)
@@ -1492,36 +1554,21 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal, onZone })
       {LANTERN_POS.map((p, i) => <Lantern key={`ln${i}`} position={p} />)}
 
       {/* No zone labels — the garden is one growing landscape, not four labelled
-          pillars. Every quadrant plants up together as you complete plan steps. */}
-
-      {/* Back-left & back-right garden compounds — both fill in with plan progress */}
-      <QuadrantGarden position={[-3.4, 0.95, -3.95]} growth={quadrantGrowth}
-        vegColors={EMERGENCY_VEG} prop={<><WaterBarrel /><WaterBarrel position={[0.30, 0, -0.42]} scale={0.78} /></>} />
-      <QuadrantGarden position={[3.4, 0.95, -3.95]} growth={quadrantGrowth}
-        vegColors={DEBT_VEG} prop={<Scarecrow />} mirror />
+          pillars. The four quadrants are goal plots (below). */}
 
       {/* Animals wander the lawns once the garden is thriving */}
       {stage >= 3 && <FarmLife />}
 
-      {/* Investment plots — behind stream. One neutral "plant a goal" invitation
-          when empty (no fabricated goal names). */}
-      {investGoals.slice(0, INVESTMENT_POSITIONS.length).map((g, i) => (
-        <InvestmentPlot key={g.id} position={INVESTMENT_POSITIONS[i]} goal={g} signYOffset={INVEST_SIGN_OFFSET[i]}
+      {/* Goal plots fill all four quadrants in order — each goal plants a tree
+          that grows with its progress and is cemented in stone once reached. The
+          next free slot shows a single "Add a goal" invitation. */}
+      {sortedGoals.slice(0, QUADRANT_SLOTS.length).map((g, i) => (
+        <GoalSlot key={g.id} position={QUADRANT_SLOTS[i]} goal={g} yOffset={SLOT_SIGN_OFFSET[i]}
           onSelect={onSelectGoal ? () => onSelectGoal(g) : undefined} />
       ))}
-      {investGoals.length === 0 && (
-        <EmptyInvestmentPlot position={INVESTMENT_POSITIONS[0]} onSelect={onAddGoal}
-          signYOffset={INVEST_SIGN_OFFSET[0]} />
-      )}
-
-      {/* Savings plots — in front of stream */}
-      {savingsGoals.slice(0, SAVINGS_POSITIONS.length).map((g, i) => (
-        <GoalPlot key={g.id} position={SAVINGS_POSITIONS[i]} goal={g} signYOffset={SAVE_SIGN_OFFSET[i]}
-          onSelect={onSelectGoal ? () => onSelectGoal(g) : undefined} />
-      ))}
-      {savingsGoals.length === 0 && (
-        <EmptyPlot position={SAVINGS_POSITIONS[0]} onSelect={onAddGoal}
-          signYOffset={SAVE_SIGN_OFFSET[0]} />
+      {sortedGoals.length < QUADRANT_SLOTS.length && (
+        <EmptyPlot position={QUADRANT_SLOTS[sortedGoals.length]} onSelect={onAddGoal}
+          signYOffset={SLOT_SIGN_OFFSET[sortedGoals.length]} />
       )}
 
       {/* Savings orchard (front) — green trees that grow with total savings */}
