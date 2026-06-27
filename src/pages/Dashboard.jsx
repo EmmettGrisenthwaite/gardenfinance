@@ -50,8 +50,11 @@ function GardenHud({ stage, done }) {
         <span className="w-2.5 h-2.5 rounded-full ring-2 ring-white/20"
           style={{ background: ['#8a6a44','#a3b35a','#6cc24a','#3fa53b','#2f9e44','#34d399'][stage] }} />
         <span className="text-xs font-bold text-white whitespace-nowrap">{STAGE_NAMES[stage]}</span>
+        <span className="text-white/25 text-[10px]">·</span>
         <span className="text-[10px] font-semibold text-green-200/90 whitespace-nowrap tabular-nums">
-          {stage >= 5 ? `${done} milestones` : `${remaining} more to bloom`}
+          {stage >= 5
+            ? 'fully grown 🌸'
+            : `${remaining} more step${remaining === 1 ? '' : 's'} → ${STAGE_NAMES[stage + 1]}`}
         </span>
       </div>
     </div>
