@@ -1472,11 +1472,12 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal, onZone })
   const bedCount    = stage < 2 ? 0 : stage < 4 ? 1 : FLOWER_BEDS.length
   const mushCount   = stage < 3 ? 0 : Math.min(2 + (netWorthTier >= 2 ? 2 : 0), MUSHROOM_DEFS.length)
   const birdCount   = stage < 2 ? 0 : (netWorthTier >= 4 ? 7 : netWorthTier >= 3 ? 5 : netWorthTier >= 2 ? 3 : 0)
-  // Each zone's orchard grows with that category's value (bare until you start).
+  // Each zone's orchard grows with the overall plan stage (bare until you start).
   const savingsTreeCount = Math.min(2 + savingsTier, SAVINGS_ZONE_TREES.length)
   const investTreeCount  = Math.min(2 + investTier,  INVEST_ZONE_TREES.length)
-  // Emergency well fills toward a 3-month buffer
-  const emergencyFill = Math.min(emergencyMonths / 3, 1)
+  // Every garden compound plants up together as the plan progresses (0→1 across
+  // stages) — the whole landscape responds to checking steps off.
+  const quadrantGrowth = Math.min(stage / 5, 1)
 
   return (
     <group>
@@ -1490,20 +1491,13 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal, onZone })
       <Fence />
       {LANTERN_POS.map((p, i) => <Lantern key={`ln${i}`} position={p} />)}
 
-      {/* Four pillars, one per quadrant around the centered river + bridge:
-          front-left Savings · front-right Investments · back-left Emergency · back-right Debt.
-          Front banners sit LOW on the rim (clear of the goal markers above the
-          plots); back banners float over the rim behind the gardens. */}
-      <ZoneLabel position={[-2.7, 0.45,  6.95]} label="Savings"     icon="🌱" accent="rgba(134,239,172,0.65)" tier={savingsTier}        to="/plan#goals" onZone={onZone} />
-      <ZoneLabel position={[ 2.7, 0.45,  6.95]} label="Investments" icon="📈" accent="rgba(251,191,36,0.65)"  tier={investTier}         to="/plan#goals" onZone={onZone} />
-      <ZoneLabel position={[-2.9, 1.10, -6.95]} label="Emergency"   icon="🛟" accent="rgba(125,211,252,0.65)" tier={emergencyFill * 4}  to="/plan" onZone={onZone} />
-      <ZoneLabel position={[ 2.9, 1.10, -6.95]} label="Debt"        icon="💳" accent="rgba(248,180,180,0.65)" tier={(1 - debtLevel) * 4} to="/plan#money" onZone={onZone} />
+      {/* No zone labels — the garden is one growing landscape, not four labelled
+          pillars. Every quadrant plants up together as you complete plan steps. */}
 
-      {/* Back-left: Emergency fund — one tidy compound that plants up with your buffer */}
-      <QuadrantGarden position={[-3.4, 0.95, -3.95]} growth={emergencyFill}
+      {/* Back-left & back-right garden compounds — both fill in with plan progress */}
+      <QuadrantGarden position={[-3.4, 0.95, -3.95]} growth={quadrantGrowth}
         vegColors={EMERGENCY_VEG} prop={<><WaterBarrel /><WaterBarrel position={[0.30, 0, -0.42]} scale={0.78} /></>} />
-      {/* Back-right: Debt — the scarecrow's garden flourishes as you pay debt down */}
-      <QuadrantGarden position={[3.4, 0.95, -3.95]} growth={1 - debtLevel}
+      <QuadrantGarden position={[3.4, 0.95, -3.95]} growth={quadrantGrowth}
         vegColors={DEBT_VEG} prop={<Scarecrow />} mirror />
 
       {/* Animals wander the lawns once the garden is thriving */}
