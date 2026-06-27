@@ -240,11 +240,15 @@ export default function MoneyCard({ income, expenses, netWorth, balances = {}, d
         )}
       </div>
 
-      {/* Net worth */}
+      {/* Net worth — auto-derived from accounts − debts (single source of truth) */}
       <div className="px-4 pb-3 pt-1 border-t border-white/[0.095]">
-        <EditableStat label="Net worth" value={netWorth}
-          onSave={v => onSaveMoney({ net_worth: v })}
-          color={Number(netWorth) >= 0 ? 'text-white' : 'text-rose-300'} />
+        <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-1 flex items-center gap-1.5">
+          Net worth
+          <span className="normal-case tracking-normal text-white/30 font-normal">· auto from accounts − debts</span>
+        </div>
+        <div className={`text-base md:text-lg font-bold tabular-nums leading-tight ${Number(netWorth) >= 0 ? 'text-white' : 'text-rose-300'}`}>
+          {fmt(netWorth)}
+        </div>
       </div>
 
       {/* Debts */}

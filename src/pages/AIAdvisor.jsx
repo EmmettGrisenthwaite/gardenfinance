@@ -171,11 +171,13 @@ RESPONSE FORMAT RULES
 }
 
 function buildContext(money, goals, debts, profile, extras = {}) {
-  const { income = 0, expenses = 0, netWorth = 0 } = money
+  const { income = 0, expenses = 0 } = money
   const net = income - expenses
   const totalDebt = debts.reduce((s, d) => s + Number(d.balance || 0), 0)
   const accounts = extras.accounts ?? []
   const acctTotal = accounts.reduce((s, a) => s + Number(a.balance || 0), 0)
+  // Net worth derives from accounts − debts (kept consistent everywhere).
+  const netWorth = acctTotal - totalDebt
 
   if (income === 0 && expenses === 0 && goals.length === 0 && debts.length === 0 && !netWorth && acctTotal === 0) {
     return 'The user has not added any financial data yet. Encourage them to fill in their monthly income, expenses, and net worth in the "Your money" card on the Plan tab, set a savings goal, and — most valuably — ask you to build them an action plan. Their garden grows as they complete plan steps.'

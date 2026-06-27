@@ -66,11 +66,26 @@ export default function Plan() {
   const surplusRatio   = money.income > 0 ? (money.income - money.expenses) / money.income : 0
   const stage          = milestonesToStage(completedSteps + goalsReached)
 
+  // Net worth auto-derives from what you own (accounts) minus what you owe
+  // (debts) — one source of truth, always in sync as those change.
+  const accountsTotal = accounts.reduce((s, a) => s + Number(a.balance || 0), 0)
+  const debtsTotal    = debts.reduce((s, d) => s + Number(d.balance || 0), 0)
+  const netWorth      = accountsTotal - debtsTotal
+
   // Keep the garden in sync with live state.
   useEffect(() => {
     if (loading) return
-    updateGarden({ completedSteps, totalSteps, goalsReached, surplusRatio, netWorth: money.netWorth, goals, debts })
-  }, [completedSteps, totalSteps, goalsReached, surplusRatio, money.netWorth, loading]) // eslint-disable-line react-hooks/exhaustive-deps
+    updateGarden({ completedSteps, totalSteps, goalsReached, surplusRatio, netWorth, goals, debts })
+  }, [completedSteps, totalSteps, goalsReached, surplusRatio, netWorth, loading]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist the derived net worth so the dashboard, advisor, and trend snapshots
+  // all read one consistent number (no manual drift).
+  useEffect(() => {
+    if (loading) return
+    if (Number(profile?.net_worth) === netWorth) return
+    setProfile(p => (p ? { ...p, net_worth: netWorth } : p))
+    supabase.from('profiles').update({ net_worth: netWorth }).eq('id', user.id).then(() => {}, () => {})
+  }, [netWorth, loading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fire the celebration synchronously when an action crosses a stage boundary.
   function celebrate(deltaMilestones, stepText) {
@@ -308,7 +323,7 @@ export default function Plan() {
           {/* ── Your money (ingrained budget) ── */}
           <section id="money" className="scroll-mt-16">
             <MoneyCard
-              income={money.income} expenses={money.expenses} netWorth={money.netWorth}
+              income={money.income} expenses={money.expenses} netWorth={netWorth}
               balances={balances} debts={debts} investAccounts={investAccounts}
               onSaveMoney={saveMoney} onSaveTypeBalance={saveTypeBalance}
               onAddInvest={addInvestAccount} onUpdateInvest={updateInvestAccount} onDeleteInvest={deleteInvestAccount}

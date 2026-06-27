@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Sprout, Bot, ArrowRight, UserCircle, Check, ClipboardList } from 'lucide-react'
+import { Sprout, Bot, ArrowRight, UserCircle, Check, ClipboardList, TrendingUp, TrendingDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden, milestonesToStage, STAGE_NAMES, STAGE_THRESHOLDS } from '@/context/GardenContext'
@@ -107,8 +107,10 @@ export default function Dashboard() {
   const income         = Number(profile?.monthly_income)   || 0
   const expenses       = Number(profile?.monthly_expenses) || 0
   const surplusRatio   = income > 0 ? (income - expenses) / income : 0
-  const netWorth       = Number(profile?.net_worth) || 0
   const accountValue   = accounts.reduce((s, a) => s + Number(a.balance || 0), 0)
+  const debtsTotal     = debts.reduce((s, d) => s + Number(d.balance || 0), 0)
+  // Net worth derives live from what you own minus what you owe.
+  const netWorth       = accountValue - debtsTotal
   const fmt$           = (n) => `${n < 0 ? '-' : ''}$${Math.abs(Math.round(n)).toLocaleString()}`
 
   // Keep the garden in sync with live state.
