@@ -54,10 +54,12 @@ export function GoalModal({ goal, onSave, onClose }) {
   const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border border-white/[0.11] text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30'
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-[60]">
-      <div className="bg-[#0e1812] w-full sm:rounded-2xl sm:shadow-xl sm:w-full sm:max-w-md sm:mx-4 rounded-t-2xl shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-labelledby="goal-modal-title"
+        className="bg-[#0e1812] w-full sm:rounded-2xl sm:shadow-xl sm:w-full sm:max-w-md sm:mx-4 rounded-t-2xl shadow-2xl">
         <div className="flex items-center justify-between p-5 border-b border-white/10">
-          <h3 className="font-semibold text-white">{goal ? 'Edit Goal' : 'New Goal'}</h3>
-          <button onClick={onClose} className="p-1.5 text-white/40 hover:text-white/60 rounded-lg hover:bg-white/5">
+          <h3 id="goal-modal-title" className="font-semibold text-white">{goal ? 'Edit Goal' : 'New Goal'}</h3>
+          <button onClick={onClose} aria-label="Close goal editor"
+            className="p-1.5 text-white/40 hover:text-white/60 rounded-lg hover:bg-white/5">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -187,8 +189,10 @@ function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
                 onKeyDown={e => e.key === 'Enter' && addMoney()}
                 className="w-full pl-6 pr-2.5 py-2 rounded-lg border border-white/[0.11] bg-white/[0.085] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
             </div>
-            <button onClick={addMoney} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
-            <button onClick={() => setMode(null)} className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
+            <button onClick={addMoney} aria-label="Add money to goal"
+              className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
+            <button onClick={() => setMode(null)} aria-label="Cancel adding money"
+              className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
           </div>
           {accounts.length > 0 && (
             <div className="flex items-center gap-2">
@@ -210,8 +214,10 @@ function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
           <input autoFocus type="number" inputMode="decimal" value={absVal} onChange={e => setAbsVal(e.target.value)}
             min="0" step="0.01"
             className="flex-1 px-2.5 py-2 rounded-lg border border-white/[0.11] bg-white/[0.085] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
-          <button onClick={saveAbs} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
-          <button onClick={() => setMode(null)} className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
+          <button onClick={saveAbs} aria-label="Save goal progress"
+            className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
+          <button onClick={() => setMode(null)} aria-label="Cancel editing progress"
+            className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
         </div>
       ) : (
         <div className="flex items-center gap-3">

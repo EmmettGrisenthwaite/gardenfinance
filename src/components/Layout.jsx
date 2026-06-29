@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { Sprout, LayoutDashboard, Target, Bot, Settings } from 'lucide-react'
+import { Sprout, LayoutDashboard, Target, Bot, Settings, Wallet } from 'lucide-react'
 import Onboarding from '@/components/Onboarding'
 
-// Three focused tabs. The Plan holds steps + the ingrained money card + goals;
-// budget lives there, not as its own tab. Advisor builds the plan; the garden
-// grows as you check steps off.
+// Core tabs. Advisor builds the plan; Money holds the user's real financial
+// picture; the garden grows as steps and goals are completed.
 const NAV_ITEMS = [
   { to: '/',        label: 'Garden',  icon: LayoutDashboard },
   { to: '/advisor', label: 'Advisor', icon: Bot },
   { to: '/plan',    label: 'Plan',    icon: Target },
+  { to: '/money',   label: 'Money',   icon: Wallet },
 ]
 const HUD_ITEMS = NAV_ITEMS
 
@@ -166,7 +166,7 @@ export default function Layout({ children }) {
                 <>
                   <Icon className={`w-5 h-5 transition-all duration-200 ${
                     isActive ? 'text-green-300 scale-110 drop-shadow-[0_0_6px_rgba(134,239,172,0.6)]' : ''}`} />
-                  <span className={`text-[8.5px] font-bold tracking-wide transition-all duration-200 ${
+                  <span className={`text-[10px] font-bold tracking-wide transition-all duration-200 ${
                     isActive ? 'text-green-100' : 'text-white/45'}`}>
                     {label.toUpperCase()}
                   </span>

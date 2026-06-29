@@ -101,11 +101,13 @@ export default function Login() {
           }}
         >
           {/* Tab switcher */}
-          <div className="flex rounded-xl p-0.5 mb-6" style={{ background: 'rgba(255,255,255,0.06)' }}>
+          <div role="tablist" aria-label="Authentication mode" className="flex rounded-xl p-0.5 mb-6" style={{ background: 'rgba(255,255,255,0.06)' }}>
             {['login', 'signup'].map(m => (
               <button
                 key={m}
                 type="button"
+                role="tab"
+                aria-selected={mode === m}
                 onClick={() => { setMode(m); setError(''); setMessage('') }}
                 className={`flex-1 py-2 text-sm font-semibold rounded-[10px] transition-all duration-200 ${
                   mode === m

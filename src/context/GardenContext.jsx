@@ -41,7 +41,7 @@ export function GardenProvider({ children }) {
   })
 
   // Growth is driven by milestones; a light weather layer still reflects the
-  // money card (negative surplus → clouds/rain) so budget shows up visually.
+  // user's money picture (negative surplus → clouds/rain).
   const updateGarden = useCallback(({
     completedSteps = 0, totalSteps = 0, goalsReached = 0,
     surplusRatio = 0, netWorth = 0, goals: gGoals = [], debts: gDebts = [],

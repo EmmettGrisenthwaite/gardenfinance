@@ -34,7 +34,8 @@ function EditableAmount({ label, value, onSave, color = 'text-white', hint }) {
           onBlur={() => { if (cancelled.current) { cancelled.current = false; return } commit() }}
           onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { cancelled.current = true; setEditing(false) } }}
           className="w-full bg-transparent text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
-        <button onMouseDown={e => e.preventDefault()} onClick={commit} className="p-0.5 text-emerald-400"><Check className="w-3.5 h-3.5" /></button>
+        <button onMouseDown={e => e.preventDefault()} onClick={commit} aria-label={`Save ${label}`}
+          className="p-0.5 text-emerald-400"><Check className="w-3.5 h-3.5" /></button>
       </div>
     )
   }
@@ -52,19 +53,22 @@ function LineRow({ item, showRate, onUpdate, onDelete }) {
   const [bal, setBal]   = useState(String(item.balance ?? 0))
   const [rate, setRate] = useState(item.interest_rate != null ? String(item.interest_rate) : '')
   return (
-    <div className="flex items-center gap-1.5 py-1.5">
+    <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 py-1.5">
       <input value={name} onChange={e => setName(e.target.value)}
+        aria-label={`${item.name || 'Item'} name`}
         onBlur={() => { if (name.trim() && name !== item.name) onUpdate(item.id, { name }) }}
-        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/90 text-sm focus:outline-none focus:border-emerald-400/40" />
+        className="w-full sm:flex-1 sm:min-w-0 px-2 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/90 text-sm focus:outline-none focus:border-emerald-400/40" />
       <div className="flex items-center bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1.5 w-[88px]">
         <span className="text-white/40 text-xs">$</span>
         <input type="number" inputMode="decimal" value={bal} onChange={e => setBal(e.target.value)}
+          aria-label={`${item.name || 'Item'} balance`}
           onBlur={() => { const n = parseFloat(bal); if (!isNaN(n) && n !== Number(item.balance)) onUpdate(item.id, { balance: n }) }}
           className="w-full min-w-0 bg-transparent text-sm font-semibold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
       </div>
       {showRate && (
         <div className="flex items-center bg-white/[0.04] border border-white/[0.08] rounded-lg px-1.5 py-1.5 w-[58px]">
           <input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder="—"
+            aria-label={`${item.name || 'Debt'} interest rate`}
             onBlur={() => { const n = parseFloat(rate); const cur = item.interest_rate ?? null; if ((isNaN(n) ? null : n) !== cur) onUpdate(item.id, { interest_rate: isNaN(n) ? null : n }) }}
             className="w-full min-w-0 bg-transparent text-sm font-semibold text-amber-200 tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
           <span className="text-white/35 text-xs">%</span>
@@ -119,25 +123,29 @@ function LineItemList({ icon: Icon, title, accent = 'emerald', items, presets = 
             ))}
           </div>
         )}
-        <div className="flex gap-1.5 items-center pt-1.5 pb-1">
+        <div className="flex flex-wrap sm:flex-nowrap gap-1.5 items-center pt-1.5 pb-1">
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Name"
+            aria-label={`New ${title.toLowerCase()} name`}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-            className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.06] text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
+            className="w-full sm:flex-1 sm:min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.06] text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
           <div className="flex items-center bg-white/[0.06] border border-white/[0.08] rounded-lg px-2 py-1.5 w-[88px]">
             <span className="text-white/40 text-xs">$</span>
             <input type="number" inputMode="decimal" value={bal} onChange={e => setBal(e.target.value)} placeholder="0"
+              aria-label={`New ${title.toLowerCase()} balance`}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
               className="w-full min-w-0 bg-transparent text-sm text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
           </div>
           {showRate && (
             <div className="flex items-center bg-white/[0.06] border border-white/[0.08] rounded-lg px-1.5 py-1.5 w-[58px]">
               <input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder="APR"
+                aria-label={`New ${title.toLowerCase()} interest rate`}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
                 className="w-full min-w-0 bg-transparent text-sm text-amber-200 tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
               <span className="text-white/35 text-xs">%</span>
             </div>
           )}
           <button onClick={add} disabled={!name.trim() || bal === '' || !(parseFloat(bal) >= 0)}
+            aria-label={`Add ${title.toLowerCase()} item`}
             className={`p-1.5 rounded-lg text-white transition-colors flex-shrink-0 disabled:bg-white/10 disabled:text-white/30 ${c.btn}`}>
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -249,13 +257,18 @@ export default function Money() {
     supabase.from('debts').delete().eq('id', id).then(() => {})
   }
 
+  function goBack() {
+    if (document.referrer.startsWith(window.location.origin) && window.history.length > 1) navigate(-1)
+    else navigate('/')
+  }
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}
       className="max-w-xl mx-auto w-full px-4 pt-2 pb-10">
 
       {/* Header */}
       <div className="flex items-center gap-2 mb-4">
-        <button onClick={() => navigate(-1)} aria-label="Back"
+        <button onClick={goBack} aria-label="Back"
           className="p-1.5 -ml-1.5 rounded-lg text-white/55 hover:text-white hover:bg-white/10 transition-colors">
           <ChevronLeft className="w-5 h-5" />
         </button>
@@ -277,7 +290,7 @@ export default function Money() {
         {/* Monthly cash flow */}
         <div className="bg-white/[0.05] rounded-2xl border border-white/[0.10] px-4 py-3.5">
           <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-2.5">Monthly cash flow</div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <EditableAmount label="Income"   value={income}   onSave={v => saveMoney({ monthly_income: v })}   color="text-emerald-300" />
             <EditableAmount label="Expenses" value={expenses} onSave={v => saveMoney({ monthly_expenses: v })} color="text-rose-300" />
             <div>
@@ -297,7 +310,7 @@ export default function Money() {
             <span className="text-sm font-semibold text-white">Cash & savings</span>
             <span className="ml-auto text-sm font-bold tabular-nums text-sky-200">{fmt(checking + savings)}</span>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <EditableAmount label="Checking & cash" value={checking} onSave={v => saveCanonical('checking', 'Checking', v)} color="text-sky-200" />
             <EditableAmount label="Savings (HYSA)"   value={savings}  onSave={v => saveCanonical('savings', 'Savings', v)}   color="text-emerald-200" />
           </div>

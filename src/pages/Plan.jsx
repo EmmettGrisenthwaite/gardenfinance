@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ClipboardList, Bot, Target, Plus, Sprout } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -14,6 +14,7 @@ import GardenGrowthToast from '@/components/GardenGrowthToast'
 export default function Plan() {
   const { user, profile, setProfile } = useAuth()
   const { updateGarden } = useGarden()
+  const location = useLocation()
   const navigate = useNavigate()
   const [plans,   setPlans]   = useState([])
   const [goals,   setGoals]   = useState([])
@@ -54,9 +55,9 @@ export default function Plan() {
   // Deep-link support: /plan#goals etc.
   useEffect(() => {
     if (loading) return
-    const id = window.location.hash.slice(1)
+    const id = location.hash.slice(1)
     if (id) setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
-  }, [loading])
+  }, [loading, location.hash])
 
   // ── Derived milestone counts ─────────────────────────────────────────────────
   const completedSteps = plans.reduce((n, p) => n + p.steps.filter(s => s.done).length, 0)
@@ -179,7 +180,6 @@ export default function Plan() {
   const howTo = (step) => askAdvisor(
     `Walk me through exactly how to do this, step by step: "${step.text}". Give me the specific actions to take, and based on my situation tell me roughly how much I should aim to put in or contribute.`)
 
-  const stepsLeft   = totalSteps - completedSteps
   const isComplete  = p => p.steps.length > 0 && p.steps.every(s => s.done)
   const sortedPlans = [...plans].sort((a, b) => (isComplete(a) === isComplete(b) ? 0 : isComplete(a) ? 1 : -1))
 
@@ -219,7 +219,7 @@ export default function Plan() {
             onAddTask={addSuggestedTask} onAddGoal={addSuggestedGoal} onAsk={askAdvisor} />
 
           {/* ── Action steps (the hero — checking grows the garden) ── */}
-          <section id="steps" className="scroll-mt-16">
+          <section id="steps" className="scroll-mt-20">
             <div className="flex items-center justify-between mb-2.5">
               <h2 className="text-sm font-semibold text-white flex items-center gap-1.5">
                 <ClipboardList className="w-4 h-4 text-emerald-300" /> Action steps
@@ -259,7 +259,7 @@ export default function Plan() {
           </section>
 
           {/* ── Goals ── */}
-          <section id="goals" className="scroll-mt-16 space-y-3">
+          <section id="goals" className="scroll-mt-20 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-white flex items-center gap-1.5">
                 <Target className="w-4 h-4 text-emerald-300" /> Goals
