@@ -507,7 +507,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                       </div>
                     </label>
                   ))}
-                  <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide pt-1">What's in your accounts</div>
+                  <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide pt-1">What&apos;s in your accounts</div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {[
                       { field: 'checking',  label: 'Checking',    color: 'focus-within:border-sky-400' },
