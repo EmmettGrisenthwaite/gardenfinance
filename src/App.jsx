@@ -7,6 +7,7 @@ import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import AIAdvisor from '@/pages/AIAdvisor'
 import Plan from '@/pages/Plan'
+import Settings from '@/pages/Settings'
 import { Sprout, Compass } from 'lucide-react'
 
 function AppLoader() {
@@ -80,6 +81,7 @@ export default function App() {
               <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/advisor" element={<ProtectedRoute><AIAdvisor /></ProtectedRoute>} />
               <Route path="/plan" element={<ProtectedRoute><Plan /></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               {/* Streamlined: budget/debt/accounts/goals all live on the Plan now */}
               <Route path="/budget"   element={<Navigate to="/plan#money" replace />} />
               <Route path="/debt"     element={<Navigate to="/plan#money" replace />} />

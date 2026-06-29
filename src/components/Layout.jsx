@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
-import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { Sprout, LayoutDashboard, Target, Bot, LogOut } from 'lucide-react'
+import { Sprout, LayoutDashboard, Target, Bot, Settings } from 'lucide-react'
 import Onboarding from '@/components/Onboarding'
 
 // Three focused tabs. The Plan holds steps + the ingrained money card + goals;
@@ -17,7 +16,6 @@ const HUD_ITEMS = NAV_ITEMS
 
 export default function Layout({ children }) {
   const { user, profile, loading } = useAuth()
-  const navigate = useNavigate()
   const { pathname } = useLocation()
   const needsOnboarding = profile === null && !loading
   // Immersive, full-height pages manage their own scroll and run edge-to-edge
@@ -38,10 +36,6 @@ export default function Layout({ children }) {
     return () => { document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut) }
   }, [])
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    navigate('/login')
-  }
 
   return (
     <div className="relative min-h-screen">
@@ -99,16 +93,19 @@ export default function Layout({ children }) {
               ))}
             </nav>
 
-            {/* User + logout */}
+            {/* User + settings */}
             <div className="p-2 border-t border-white/[0.11]">
               <div className="text-[10px] text-white/40 truncate px-3 mb-1">{user?.email}</div>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-white/55 hover:bg-white/15 hover:text-white w-full transition-all"
+              <NavLink
+                to="/settings"
+                className={({ isActive }) =>
+                  `flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm w-full transition-all ${
+                    isActive ? 'bg-white/30 text-white shadow-sm' : 'text-white/55 hover:bg-white/15 hover:text-white'}`
+                }
               >
-                <LogOut className="w-4 h-4 shrink-0" />
-                Sign out
-              </button>
+                <Settings className="w-4 h-4 shrink-0" />
+                Settings
+              </NavLink>
             </div>
           </div>
         </aside>
@@ -124,13 +121,16 @@ export default function Layout({ children }) {
               </div>
               <span className="font-display font-semibold text-white text-[15px] tracking-tight drop-shadow">Garden Financial</span>
             </div>
-            <button
-              onClick={handleLogout}
-              aria-label="Sign out"
-              className="p-2 rounded-xl text-white/55 hover:bg-white/20 hover:text-white transition-all backdrop-blur-sm"
+            <NavLink
+              to="/settings"
+              aria-label="Settings"
+              className={({ isActive }) =>
+                `p-2 rounded-xl transition-all backdrop-blur-sm ${
+                  isActive ? 'text-white bg-white/15' : 'text-white/55 hover:bg-white/20 hover:text-white'}`
+              }
             >
-              <LogOut className="w-5 h-5" />
-            </button>
+              <Settings className="w-5 h-5" />
+            </NavLink>
           </header>
 
           {/* Page content — immersive pages (garden, advisor) are full-bleed and

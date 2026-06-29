@@ -3,10 +3,10 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Sprout, ArrowRight, ArrowLeft, Check } from 'lucide-react'
+import { Sprout, ArrowRight, ArrowLeft, Check, X } from 'lucide-react'
 
 // ─── Step definitions ──────────────────────────────────────────────────────────
-const STEPS = [
+const BASE_STEPS = [
   {
     id: 'preview',
     type: 'preview',
@@ -230,8 +230,11 @@ function DebtsStep({ debts, setDebts }) {
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
-export default function Onboarding({ onClose }) {
+export default function Onboarding({ onClose, profileOnly = false }) {
   const { user, profile, setProfile } = useAuth()
+  // profileOnly (editing from Settings) shows just the profile questions — no
+  // money/debts re-entry (those live on the Plan and stay untouched).
+  const STEPS = profileOnly ? BASE_STEPS.filter(s => !['money', 'debts'].includes(s.id)) : BASE_STEPS
   // When opened manually (editing profile), skip preview + intro → go straight to age
   const startStep = onClose ? 2 : 0
   const [step,    setStep]    = useState(startStep)
@@ -286,6 +289,29 @@ export default function Onboarding({ onClose }) {
 
   async function finish() {
     setSaving(true)
+
+    // Profile-only edit (from Settings): just save the quiz answers — money,
+    // accounts, debts, and net worth are managed on the Plan and left untouched.
+    const profileFields = {
+      id: user.id,
+      first_name: user.user_metadata?.full_name?.split(' ')[0] ?? null,
+      age: Number(answers.age) || null,
+      employment_type:  answers.employment_type,
+      employer_401k:    answers.employer_401k,
+      investment_types: answers.investment_types,
+      health_insurance: answers.health_insurance,
+      primary_goal:     answers.primary_goal,
+      onboarding_complete: true,
+    }
+
+    if (profileOnly) {
+      const { data } = await supabase.from('profiles').upsert(profileFields, { onConflict: 'id' }).select().single()
+      if (data) setProfile(data)
+      setSaving(false)
+      onClose?.()
+      return
+    }
+
     const checking  = Number(answers.checking)  || 0
     const savings   = Number(answers.savings)   || 0
     const brokerage = Number(answers.brokerage) || 0
@@ -324,18 +350,10 @@ export default function Onboarding({ onClose }) {
     }
 
     const payload = {
-      id: user.id,
-      first_name: user.user_metadata?.full_name?.split(' ')[0] ?? null,
-      age: Number(answers.age) || null,
-      employment_type:  answers.employment_type,
-      employer_401k:    answers.employer_401k,
-      investment_types: answers.investment_types,
-      health_insurance: answers.health_insurance,
-      primary_goal:     answers.primary_goal,
+      ...profileFields,
       monthly_income:   Number(answers.monthly_income)   || 0,
       monthly_expenses: Number(answers.monthly_expenses) || 0,
       net_worth:        netWorth,
-      onboarding_complete: true,
     }
     const { data } = await supabase
       .from('profiles')
@@ -379,6 +397,12 @@ export default function Onboarding({ onClose }) {
               <Sprout className="w-4 h-4 text-white" />
             </div>
             <span className="text-white font-bold text-sm">Garden Financial</span>
+            {onClose && (
+              <button onClick={onClose} aria-label="Close"
+                className="ml-auto -mr-1 p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/15 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           {current.type === 'preview' ? (
