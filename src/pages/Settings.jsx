@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import Onboarding from '@/components/Onboarding'
 import {
   ChevronLeft, UserCircle, Pencil, Wallet, ArrowRight, Download, ShieldCheck,
-  LogOut, Trash2, Loader2, Check,
+  LogOut, Trash2, Loader2,
 } from 'lucide-react'
 
 const APP_VERSION = '1.0'
@@ -52,6 +52,9 @@ function Card({ label, children }) {
 export default function Settings() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
+  // Go back if there's somewhere to go, else home — keeps a cold-started PWA /
+  // deep link from trying to navigate out of the app on the back button.
+  const goBack = () => (window.history.state?.idx > 0 ? navigate(-1) : navigate('/'))
   const [editProfile, setEditProfile] = useState(false)
   const [exporting, setExporting]     = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -73,19 +76,21 @@ export default function Settings() {
     setExporting(true)
     try {
       const uid = user.id
-      const [g, d, a, p, c, s] = await Promise.all([
+      const [g, d, a, p, c, s, b] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', uid),
         supabase.from('debts').select('*').eq('user_id', uid),
         supabase.from('accounts').select('*').eq('user_id', uid),
         supabase.from('advisor_plans').select('*').eq('user_id', uid),
         supabase.from('conversations').select('*').eq('user_id', uid),
         supabase.from('net_worth_snapshots').select('*').eq('user_id', uid),
+        supabase.from('budgets').select('*').eq('user_id', uid),
       ])
       const payload = {
         exported_at: new Date().toISOString(),
         account: { email: user.email, name },
         profile, goals: g.data ?? [], debts: d.data ?? [], accounts: a.data ?? [],
         plans: p.data ?? [], conversations: c.data ?? [], net_worth_snapshots: s.data ?? [],
+        budgets: b.data ?? [],
       }
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
@@ -101,13 +106,14 @@ export default function Settings() {
     setDeleting(true)
     const uid = user.id
     try {
-      await Promise.all([
+      await Promise.allSettled([
         supabase.from('goals').delete().eq('user_id', uid),
         supabase.from('debts').delete().eq('user_id', uid),
         supabase.from('accounts').delete().eq('user_id', uid),
         supabase.from('advisor_plans').delete().eq('user_id', uid),
         supabase.from('conversations').delete().eq('user_id', uid),
         supabase.from('net_worth_snapshots').delete().eq('user_id', uid),
+        supabase.from('budgets').delete().eq('user_id', uid),
         supabase.from('profiles').delete().eq('id', uid),
       ])
     } catch { /* best-effort */ }
@@ -121,8 +127,8 @@ export default function Settings() {
 
       {/* Header */}
       <div className="flex items-center gap-2 mb-5">
-        <button onClick={() => navigate(-1)} aria-label="Back"
-          className="p-1.5 -ml-1.5 rounded-lg text-white/55 hover:text-white hover:bg-white/10 transition-colors">
+        <button onClick={goBack} aria-label="Back"
+          className="p-2 -ml-2 rounded-lg text-white/55 hover:text-white hover:bg-white/10 transition-colors">
           <ChevronLeft className="w-5 h-5" />
         </button>
         <h1 className="font-display text-[22px] font-medium text-white">Settings</h1>
@@ -159,7 +165,7 @@ export default function Settings() {
             </span>
             <p className="text-xs text-white/50 leading-relaxed">
               Your data is private to your account. Garden Financial offers educational
-              guidance — it isn't a substitute for a licensed financial planner.
+              guidance — it isn’t a substitute for a licensed financial planner.
             </p>
           </div>
         </Card>
@@ -179,7 +185,7 @@ export default function Settings() {
               <p className="text-sm text-rose-100 font-medium">Delete everything?</p>
               <p className="text-xs text-white/55 leading-relaxed">
                 This permanently deletes your profile, money, goals, debts, plans, and advisor
-                history, then signs you out. This can't be undone.
+                history, then signs you out. This can’t be undone.
               </p>
               <div className="flex gap-2">
                 <button onClick={() => setConfirmDelete(false)} disabled={deleting}

@@ -44,10 +44,10 @@ export function GoalModal({ goal, onSave, onClose }) {
     onSave({
       name,
       goal_type:            goalType,
-      target_amount:        parseFloat(target),
-      current_amount:       parseFloat(current),
+      target_amount:        parseFloat(target) || 0,
+      current_amount:       parseFloat(current) || 0,
       deadline:             deadline || null,
-      monthly_contribution: contribution !== '' ? parseFloat(contribution) : 0,
+      monthly_contribution: contribution !== '' ? (parseFloat(contribution) || 0) : 0,
     })
   }
 

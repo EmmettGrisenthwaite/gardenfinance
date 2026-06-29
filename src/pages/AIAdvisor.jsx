@@ -16,7 +16,7 @@ const GOAL_INTENT = /\b(sav(e|ing|ings)|buy|buying|afford|down\s?-?payment|house
 const GUIDE_INTENT = /\b(open|start|set\s?up|sign\s?up|create|switch|roll\s?over|move|transfer|enroll)\b[^.?!]*\b(roth|ira|401k|403b|hsa|brokerage|savings? account|hysa|high.?yield|index fund|etf|mutual fund|emergency fund|life insurance|will|credit|account|invest)\b|\bwalk me through\b|\bstep[-\s]?by[-\s]?step\b|\bhow (do|can) i (open|start|set\s?up|sign\s?up|get|invest)\b/i
 import {
   Send, Bot, Sparkles, RefreshCw, ArrowDown,
-  Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Lightbulb, Shield, Sprout,
+  Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Shield, Sprout,
   ClipboardList, Loader2,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -493,7 +493,7 @@ export default function AIAdvisor() {
         const remoteMessages = conv.data.messages
         setMessages(prev => remoteMessages.length >= prev.length ? remoteMessages : prev)
         // Update localStorage cache
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteMessages)) } catch {}
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteMessages)) } catch { /* storage unavailable */ }
       }
       isLoadingHistory.current = false
       setHistoryLoading(false)
@@ -514,7 +514,7 @@ export default function AIAdvisor() {
   useEffect(() => {
     if (isLoadingHistory.current) return
     if (loading || analyzing) return
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)) } catch {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)) } catch { /* storage unavailable */ }
     // Supabase upsert — fire and forget
     supabase.from('conversations').upsert(
       { user_id: user.id, messages, updated_at: new Date().toISOString() },
@@ -582,7 +582,10 @@ export default function AIAdvisor() {
       }
     } catch (err) {
       setError(err.message ?? 'Something went wrong. Please try again.')
+      // Roll back the failed turn but hand the user their message back so a
+      // network hiccup never silently eats what they typed.
       setMessages(messages)
+      if (!opts.analyzing) setInput(text)
     } finally {
       setLoading(false)
       setAnalyzing(false)

@@ -34,7 +34,7 @@ function EditableAmount({ label, value, onSave, color = 'text-white', hint }) {
           onBlur={() => { if (cancelled.current) { cancelled.current = false; return } commit() }}
           onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { cancelled.current = true; setEditing(false) } }}
           className="w-full bg-transparent text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
-        <button onMouseDown={e => e.preventDefault()} onClick={commit} className="p-0.5 text-emerald-400"><Check className="w-3.5 h-3.5" /></button>
+        <button onMouseDown={e => e.preventDefault()} onClick={commit} aria-label="Save" className="p-1.5 -mr-1 text-emerald-400"><Check className="w-3.5 h-3.5" /></button>
       </div>
     )
   }
@@ -71,7 +71,7 @@ function LineRow({ item, showRate, onUpdate, onDelete }) {
         </div>
       )}
       <button onClick={() => onDelete(item.id)} aria-label="Remove"
-        className="p-1 text-white/25 hover:text-rose-400 transition-colors flex-shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+        className="p-2 -mr-1 text-white/25 hover:text-rose-400 transition-colors flex-shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
     </div>
   )
 }
@@ -151,6 +151,9 @@ function LineItemList({ icon: Icon, title, accent = 'emerald', items, presets = 
 export default function Money() {
   const { user, profile, setProfile } = useAuth()
   const navigate = useNavigate()
+  // Go back if there's somewhere to go, else home — a cold-started PWA / deep
+  // link has no history, and navigate(-1) would try to leave the app entirely.
+  const goBack = () => (window.history.state?.idx > 0 ? navigate(-1) : navigate('/'))
   const [accounts, setAccounts] = useState([])
   const [debts, setDebts]       = useState([])
   const [income, setIncome]     = useState(0)
@@ -255,8 +258,8 @@ export default function Money() {
 
       {/* Header */}
       <div className="flex items-center gap-2 mb-4">
-        <button onClick={() => navigate(-1)} aria-label="Back"
-          className="p-1.5 -ml-1.5 rounded-lg text-white/55 hover:text-white hover:bg-white/10 transition-colors">
+        <button onClick={goBack} aria-label="Back"
+          className="p-2 -ml-2 rounded-lg text-white/55 hover:text-white hover:bg-white/10 transition-colors">
           <ChevronLeft className="w-5 h-5" />
         </button>
         <h1 className="font-display text-[22px] font-medium text-white">Your Money</h1>

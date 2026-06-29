@@ -113,8 +113,9 @@ export default function Layout({ children }) {
         {/* ── Content column ── */}
         <div className="flex flex-col flex-1 min-h-0 min-w-0">
 
-          {/* Mobile top bar */}
-          <header className="md:hidden flex-shrink-0 px-4 h-14 flex items-center justify-between">
+          {/* Mobile top bar — pad for the notch/status bar in standalone PWA mode */}
+          <header className="md:hidden flex-shrink-0 px-4 min-h-14 flex items-center justify-between"
+            style={{ paddingTop: 'env(safe-area-inset-top)' }}>
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 bg-green-500/90 rounded-lg flex items-center justify-center shadow">
                 <Sprout className="w-4 h-4 text-white" />
