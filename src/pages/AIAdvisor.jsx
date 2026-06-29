@@ -180,12 +180,12 @@ function buildContext(money, goals, debts, profile, extras = {}) {
   const netWorth = acctTotal - totalDebt
 
   if (income === 0 && expenses === 0 && goals.length === 0 && debts.length === 0 && !netWorth && acctTotal === 0) {
-    return 'The user has not added any financial data yet. Encourage them to fill in their monthly income, expenses, and net worth in the "Your money" card on the Plan tab, set a savings goal, and — most valuably — ask you to build them an action plan. Their garden grows as they complete plan steps.'
+    return 'The user has not added any financial data yet. Encourage them to fill in their monthly income, expenses, accounts, assets, and debts on the Your Money page, set a savings goal, and — most valuably — ask you to build them an action plan. Their garden grows as they complete plan steps.'
   }
 
   let ctx = ''
 
-  // ── Money snapshot (from the "Your money" card on the Plan tab) ─────────────
+  // ── Money snapshot (from the Your Money page) ───────────────────────────────
   const surplus = net >= 0 ? `+$${net.toLocaleString()} surplus` : `-$${Math.abs(net).toLocaleString()} DEFICIT`
   ctx += `MONTHLY MONEY:\n`
   ctx += `  Income:   $${income.toLocaleString()}/mo\n`
@@ -406,7 +406,7 @@ function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building })
       <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed mb-6">
         {hasData
           ? "I've looked at your numbers. Want me to tell you exactly where you stand and build you a plan?"
-          : "Ask me anything — and I'll build you a plan you can check off to grow your garden. Add your money & goals on the Plan tab for advice that's about you."}
+          : "Ask me anything — and I'll build you a plan you can check off to grow your garden. Add your money on the Money tab and goals on the Plan tab for advice that's about you."}
       </p>
 
       {hasData && (
@@ -536,7 +536,7 @@ export default function AIAdvisor() {
     setAtBottom(distFromBottom < 80)
   }, [])
 
-  // The "Your money" snapshot lives on the profile (edited in the Plan's money card).
+  // The Your Money snapshot lives on the profile and account/debt rows.
   const money = useMemo(() => ({
     income:   Number(profile?.monthly_income)   || 0,
     expenses: Number(profile?.monthly_expenses) || 0,
@@ -649,6 +649,7 @@ export default function AIAdvisor() {
               <button
                 onClick={handleBuildPlan}
                 disabled={buildingPlan || loading || analyzing}
+                aria-label="Generate a saveable action plan"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs font-semibold hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
                 title="Generate a saveable action plan"
               >
@@ -667,6 +668,7 @@ export default function AIAdvisor() {
                   localStorage.removeItem(STORAGE_KEY)
                   supabase.from('conversations').delete().eq('user_id', user.id).then(() => {})
                 }}
+                aria-label="Start over"
                 className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
                 title="Start over"
               >
@@ -700,6 +702,7 @@ export default function AIAdvisor() {
               initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }} transition={{ duration: 0.15 }}
               onClick={() => { setAtBottom(true); bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }}
+              aria-label="Scroll to latest message"
               className="fixed bottom-36 md:bottom-24 right-4 z-10 w-9 h-9 bg-white/15 backdrop-blur-md border border-white/10 shadow-lg rounded-full flex items-center justify-center text-white/70 hover:text-emerald-300 hover:border-emerald-400/50 transition-colors"
             >
               <ArrowDown className="w-4 h-4" />
@@ -791,7 +794,7 @@ export default function AIAdvisor() {
                 onFocus={() => setInputFocused(true)}
                 onBlur={() => setInputFocused(false)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}
-                placeholder={noKey ? 'Add your API key to start…' : 'Ask anything about your finances…'}
+                placeholder={noKey ? 'Advisor not configured yet…' : 'Ask anything about your finances…'}
                 disabled={noKey || loading || analyzing}
                 rows={1}
                 className="w-full bg-transparent text-base md:text-sm text-white placeholder-white/35 focus:outline-none resize-none leading-relaxed disabled:opacity-50"
@@ -799,6 +802,7 @@ export default function AIAdvisor() {
               />
             </div>
             <button type="submit" disabled={!input.trim() || loading || analyzing || noKey}
+              aria-label="Send message"
               className="w-11 h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors flex-shrink-0 shadow-lg shadow-emerald-900/30">
               <Send className="w-4 h-4" />
             </button>

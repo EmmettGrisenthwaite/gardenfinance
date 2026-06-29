@@ -115,13 +115,18 @@ export default function Settings() {
     navigate('/login')
   }
 
+  function goBack() {
+    if (document.referrer.startsWith(window.location.origin) && window.history.length > 1) navigate(-1)
+    else navigate('/')
+  }
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }}
       className="max-w-xl mx-auto w-full px-4 pt-2 pb-10">
 
       {/* Header */}
       <div className="flex items-center gap-2 mb-5">
-        <button onClick={() => navigate(-1)} aria-label="Back"
+        <button onClick={goBack} aria-label="Back"
           className="p-1.5 -ml-1.5 rounded-lg text-white/55 hover:text-white hover:bg-white/10 transition-colors">
           <ChevronLeft className="w-5 h-5" />
         </button>

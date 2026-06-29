@@ -233,7 +233,7 @@ function DebtsStep({ debts, setDebts }) {
 export default function Onboarding({ onClose, profileOnly = false }) {
   const { user, profile, setProfile } = useAuth()
   // profileOnly (editing from Settings) shows just the profile questions — no
-  // money/debts re-entry (those live on the Plan and stay untouched).
+  // money/debts re-entry (those live on Your Money and stay untouched).
   const STEPS = profileOnly ? BASE_STEPS.filter(s => !['money', 'debts'].includes(s.id)) : BASE_STEPS
   // When opened manually (editing profile), skip preview + intro → go straight to age
   const startStep = onClose ? 2 : 0
@@ -291,7 +291,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
     setSaving(true)
 
     // Profile-only edit (from Settings): just save the quiz answers — money,
-    // accounts, debts, and net worth are managed on the Plan and left untouched.
+    // accounts, debts, and net worth are managed on Your Money and left untouched.
     const profileFields = {
       id: user.id,
       first_name: user.user_metadata?.full_name?.split(' ')[0] ?? null,
@@ -384,6 +384,9 @@ export default function Onboarding({ onClose, profileOnly = false }) {
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4">
       <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Garden Financial setup"
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28, ease: 'easeOut' }}
@@ -505,7 +508,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                     </label>
                   ))}
                   <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide pt-1">What's in your accounts</div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {[
                       { field: 'checking',  label: 'Checking',    color: 'focus-within:border-sky-400' },
                       { field: 'savings',   label: 'Savings',     color: 'focus-within:border-emerald-400' },
@@ -524,7 +527,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                       </label>
                     ))}
                   </div>
-                  <p className="text-[11px] text-white/35">Estimates are fine — you can fine-tune these in your Plan later.</p>
+                  <p className="text-[11px] text-white/35">Estimates are fine — you can fine-tune these in Your Money later.</p>
                 </div>
               )}
 

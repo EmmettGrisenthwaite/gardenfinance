@@ -45,8 +45,7 @@ function PublicRoute({ children }) {
 function NotFound() {
   return (
     <div
-      className="min-h-dvh flex flex-col items-center justify-center gap-5 p-6 text-center"
-      style={{ background: 'linear-gradient(155deg, #020c05 0%, #031508 30%, #04101a 60%, #030b14 100%)' }}
+      className="min-h-full flex flex-col items-center justify-center gap-5 p-6 text-center"
     >
       <div
         className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl"
@@ -89,7 +88,7 @@ export default function App() {
               <Route path="/debt"     element={<Navigate to="/money" replace />} />
               <Route path="/accounts" element={<Navigate to="/money" replace />} />
               <Route path="/goals"    element={<Navigate to="/plan#goals" replace />} />
-              <Route path="*" element={<NotFound />} />
+              <Route path="*" element={<ProtectedRoute><NotFound /></ProtectedRoute>} />
             </Routes>
           </BrowserRouter>
         </GardenProvider>
