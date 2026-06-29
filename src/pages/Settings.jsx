@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import Onboarding from '@/components/Onboarding'
 import {
   ChevronLeft, UserCircle, Pencil, Wallet, ArrowRight, Download, ShieldCheck,
-  LogOut, Trash2, Loader2, Check,
+  LogOut, Trash2, Loader2,
 } from 'lucide-react'
 
 const APP_VERSION = '1.0'

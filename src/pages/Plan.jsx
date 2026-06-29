@@ -179,7 +179,6 @@ export default function Plan() {
   const howTo = (step) => askAdvisor(
     `Walk me through exactly how to do this, step by step: "${step.text}". Give me the specific actions to take, and based on my situation tell me roughly how much I should aim to put in or contribute.`)
 
-  const stepsLeft   = totalSteps - completedSteps
   const isComplete  = p => p.steps.length > 0 && p.steps.every(s => s.done)
   const sortedPlans = [...plans].sort((a, b) => (isComplete(a) === isComplete(b) ? 0 : isComplete(a) ? 1 : -1))
 
