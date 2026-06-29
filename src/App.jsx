@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { GardenProvider } from '@/context/GardenContext'
-import { Toaster } from '@/components/ui/toaster'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import Layout from '@/components/Layout'
 import Login from '@/pages/Login'
@@ -89,7 +88,6 @@ export default function App() {
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
-          <Toaster />
         </GardenProvider>
       </AuthProvider>
     </ErrorBoundary>

@@ -792,25 +792,6 @@ function Signpost({ name, progress, type = 'savings', icon, yOffset = 0, empty =
   )
 }
 
-// ─── Progress ring ────────────────────────────────────────────────────────────
-function ProgressRing({ progress, radius = 1.02 }) {
-  const total = 24, filled = Math.round((progress/100)*total)
-  return (
-    <group position={[0, 0.062, 0]} rotation={[-Math.PI/2, 0, 0]}>
-      {Array.from({length: total}, (_, i) => {
-        const angle = (i/total)*Math.PI*2 - Math.PI/2, f = i < filled
-        return (
-          <mesh key={i} position={[Math.cos(angle)*radius, Math.sin(angle)*radius, 0]} rotation={[0,0,angle+Math.PI/2]}>
-            <boxGeometry args={[0.13, 0.068, 0.058]} />
-            <meshToonMaterial color={f ? '#fbbf24' : '#2d1a04'} emissive={f ? '#f59e0b' : '#000'}
-              emissiveIntensity={f ? 0.50 : 0} gradientMap={getToonGrad()} />
-          </mesh>
-        )
-      })}
-    </group>
-  )
-}
-
 // ─── Interactive plot wrapper — hover pop + tap to open ───────────────────────
 function InteractivePlot({ position, onSelect, children }) {
   const ref = useRef()
@@ -833,30 +814,7 @@ function InteractivePlot({ position, onSelect, children }) {
   )
 }
 
-// ─── Savings plot — round soil ────────────────────────────────────────────────
-function GoalPlot({ position, goal, onSelect, signYOffset = 0 }) {
-  const p = goalPct(goal), st = plantStage(p)
-  const nm = goal.name.length > 8 ? goal.name.slice(0,8)+'…' : goal.name
-  return (
-    <InteractivePlot position={position} onSelect={onSelect}>
-      <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.01,0]} receiveShadow>
-        <ringGeometry args={[0.98, 1.32, 40]} />
-        <meshToonMaterial color="#c8b890" gradientMap={getToonGrad()} />
-      </mesh>
-      <mesh rotation={[-Math.PI/2,0,0]} receiveShadow>
-        <circleGeometry args={[0.98, 40]} />
-        <meshToonMaterial color="#6b3e1e" gradientMap={getToonGrad()} />
-      </mesh>
-      <mesh position={[0, 0.024, 0]}>
-        <cylinderGeometry args={[0.98, 0.98, 0.048, 40]} />
-        <meshToonMaterial color="#7c4a22" gradientMap={getToonGrad()} />
-      </mesh>
-      <SavingsPlant stage={st} />
-      <Signpost name={nm} progress={p} type="savings" icon={goalIcon(goal.name, 'savings')} yOffset={signYOffset} />
-    </InteractivePlot>
-  )
-}
-
+// ─── Empty plot — the "Add a goal" invitation ─────────────────────────────────
 function EmptyPlot({ position, label = 'Add a goal', onSelect, signYOffset = 0 }) {
   return (
     <InteractivePlot position={position} onSelect={onSelect}>
@@ -873,46 +831,6 @@ function EmptyPlot({ position, label = 'Add a goal', onSelect, signYOffset = 0 }
   )
 }
 
-// ─── Investment plot — hexagonal marble ───────────────────────────────────────
-function InvestmentPlot({ position, goal, onSelect, signYOffset = 0 }) {
-  const p = goalPct(goal), st = plantStage(p)
-  const nm = goal.name.length > 8 ? goal.name.slice(0,8)+'…' : goal.name
-  return (
-    <InteractivePlot position={position} onSelect={onSelect}>
-      <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.01,0]} receiveShadow>
-        <ringGeometry args={[1.10, 1.45, 6]} />
-        <meshToonMaterial color="#d4a830" emissive="#8a6010" emissiveIntensity={0.14} gradientMap={getToonGrad()} />
-      </mesh>
-      <mesh rotation={[-Math.PI/2,0,0]} receiveShadow>
-        <circleGeometry args={[1.10, 6]} />
-        <meshToonMaterial color="#f0ecd8" gradientMap={getToonGrad()} />
-      </mesh>
-      <mesh position={[0, 0.022, 0]}>
-        <cylinderGeometry args={[1.10, 1.10, 0.044, 6]} />
-        <meshToonMaterial color="#e8e0cc" gradientMap={getToonGrad()} />
-      </mesh>
-      <ProgressRing progress={p} />
-      <InvestPlant stage={st} />
-      <Signpost name={nm} progress={p} type="investment" icon={goalIcon(goal.name, 'investment')} yOffset={signYOffset} />
-    </InteractivePlot>
-  )
-}
-
-function EmptyInvestmentPlot({ position, label = 'Add a goal', onSelect, signYOffset = 0 }) {
-  return (
-    <InteractivePlot position={position} onSelect={onSelect}>
-      <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.01,0]} receiveShadow>
-        <ringGeometry args={[1.10, 1.45, 6]} />
-        <meshToonMaterial color="#b89840" gradientMap={getToonGrad()} />
-      </mesh>
-      <mesh rotation={[-Math.PI/2,0,0]} receiveShadow>
-        <circleGeometry args={[1.10, 6]} />
-        <meshToonMaterial color="#d8d0bc" gradientMap={getToonGrad()} />
-      </mesh>
-      <Signpost name={label} progress={0} type="investment" empty yOffset={signYOffset} />
-    </InteractivePlot>
-  )
-}
 
 // ─── Cemented accomplishment — a reached goal is set in stone ─────────────────
 // A stone plinth + gold plaque ring the plot, so a completed goal reads as a
@@ -1061,43 +979,6 @@ const FLOWER_BEDS = [
   [ 1.4, 0, 4.9],
 ]
 
-// ─── Zone labels — quadrant banners with a 4-dot growth meter ─────────────────
-// When `onZone` is provided the banner becomes a tappable shortcut to that
-// pillar's page (the garden doubles as a map of your finances).
-function ZoneLabel({ position, label, icon, accent, tier = 0, to, onZone }) {
-  const t = Math.max(0, Math.min(4, Math.round(tier)))
-  const clickable = Boolean(to && onZone)
-  return (
-    <Html position={position} center zIndexRange={[16, 0]}
-      style={{ pointerEvents: clickable ? 'auto' : 'none', userSelect: 'none' }}>
-      <div
-        onClick={clickable ? () => onZone(to) : undefined}
-        title={clickable ? `Open ${label}` : undefined}
-        style={{
-          fontFamily: 'Inter Variable, system-ui, sans-serif',
-          display: 'flex', alignItems: 'center', gap: '5px',
-          background: 'rgba(18,26,16,0.62)', backdropFilter: 'blur(3px)',
-          border: `1.5px solid ${accent}`, borderRadius: '20px', padding: '3px 10px',
-          color: '#fff', fontSize: '10px', fontWeight: 800, letterSpacing: '1px',
-          textTransform: 'uppercase', whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
-          cursor: clickable ? 'pointer' : 'default',
-        }}>
-        <span style={{ fontSize: '12px' }}>{icon}</span>{label}
-        <span style={{ display: 'flex', gap: '2.5px', marginLeft: '2px' }}>
-          {[0, 1, 2, 3].map(i => (
-            <span key={i} style={{
-              width: '4px', height: '4px', borderRadius: '50%',
-              background: i < t ? accent : 'rgba(255,255,255,0.22)',
-              boxShadow: i < t ? `0 0 4px ${accent}` : 'none',
-            }} />
-          ))}
-        </span>
-        {clickable && <span style={{ marginLeft: '1px', opacity: 0.65, fontSize: '11px' }}>›</span>}
-      </div>
-    </Html>
-  )
-}
-
 // ─── Mushrooms ────────────────────────────────────────────────────────────────
 const MUSHROOM_DEFS = [
   { url:'/models/mushroom-red.glb', p:[-7.2, 0.93,  1.0], ry: 0.5, s:0.70 },
@@ -1217,35 +1098,6 @@ function Birds({ count = 3 }) {
 }
 
 // ─── Plot positions ───────────────────────────────────────────────────────────
-// Investment zone — behind stream (z < -3.2)
-// Investment zone — behind the stream (z ≤ -4). All flank the path (|x| ≥ 1.8)
-// and stay inside the fence (r ≤ 6.1).
-// Investments — FRONT-RIGHT quadrant (x > 0, z > 0)
-// Plot positions are chosen so markers spread across distinct screen columns
-// (screen-x ≈ (x − z) in this iso view); plots sharing a column differ strongly
-// in depth (x + z), which separates their markers vertically on screen.
-const INVESTMENT_POSITIONS = [
-  [ 2.6, 0.93,  3.0],
-  [ 4.8, 0.93,  2.7],
-  [ 2.8, 0.93,  5.5],
-  [ 5.4, 0.93,  4.6],
-  [ 3.9, 0.93,  6.0],
-  [ 1.9, 0.93,  6.3],
-]
-// Extra height only where two plots still share a screen column.
-const INVEST_SIGN_OFFSET = [0, 0, 0, 0, 1.4, 0]
-const SAVE_SIGN_OFFSET   = [0, 0, 0, 0, 0, 1.4]
-
-// Savings — FRONT-LEFT quadrant (x < 0, z > 0), mirror of investments
-const SAVINGS_POSITIONS = [
-  [-2.6, 0.93,  3.0],
-  [-4.8, 0.93,  2.7],
-  [-2.8, 0.93,  5.5],
-  [-5.4, 0.93,  4.6],
-  [-3.9, 0.93,  6.0],
-  [-1.9, 0.93,  6.3],
-]
-
 // Unified goal slots — one per quadrant first (front-left, front-right,
 // back-left, back-right), then a second ring further out for overflow. Goals
 // fill these in order so they spread across all four quadrants; the next free
@@ -1373,173 +1225,18 @@ function FarmLife() {
   )
 }
 
-// ─── Garden patches — tidy raised veg beds used for the two back quadrants ─────
-// A leafy plant (cabbage/lettuce style) that gets fuller as `growth` rises.
-function LeafyPlant({ position, growth = 1, veg }) {
-  const s = 0.55 + growth * 0.55
-  return (
-    <group position={position} scale={s}>
-      {[[0,0.10,0],[-0.09,0.08,0.05],[0.09,0.08,-0.05],[0.05,0.12,0.07],[-0.06,0.11,-0.06]].map((p,i)=>(
-        <mesh key={i} position={p} scale={[1,0.6,1]} castShadow>
-          <sphereGeometry args={[0.10,7,7]} />
-          <meshToonMaterial color={i%2 ? '#4ea83a' : '#3f9a3a'} gradientMap={getToonGrad()} />
-        </mesh>
-      ))}
-      {veg && growth > 0.55 && (
-        <mesh position={[0,0.17,0]}>
-          <sphereGeometry args={[0.07,7,7]} />
-          <meshToonMaterial color={veg} emissive={veg} emissiveIntensity={0.10} gradientMap={getToonGrad()} />
-        </mesh>
-      )}
-    </group>
-  )
-}
-// One long raised planter split into sections by internal rails. Sections fill
-// left→right as `growth` rises, and the plants themselves fatten up with it.
-function SectionBed({ position, rotation = 0, sections = 3, growth = 1, vegColors = [] }) {
-  const secW = 1.30, depth = 1.14
-  const w = sections * secW + 0.16
-  const filled = Math.max(0, Math.min(sections, growth * sections))
-  const SPOTS = [[-0.28, -0.24], [0.26, -0.26], [-0.24, 0.26], [0.28, 0.22]]
-  return (
-    <group position={position} rotation={[0, rotation, 0]}>
-      {/* Outer plank frame + soil */}
-      <mesh position={[0, 0.10, 0]} castShadow receiveShadow>
-        <boxGeometry args={[w, 0.20, depth]} />
-        <meshToonMaterial color="#7c4a22" gradientMap={getToonGrad()} />
-      </mesh>
-      <mesh position={[0, 0.205, 0]} receiveShadow>
-        <boxGeometry args={[w - 0.14, 0.05, depth - 0.14]} />
-        <meshToonMaterial color="#5e3c1e" gradientMap={getToonGrad()} />
-      </mesh>
-      {/* Internal rails dividing the sections */}
-      {Array.from({ length: sections - 1 }, (_, i) => (
-        <mesh key={i} position={[-w/2 + 0.08 + secW * (i + 1), 0.215, 0]} castShadow>
-          <boxGeometry args={[0.09, 0.06, depth]} />
-          <meshToonMaterial color="#8a5a2c" gradientMap={getToonGrad()} />
-        </mesh>
-      ))}
-      {/* Plantings — each section fills, then its plants mature */}
-      {Array.from({ length: sections }, (_, s) => {
-        const frac = Math.max(0, Math.min(1, filled - s))
-        if (frac <= 0.08) return null
-        const cx  = -w/2 + 0.08 + secW * (s + 0.5)
-        const col = vegColors[s % vegColors.length]
-        return SPOTS.slice(0, Math.max(1, Math.round(frac * 4))).map((o, k) => (
-          <LeafyPlant key={`${s}-${k}`} position={[cx + o[0], 0.23, o[1]]} growth={frac} veg={col} />
-        ))
-      })}
-    </group>
-  )
-}
-
-// Scarecrow — guards the Debt garden
-function Scarecrow({ ry = 0.6 }) {
-  return (
-    <group rotation={[0, ry, 0]} scale={0.95}>
-      <mesh position={[0, 0.55, 0]} castShadow>
-        <cylinderGeometry args={[0.045, 0.06, 1.10, 6]} />
-        <meshToonMaterial color="#7c4a22" gradientMap={getToonGrad()} />
-      </mesh>
-      <mesh position={[0, 0.88, 0]} rotation={[0, 0, Math.PI/2]} castShadow>
-        <cylinderGeometry args={[0.035, 0.035, 0.86, 6]} />
-        <meshToonMaterial color="#7c4a22" gradientMap={getToonGrad()} />
-      </mesh>
-      {/* Straw body + arm tufts */}
-      <mesh position={[0, 0.70, 0]} castShadow>
-        <coneGeometry args={[0.23, 0.52, 7]} />
-        <meshToonMaterial color="#d9b85f" gradientMap={getToonGrad()} />
-      </mesh>
-      {[-0.45, 0.45].map((x, i) => (
-        <mesh key={i} position={[x, 0.88, 0]}>
-          <sphereGeometry args={[0.07, 6, 6]} />
-          <meshToonMaterial color="#d9b85f" gradientMap={getToonGrad()} />
-        </mesh>
-      ))}
-      {/* Head + floppy hat */}
-      <mesh position={[0, 1.10, 0]} castShadow>
-        <sphereGeometry args={[0.16, 10, 10]} />
-        <meshToonMaterial color="#f0d9a8" gradientMap={getToonGrad()} />
-      </mesh>
-      <mesh position={[0, 1.17, 0]}>
-        <cylinderGeometry args={[0.27, 0.27, 0.035, 10]} />
-        <meshToonMaterial color="#b8860b" gradientMap={getToonGrad()} />
-      </mesh>
-      <mesh position={[0, 1.26, 0]} castShadow>
-        <coneGeometry args={[0.19, 0.20, 8]} />
-        <meshToonMaterial color="#cd9a2a" gradientMap={getToonGrad()} />
-      </mesh>
-    </group>
-  )
-}
-
-// Rain barrel — marks the Emergency garden (a literal liquid reserve)
-function WaterBarrel({ position = [0, 0, 0], scale = 1 }) {
-  return (
-    <group position={position} scale={scale}>
-      <mesh position={[0, 0.30, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.26, 0.22, 0.60, 12]} />
-        <meshToonMaterial color="#9a6b3a" gradientMap={getToonGrad()} />
-      </mesh>
-      {[0.12, 0.48].map((y, i) => (
-        <mesh key={i} position={[0, y, 0]} rotation={[Math.PI/2, 0, 0]}>
-          <torusGeometry args={[0.252, 0.02, 6, 16]} />
-          <meshToonMaterial color="#5a3a1c" gradientMap={getToonGrad()} />
-        </mesh>
-      ))}
-      {/* Water surface at the brim */}
-      <mesh position={[0, 0.575, 0]}>
-        <cylinderGeometry args={[0.22, 0.22, 0.03, 12]} />
-        <meshToonMaterial color="#41d6ee" emissive="#19a6c4" emissiveIntensity={0.55} gradientMap={getToonGrad()} />
-      </mesh>
-    </group>
-  )
-}
-
-// The compound: a packed-earth apron + two aligned planters + a themed prop —
-// reads as ONE deliberate garden, not scattered boxes. `mirror` flips layout
-// so the two back quadrants frame the centre path symmetrically.
-function QuadrantGarden({ position, growth = 0, vegColors, prop, mirror = false }) {
-  const m = mirror ? -1 : 1
-  return (
-    <group position={position}>
-      {/* Packed-earth apron with darker rim — defines the garden as one space */}
-      <mesh rotation={[-Math.PI/2, 0, 0]} position={[0, 0.012, 0]} receiveShadow>
-        <circleGeometry args={[2.45, 30]} />
-        <meshToonMaterial color="#9a7a4e" gradientMap={getToonGrad()} />
-      </mesh>
-      <mesh rotation={[-Math.PI/2, 0, 0]} position={[0, 0.018, 0]} receiveShadow>
-        <ringGeometry args={[2.28, 2.45, 30]} />
-        <meshToonMaterial color="#7a5c38" gradientMap={getToonGrad()} />
-      </mesh>
-      {/* Back planter (3 sections) + front planter (2 sections), aligned + touching */}
-      <SectionBed position={[0, 0, -0.72]} sections={3} growth={growth} vegColors={vegColors} />
-      <SectionBed position={[0.66 * m, 0, 0.62]} sections={2} growth={growth} vegColors={[...vegColors.slice(1), vegColors[0]]} />
-      {/* Themed prop tucks into the remaining corner */}
-      <group position={[-1.55 * m, 0, 0.62]}>{prop}</group>
-    </group>
-  )
-}
-
-const EMERGENCY_VEG = ['#7dd3fc', '#38bdf8', '#0ea5e9'] // blueberry tones (matches accent)
-const DEBT_VEG      = ['#ef4444', '#f97316', '#fde047'] // tomato · pumpkin · squash
-
 // ─── Island group ─────────────────────────────────────────────────────────────
-function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal, onZone }) {
+function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal }) {
   const { darkClouds, windStrength, netWorthTier = 0,
-          savingsTier = 0, investTier = 0, debtLevel = 0, emergencyMonths = 0 } = weather
+          savingsTier = 0, investTier = 0 } = weather
   // Goals fill the quadrant slots in creation order (stable placement).
   const sortedGoals = [...goals].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-  // Front quadrants greenery scales with the stage
+  // Greenery, animals, and orchards all scale up with the plan stage.
   const bedCount    = stage < 2 ? 0 : stage < 4 ? 1 : FLOWER_BEDS.length
   const mushCount   = stage < 3 ? 0 : Math.min(2 + (netWorthTier >= 2 ? 2 : 0), MUSHROOM_DEFS.length)
   const birdCount   = stage < 2 ? 0 : (netWorthTier >= 4 ? 7 : netWorthTier >= 3 ? 5 : netWorthTier >= 2 ? 3 : 0)
-  // Each zone's orchard grows with the overall plan stage (bare until you start).
   const savingsTreeCount = Math.min(2 + savingsTier, SAVINGS_ZONE_TREES.length)
   const investTreeCount  = Math.min(2 + investTier,  INVEST_ZONE_TREES.length)
-  // Every garden compound plants up together as the plan progresses (0→1 across
-  // stages) — the whole landscape responds to checking steps off.
-  const quadrantGrowth = Math.min(stage / 5, 1)
 
   return (
     <group>
@@ -1600,7 +1297,7 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal, onZone })
 }
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
-function Scene({ goals, debts, stage, weather, onSelectGoal, onAddGoal, onZone }) {
+function Scene({ goals, debts, stage, weather, onSelectGoal, onAddGoal }) {
   const { cloudCount, darkClouds, hasDeficit, deficitSeverity, pollenCount, butterflyCount, netWorthTier = 0 } = weather
   return (
     <>
@@ -1632,7 +1329,7 @@ function Scene({ goals, debts, stage, weather, onSelectGoal, onAddGoal, onZone }
 
       <Float speed={0.7} rotationIntensity={0.03} floatIntensity={0.55} floatingRange={[-0.12, 0.12]}>
         <IslandGroup goals={goals} stage={stage} weather={weather}
-          onSelectGoal={onSelectGoal} onAddGoal={onAddGoal} onZone={onZone} />
+          onSelectGoal={onSelectGoal} onAddGoal={onAddGoal} />
       </Float>
 
       {stage >= 2 && (
@@ -1709,7 +1406,6 @@ const Garden3D = memo(function Garden3D() {
   const { stage, weather, goals, debts } = useGarden()
   const navigate = useNavigate()
   const goToGoals = () => navigate('/plan#goals')
-  const goToZone  = (path) => navigate(path)
   return (
     <div className="w-full h-full">
       <GardenErrorBoundary>
@@ -1726,7 +1422,7 @@ const Garden3D = memo(function Garden3D() {
           <PerformanceMonitor>
             <Suspense fallback={null}>
               <Scene goals={goals} debts={debts} stage={stage} weather={weather}
-                onSelectGoal={goToGoals} onAddGoal={goToGoals} onZone={goToZone} />
+                onSelectGoal={goToGoals} onAddGoal={goToGoals} />
             </Suspense>
           </PerformanceMonitor>
         </Canvas>
