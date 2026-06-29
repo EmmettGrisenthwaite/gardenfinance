@@ -213,7 +213,7 @@ export default function Dashboard() {
               <Link to="/advisor"
                 className="flex items-center gap-2.5 px-3 py-2 bg-emerald-500/15 rounded-xl border border-emerald-400/25 hover:bg-emerald-500/25 transition-all group">
                 <Bot className="w-4 h-4 text-emerald-300 flex-shrink-0" />
-                <span className="flex-1 min-w-0 text-xs font-semibold text-white truncate">All steps done — ask your advisor what's next</span>
+                <span className="flex-1 min-w-0 text-xs font-semibold text-white truncate">All steps done — ask your advisor what’s next</span>
                 <ArrowRight className="w-3.5 h-3.5 text-emerald-300 flex-shrink-0 group-hover:translate-x-0.5 transition-transform" />
               </Link>
             )

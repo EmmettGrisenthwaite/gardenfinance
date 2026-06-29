@@ -29,10 +29,23 @@ export default [
       ...react.configs['jsx-runtime'].rules,
       ...reactHooks.configs.recommended.rules,
       'react/jsx-no-target-blank': 'off',
+      // This is a JS (not TS/prop-types) codebase — we don't author propTypes.
+      'react/prop-types': 'off',
+      // react-three-fiber elements (<mesh>, <meshToonMaterial> …) take many
+      // lowercase props that the DOM-oriented rule flags as "unknown". They're
+      // valid; turning this off keeps the linter signal honest.
+      'react/no-unknown-property': 'off',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },
       ],
+    },
+  },
+  {
+    // Build/config files run in Node, not the browser.
+    files: ['**/*.config.js', 'vite.config.js', 'postcss.config.js', 'tailwind.config.js'],
+    languageOptions: {
+      globals: { ...globals.node },
     },
   },
 ]
