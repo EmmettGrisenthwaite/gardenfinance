@@ -52,26 +52,28 @@ function LineRow({ item, showRate, onUpdate, onDelete }) {
   const [bal, setBal]   = useState(String(item.balance ?? 0))
   const [rate, setRate] = useState(item.interest_rate != null ? String(item.interest_rate) : '')
   return (
-    <div className="flex items-center gap-1.5 py-1.5">
+    <div className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:gap-1.5">
       <input value={name} onChange={e => setName(e.target.value)}
         onBlur={() => { if (name.trim() && name !== item.name) onUpdate(item.id, { name }) }}
-        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/90 text-sm focus:outline-none focus:border-emerald-400/40" />
-      <div className="flex items-center bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1.5 w-[88px]">
-        <span className="text-white/40 text-xs">$</span>
-        <input type="number" inputMode="decimal" value={bal} onChange={e => setBal(e.target.value)}
-          onBlur={() => { const n = parseFloat(bal); if (!isNaN(n) && n !== Number(item.balance)) onUpdate(item.id, { balance: n }) }}
-          className="w-full min-w-0 bg-transparent text-sm font-semibold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
-      </div>
-      {showRate && (
-        <div className="flex items-center bg-white/[0.04] border border-white/[0.08] rounded-lg px-1.5 py-1.5 w-[58px]">
-          <input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder="—"
-            onBlur={() => { const n = parseFloat(rate); const cur = item.interest_rate ?? null; if ((isNaN(n) ? null : n) !== cur) onUpdate(item.id, { interest_rate: isNaN(n) ? null : n }) }}
-            className="w-full min-w-0 bg-transparent text-sm font-semibold text-amber-200 tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
-          <span className="text-white/35 text-xs">%</span>
+        className="w-full min-w-0 px-2.5 py-2 rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/90 text-sm focus:outline-none focus:border-emerald-400/40 sm:flex-1" />
+      <div className={`grid items-center gap-1.5 ${showRate ? 'grid-cols-[minmax(0,1fr)_72px_40px]' : 'grid-cols-[minmax(0,1fr)_40px]'} sm:flex sm:flex-shrink-0`}>
+        <div className="flex items-center bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-2 sm:w-[96px]">
+          <span className="text-white/40 text-xs">$</span>
+          <input type="number" inputMode="decimal" value={bal} onChange={e => setBal(e.target.value)}
+            onBlur={() => { const n = parseFloat(bal); if (!isNaN(n) && n !== Number(item.balance)) onUpdate(item.id, { balance: n }) }}
+            className="w-full min-w-0 bg-transparent text-sm font-semibold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
         </div>
-      )}
-      <button onClick={() => onDelete(item.id)} aria-label="Remove"
-        className="p-1 text-white/25 hover:text-rose-400 transition-colors flex-shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+        {showRate && (
+          <div className="flex items-center bg-white/[0.04] border border-white/[0.08] rounded-lg px-1.5 py-2 sm:w-[64px]">
+            <input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder="—"
+              onBlur={() => { const n = parseFloat(rate); const cur = item.interest_rate ?? null; if ((isNaN(n) ? null : n) !== cur) onUpdate(item.id, { interest_rate: isNaN(n) ? null : n }) }}
+              className="w-full min-w-0 bg-transparent text-sm font-semibold text-amber-200 tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+            <span className="text-white/35 text-xs">%</span>
+          </div>
+        )}
+        <button onClick={() => onDelete(item.id)} aria-label="Remove"
+          className="min-h-10 min-w-10 rounded-lg text-white/25 hover:bg-rose-500/10 hover:text-rose-400 transition-colors flex items-center justify-center"><Trash2 className="w-3.5 h-3.5" /></button>
+      </div>
     </div>
   )
 }
@@ -119,28 +121,30 @@ function LineItemList({ icon: Icon, title, accent = 'emerald', items, presets = 
             ))}
           </div>
         )}
-        <div className="flex gap-1.5 items-center pt-1.5 pb-1">
+        <div className="grid grid-cols-1 gap-2 pt-1.5 pb-1 sm:flex sm:items-center sm:gap-1.5">
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Name"
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-            className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.06] text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
-          <div className="flex items-center bg-white/[0.06] border border-white/[0.08] rounded-lg px-2 py-1.5 w-[88px]">
-            <span className="text-white/40 text-xs">$</span>
-            <input type="number" inputMode="decimal" value={bal} onChange={e => setBal(e.target.value)} placeholder="0"
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-              className="w-full min-w-0 bg-transparent text-sm text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
-          </div>
-          {showRate && (
-            <div className="flex items-center bg-white/[0.06] border border-white/[0.08] rounded-lg px-1.5 py-1.5 w-[58px]">
-              <input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder="APR"
+            className="w-full min-w-0 px-2.5 py-2 rounded-lg border border-white/[0.08] bg-white/[0.06] text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30 sm:flex-1" />
+          <div className={`grid items-center gap-1.5 ${showRate ? 'grid-cols-[minmax(0,1fr)_72px_40px]' : 'grid-cols-[minmax(0,1fr)_40px]'} sm:flex sm:flex-shrink-0`}>
+            <div className="flex items-center bg-white/[0.06] border border-white/[0.08] rounded-lg px-2 py-2 sm:w-[96px]">
+              <span className="text-white/40 text-xs">$</span>
+              <input type="number" inputMode="decimal" value={bal} onChange={e => setBal(e.target.value)} placeholder="0"
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-                className="w-full min-w-0 bg-transparent text-sm text-amber-200 tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
-              <span className="text-white/35 text-xs">%</span>
+                className="w-full min-w-0 bg-transparent text-sm text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
             </div>
-          )}
-          <button onClick={add} disabled={!name.trim() || bal === '' || !(parseFloat(bal) >= 0)}
-            className={`p-1.5 rounded-lg text-white transition-colors flex-shrink-0 disabled:bg-white/10 disabled:text-white/30 ${c.btn}`}>
-            <Plus className="w-3.5 h-3.5" />
-          </button>
+            {showRate && (
+              <div className="flex items-center bg-white/[0.06] border border-white/[0.08] rounded-lg px-1.5 py-2 sm:w-[64px]">
+                <input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder="APR"
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+                  className="w-full min-w-0 bg-transparent text-sm text-amber-200 tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+                <span className="text-white/35 text-xs">%</span>
+              </div>
+            )}
+            <button onClick={add} disabled={!name.trim() || bal === '' || !(parseFloat(bal) >= 0)}
+              className={`min-h-10 min-w-10 rounded-lg text-white transition-colors flex items-center justify-center disabled:bg-white/10 disabled:text-white/30 ${c.btn}`}>
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -266,7 +270,7 @@ export default function Money() {
       <div className="bg-gradient-to-br from-emerald-500/[0.12] to-emerald-700/[0.06] rounded-2xl border border-emerald-400/20 px-4 py-4 mb-5">
         <div className="text-[10px] font-semibold text-emerald-200/70 uppercase tracking-wide mb-0.5">Net worth</div>
         <div className={`text-3xl font-bold tabular-nums leading-none ${netWorth >= 0 ? 'text-white' : 'text-rose-300'}`}>{fmt(netWorth)}</div>
-        <div className="flex items-center gap-3 mt-2 text-xs">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs">
           <span className="text-emerald-200/90 tabular-nums">Assets {fmt(totalAssets)}</span>
           <span className="text-white/25">−</span>
           <span className="text-rose-200/90 tabular-nums">Debts {fmt(totalDebt)}</span>
@@ -277,10 +281,10 @@ export default function Money() {
         {/* Monthly cash flow */}
         <div className="bg-white/[0.05] rounded-2xl border border-white/[0.10] px-4 py-3.5">
           <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-2.5">Monthly cash flow</div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <EditableAmount label="Income"   value={income}   onSave={v => saveMoney({ monthly_income: v })}   color="text-emerald-300" />
             <EditableAmount label="Expenses" value={expenses} onSave={v => saveMoney({ monthly_expenses: v })} color="text-rose-300" />
-            <div>
+            <div className="col-span-2 sm:col-span-1">
               <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-0.5">Surplus</div>
               <div className={`text-base font-bold tabular-nums leading-tight flex items-center gap-1 ${surplus >= 0 ? 'text-sky-300' : 'text-rose-300'}`}>
                 {surplus >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
@@ -297,7 +301,7 @@ export default function Money() {
             <span className="text-sm font-semibold text-white">Cash & savings</span>
             <span className="ml-auto text-sm font-bold tabular-nums text-sky-200">{fmt(checking + savings)}</span>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <EditableAmount label="Checking & cash" value={checking} onSave={v => saveCanonical('checking', 'Checking', v)} color="text-sky-200" />
             <EditableAmount label="Savings (HYSA)"   value={savings}  onSave={v => saveCanonical('savings', 'Savings', v)}   color="text-emerald-200" />
           </div>

@@ -476,30 +476,35 @@ export default function AIAdvisor() {
 
   useEffect(() => {
     async function load() {
-      const [g, d, conv, pl, ac] = await Promise.all([
-        supabase.from('goals').select('*').eq('user_id', user.id),
-        supabase.from('debts').select('*').eq('user_id', user.id),
-        supabase.from('conversations').select('messages').eq('user_id', user.id).single(),
-        listPlans(user.id),
-        supabase.from('accounts').select('*').eq('user_id', user.id),
-      ])
-      setGoals(g.data ?? [])
-      setDebts(d.data ?? [])
-      setPlans(pl ?? [])
-      setAccounts(ac.data ?? [])
+      try {
+        const [g, d, conv, pl, ac] = await Promise.all([
+          supabase.from('goals').select('*').eq('user_id', user.id),
+          supabase.from('debts').select('*').eq('user_id', user.id),
+          supabase.from('conversations').select('messages').eq('user_id', user.id).single(),
+          listPlans(user.id),
+          supabase.from('accounts').select('*').eq('user_id', user.id),
+        ])
+        setGoals(g.data ?? [])
+        setDebts(d.data ?? [])
+        setPlans(pl ?? [])
+        setAccounts(ac.data ?? [])
 
-      // Merge Supabase history: use whichever has more messages
-      if (conv.data?.messages?.length) {
-        const remoteMessages = conv.data.messages
-        setMessages(prev => remoteMessages.length >= prev.length ? remoteMessages : prev)
-        // Update localStorage cache
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteMessages)) } catch {}
+        // Merge Supabase history: use whichever has more messages
+        if (conv.data?.messages?.length) {
+          const remoteMessages = conv.data.messages
+          setMessages(prev => remoteMessages.length >= prev.length ? remoteMessages : prev)
+          // Update localStorage cache
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteMessages)) } catch {}
+        }
+      } catch (err) {
+        setError(err.message ?? 'Could not load advisor history. You can still start a new chat.')
+      } finally {
+        isLoadingHistory.current = false
+        setHistoryLoading(false)
       }
-      isLoadingHistory.current = false
-      setHistoryLoading(false)
     }
     load()
-  }, [user.id])
+  }, [STORAGE_KEY, user.id])
 
   // A Plan "Smart next step" can route here with a pre-filled question — auto-ask it.
   useEffect(() => {

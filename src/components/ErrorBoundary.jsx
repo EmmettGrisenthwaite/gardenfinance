@@ -38,22 +38,28 @@ export default class ErrorBoundary extends Component {
     }
     if (this.state.error) {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 flex flex-col items-center justify-center gap-5 p-6 text-center">
-          <div className="w-14 h-14 bg-green-500 rounded-2xl flex items-center justify-center shadow-lg">
-            <Sprout className="w-8 h-8 text-white" />
+        <div
+          className="min-h-dvh flex flex-col items-center justify-center gap-5 p-6 text-center"
+          style={{ background: 'linear-gradient(155deg, #020c05 0%, #031508 30%, #04101a 60%, #030b14 100%)' }}
+        >
+          <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_50%_-10%,rgba(16,185,129,0.22),transparent_42%)]" />
+          <div className="relative z-10 w-full max-w-sm rounded-3xl border border-white/[0.11] bg-white/[0.065] px-6 py-7 shadow-2xl backdrop-blur-md">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-950/40">
+              <Sprout className="w-8 h-8 text-white" />
+            </div>
+            <div className="mt-5">
+              <h1 className="font-display text-xl font-medium text-white">Something went wrong</h1>
+              <p className="text-sm text-white/55 mt-2 leading-relaxed">
+                The app hit an unexpected error. Reloading usually clears it — your data is safe.
+              </p>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-6 inline-flex w-full items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-950/30 transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" /> Reload app
+            </button>
           </div>
-          <div>
-            <h1 className="text-lg font-bold text-gray-900">Something went wrong</h1>
-            <p className="text-sm text-gray-500 mt-1 max-w-sm">
-              The app hit an unexpected error. Reloading usually clears it — your data is safe.
-            </p>
-          </div>
-          <button
-            onClick={() => window.location.reload()}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors"
-          >
-            <RefreshCw className="w-4 h-4" /> Reload
-          </button>
         </div>
       )
     }

@@ -43,7 +43,7 @@ export default function GoalSuggestionCard({ suggestion: s, onAdd, onDismiss }) 
     <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/[0.08] overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10 bg-emerald-500/10">
         <Sparkles className="w-4 h-4 text-emerald-300 flex-shrink-0" />
-        <span className="text-xs font-semibold text-emerald-200 flex-1">Add this to your plan?</span>
+        <span className="min-w-0 text-xs font-semibold text-emerald-200 flex-1">Add this to your plan?</span>
         {!added && onDismiss && (
           <button onClick={onDismiss} aria-label="Dismiss" className="p-0.5 -mr-1 text-white/35 hover:text-white/70 transition-colors">
             <X className="w-3.5 h-3.5" />
@@ -56,9 +56,9 @@ export default function GoalSuggestionCard({ suggestion: s, onAdd, onDismiss }) 
           <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center text-xl flex-shrink-0">
             {goalEmoji(s.name)}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-base font-bold text-white">{s.name}</span>
+              <span className="min-w-0 break-words text-base font-bold text-white">{s.name}</span>
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                 isInv ? 'bg-amber-400/15 border-amber-400/30 text-amber-200'
                       : 'bg-emerald-400/15 border-emerald-400/30 text-emerald-200'}`}>
@@ -73,7 +73,7 @@ export default function GoalSuggestionCard({ suggestion: s, onAdd, onDismiss }) 
             </div>
           </div>
         </div>
-        {s.rationale && <p className="text-xs text-white/55 leading-snug">{s.rationale}</p>}
+        {s.rationale && <p className="break-words text-xs text-white/55 leading-snug">{s.rationale}</p>}
       </div>
 
       <div className="px-4 py-3 border-t border-white/10">

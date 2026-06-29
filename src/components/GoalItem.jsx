@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout, Plus, Wallet } from 'lucide-react'
 
@@ -51,10 +51,11 @@ export function GoalModal({ goal, onSave, onClose }) {
     })
   }
 
-  const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border border-white/[0.11] text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30'
+  const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border border-white/[0.11] bg-white/[0.06] text-base text-white focus:outline-none focus:ring-1 focus:ring-emerald-400/30'
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-[60]">
-      <div className="bg-[#0e1812] w-full sm:rounded-2xl sm:shadow-xl sm:w-full sm:max-w-md sm:mx-4 rounded-t-2xl shadow-2xl">
+    <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-[60] sm:p-4">
+      <div className="bg-[#0e1812] w-full sm:rounded-2xl sm:shadow-xl sm:w-full sm:max-w-md rounded-t-2xl shadow-2xl"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="flex items-center justify-between p-5 border-b border-white/10">
           <h3 className="font-semibold text-white">{goal ? 'Edit Goal' : 'New Goal'}</h3>
           <button onClick={onClose} className="p-1.5 text-white/40 hover:text-white/60 rounded-lg hover:bg-white/5">
@@ -65,7 +66,7 @@ export function GoalModal({ goal, onSave, onClose }) {
           <form onSubmit={handleSubmit} className="p-5 space-y-4">
             <div>
               <label className="block text-sm font-medium text-white/80 mb-1.5">Goal type</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button type="button" onClick={() => setGoalType('savings')}
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${
                     goalType === 'savings'
@@ -95,7 +96,7 @@ export function GoalModal({ goal, onSave, onClose }) {
               <input value={name} onChange={e => setName(e.target.value)} required placeholder="e.g. Emergency fund" className={inputCls} />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-1.5">Target ($)</label>
                 <input type="number" inputMode="decimal" value={target} onChange={e => setTarget(e.target.value)} required min="1" step="0.01" className={inputCls} />
@@ -120,13 +121,13 @@ export function GoalModal({ goal, onSave, onClose }) {
               <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} className={inputCls} />
             </div>
 
-            <div className="flex gap-3 pt-1">
+            <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2 sm:gap-3">
               <button type="button" onClick={onClose}
-                className="flex-1 py-3 border border-white/[0.11] rounded-lg text-sm font-medium text-white/60 hover:bg-white/5 transition-colors">
+                className="order-2 py-3 border border-white/[0.11] rounded-lg text-sm font-medium text-white/60 hover:bg-white/5 transition-colors sm:order-none">
                 Cancel
               </button>
               <button type="submit"
-                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors">
+                className="order-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors sm:order-none">
                 Save
               </button>
             </div>
@@ -152,6 +153,10 @@ function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
     return [...pool].sort((a, b) => Number(b.balance) - Number(a.balance))[0].id
   }, [accounts])
   const [account, setAccount] = useState(defaultAcct)
+
+  useEffect(() => {
+    setAccount(defaultAcct)
+  }, [defaultAcct])
 
   const pct  = Math.min(Math.round((Number(goal.current_amount) / Number(goal.target_amount)) * 100), 100)
   const srcAcct = accounts.find(a => a.id === account)
@@ -187,8 +192,10 @@ function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
                 onKeyDown={e => e.key === 'Enter' && addMoney()}
                 className="w-full pl-6 pr-2.5 py-2 rounded-lg border border-white/[0.11] bg-white/[0.085] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
             </div>
-            <button onClick={addMoney} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
-            <button onClick={() => setMode(null)} className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
+            <button onClick={addMoney} aria-label="Add contribution"
+              className="min-h-10 min-w-10 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 flex items-center justify-center"><Check className="w-3.5 h-3.5" /></button>
+            <button onClick={() => setMode(null)} aria-label="Cancel contribution"
+              className="min-h-10 min-w-10 text-white/40 hover:text-white/60 rounded-lg hover:bg-white/5 flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>
           </div>
           {accounts.length > 0 && (
             <div className="flex items-center gap-2">
@@ -210,8 +217,10 @@ function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
           <input autoFocus type="number" inputMode="decimal" value={absVal} onChange={e => setAbsVal(e.target.value)}
             min="0" step="0.01"
             className="flex-1 px-2.5 py-2 rounded-lg border border-white/[0.11] bg-white/[0.085] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
-          <button onClick={saveAbs} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
-          <button onClick={() => setMode(null)} className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
+          <button onClick={saveAbs} aria-label="Save progress"
+            className="min-h-10 min-w-10 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 flex items-center justify-center"><Check className="w-3.5 h-3.5" /></button>
+          <button onClick={() => setMode(null)} aria-label="Cancel progress edit"
+            className="min-h-10 min-w-10 text-white/40 hover:text-white/60 rounded-lg hover:bg-white/5 flex items-center justify-center"><X className="w-3.5 h-3.5" /></button>
         </div>
       ) : (
         <div className="flex items-center gap-3">
