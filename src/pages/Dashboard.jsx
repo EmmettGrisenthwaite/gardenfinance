@@ -157,11 +157,11 @@ export default function Dashboard() {
       <div className="max-w-xl mx-auto w-full px-4 pt-1 pb-2 space-y-2.5 flex-shrink-0">
         <h1 className="font-display text-[22px] font-medium text-white drop-shadow-lg leading-tight">{greeting}, {name}</h1>
 
-        {/* Account value + net worth — tap to edit in the Plan */}
+        {/* Assets + net worth — tap to open Your Money */}
         {!loading && (
-          <Link to="/plan#money" className="grid grid-cols-2 gap-2.5 group">
+          <Link to="/money" className="grid grid-cols-2 gap-2.5 group">
             <div className="bg-white/[0.075] rounded-xl border border-white/[0.11] px-3 py-2 group-hover:bg-white/[0.11] transition-colors">
-              <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide">Account value</div>
+              <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide">Assets</div>
               <div className="text-base font-bold tabular-nums text-emerald-200 leading-tight">{fmt$(accountValue)}</div>
             </div>
             <div className="bg-white/[0.075] rounded-xl border border-white/[0.11] px-3 py-2 group-hover:bg-white/[0.11] transition-colors">

@@ -8,7 +8,6 @@ import { useGarden, milestonesToStage } from '@/context/GardenContext'
 import { listPlans, updatePlanSteps, deletePlan, applyStep, savePlan } from '@/lib/advisorPlans'
 import { GoalItem, GoalModal, getProjection } from '@/components/GoalItem'
 import PlanCard from '@/components/PlanCard'
-import MoneyCard from '@/components/MoneyCard'
 import SmartSuggestions from '@/components/SmartSuggestions'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
 
@@ -150,67 +149,6 @@ export default function Plan() {
     updateProgress(goalId, next)
   }
 
-  // ── Money handlers ───────────────────────────────────────────────────────────
-  async function saveMoney(fields) {
-    const next = { ...money }
-    if ('monthly_income'   in fields) next.income   = fields.monthly_income
-    if ('monthly_expenses' in fields) next.expenses = fields.monthly_expenses
-    if ('net_worth'        in fields) next.netWorth = fields.net_worth
-    setMoney(next)
-    const { data } = await supabase.from('profiles')
-      .update(fields).eq('id', user.id).select().single()
-    if (data) setProfile(data)   // keep advisor context fresh
-  }
-
-  // Balances by type (stored in the accounts table the advisor reads). Checking
-  // and savings are one canonical row each. Investments can be itemized into
-  // several accounts (Roth IRA, 401k, brokerage…) — all stored as type
-  // 'brokerage' and distinguished by name; the displayed total is their sum.
-  const balanceOf = (t) => Number(accounts.find(a => a.type === t)?.balance) || 0
-  const investAccounts = accounts.filter(a => a.type === 'brokerage')
-  const investTotal = investAccounts.reduce((s, a) => s + Number(a.balance || 0), 0)
-  const balances = { checking: balanceOf('checking'), savings: balanceOf('savings'), brokerage: investTotal }
-  async function saveTypeBalance(type, v) {
-    const val = Math.max(0, Number(v) || 0)
-    const existing = accounts.find(a => a.type === type)
-    if (existing) {
-      setAccounts(prev => prev.map(a => a.id === existing.id ? { ...a, balance: val } : a))
-      await supabase.from('accounts').update({ balance: val }).eq('id', existing.id)
-    } else {
-      const names = { checking: 'Checking', savings: 'Savings', brokerage: 'Investments' }
-      const { data } = await supabase.from('accounts')
-        .insert({ user_id: user.id, name: names[type] || 'Account', type, balance: val })
-        .select().single()
-      if (data) setAccounts(prev => [...prev, data])
-    }
-  }
-  // Itemized investment accounts (all type 'brokerage', named).
-  async function addInvestAccount({ name, balance }) {
-    const { data } = await supabase.from('accounts')
-      .insert({ user_id: user.id, name: name.trim() || 'Investment', type: 'brokerage', balance: Math.max(0, Number(balance) || 0) })
-      .select().single()
-    if (data) setAccounts(prev => [...prev, data])
-  }
-  async function updateInvestAccount(id, fields) {
-    const patch = {}
-    if ('name' in fields)    patch.name = fields.name.trim() || 'Investment'
-    if ('balance' in fields) patch.balance = Math.max(0, Number(fields.balance) || 0)
-    setAccounts(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a))
-    await supabase.from('accounts').update(patch).eq('id', id)
-  }
-  function deleteInvestAccount(id) {
-    setAccounts(prev => prev.filter(a => a.id !== id))
-    supabase.from('accounts').delete().eq('id', id).then(() => {})
-  }
-  async function addDebt(d) {
-    const { data } = await supabase.from('debts').insert({ user_id: user.id, ...d }).select().single()
-    if (data) setDebts(prev => [...prev, data])
-  }
-  function deleteDebt(id) {
-    setDebts(prev => prev.filter(d => d.id !== id))
-    supabase.from('debts').delete().eq('id', id).then(() => {})
-  }
-
   // ── Smart-suggestion handlers ────────────────────────────────────────────────
   // Add a suggested task to the user's plan (the first one, or create one).
   async function addSuggestedTask(text) {
@@ -318,16 +256,6 @@ export default function Plan() {
                 ))}
               </div>
             )}
-          </section>
-
-          {/* ── Your money (ingrained budget) ── */}
-          <section id="money" className="scroll-mt-16">
-            <MoneyCard
-              income={money.income} expenses={money.expenses} netWorth={netWorth}
-              balances={balances} debts={debts} investAccounts={investAccounts}
-              onSaveMoney={saveMoney} onSaveTypeBalance={saveTypeBalance}
-              onAddInvest={addInvestAccount} onUpdateInvest={updateInvestAccount} onDeleteInvest={deleteInvestAccount}
-              onAddDebt={addDebt} onDeleteDebt={deleteDebt} />
           </section>
 
           {/* ── Goals ── */}

@@ -144,8 +144,8 @@ export default function Settings() {
             sub={bits.length ? bits.join(' · ') : 'Age, work, goals — powers your advisor'}
             onClick={() => setEditProfile(true)}
             trailing={<ArrowRight className="w-4 h-4 text-white/30" />} />
-          <Row icon={Wallet} title="Money, goals & debts" sub="Edit on your Plan"
-            to="/plan#money" trailing={<ArrowRight className="w-4 h-4 text-white/30" />} />
+          <Row icon={Wallet} title="Your money" sub="Income, accounts, assets & debts"
+            to="/money" trailing={<ArrowRight className="w-4 h-4 text-white/30" />} />
         </Card>
 
         {/* Data & privacy */}

@@ -197,14 +197,15 @@ function buildContext(money, goals, debts, profile, extras = {}) {
   }
   ctx += '\n'
 
-  // ── Accounts by type (from the "Your money" card) ──────────────────────────
+  // ── Assets by type (from the "Your Money" page) ────────────────────────────
   if (acctTotal > 0) {
     const bal = (t) => accounts.filter(a => a.type === t).reduce((s, a) => s + Number(a.balance || 0), 0)
     const checking = bal('checking'), savings = bal('savings'), invest = bal('brokerage')
+    const property = bal('property'), vehicles = bal('vehicle'), other = bal('other_asset')
     const liquid = checking + savings
-    ctx += 'ACCOUNTS:\n'
-    if (checking) ctx += `  Checking: $${checking.toLocaleString()}\n`
-    if (savings)  ctx += `  Savings:  $${savings.toLocaleString()}\n`
+    ctx += `ASSETS ($${acctTotal.toLocaleString()} total):\n`
+    if (checking) ctx += `  Checking & cash: $${checking.toLocaleString()}\n`
+    if (savings)  ctx += `  Savings: $${savings.toLocaleString()}\n`
     if (invest) {
       const investAccts = accounts.filter(a => a.type === 'brokerage' && Number(a.balance) > 0)
       if (investAccts.length > 1) {
@@ -214,6 +215,12 @@ function buildContext(money, goals, debts, profile, extras = {}) {
         ctx += `  Investments: $${invest.toLocaleString()}\n`
       }
     }
+    if (property) {
+      const ps = accounts.filter(a => a.type === 'property' && Number(a.balance) > 0)
+      ctx += `  Property/real estate: $${property.toLocaleString()}${ps.length > 1 ? ` (${ps.map(a => a.name).join(', ')})` : ''}\n`
+    }
+    if (vehicles) ctx += `  Vehicles: $${vehicles.toLocaleString()}\n`
+    if (other)    ctx += `  Other assets: $${other.toLocaleString()}\n`
     ctx += `  Liquid cash (checking + savings): $${liquid.toLocaleString()}\n`
     if (expenses > 0) {
       const months = liquid / expenses

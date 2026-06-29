@@ -7,6 +7,7 @@ import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import AIAdvisor from '@/pages/AIAdvisor'
 import Plan from '@/pages/Plan'
+import Money from '@/pages/Money'
 import Settings from '@/pages/Settings'
 import { Sprout, Compass } from 'lucide-react'
 
@@ -81,11 +82,12 @@ export default function App() {
               <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/advisor" element={<ProtectedRoute><AIAdvisor /></ProtectedRoute>} />
               <Route path="/plan" element={<ProtectedRoute><Plan /></ProtectedRoute>} />
+              <Route path="/money" element={<ProtectedRoute><Money /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-              {/* Streamlined: budget/debt/accounts/goals all live on the Plan now */}
-              <Route path="/budget"   element={<Navigate to="/plan#money" replace />} />
-              <Route path="/debt"     element={<Navigate to="/plan#money" replace />} />
-              <Route path="/accounts" element={<Navigate to="/plan#money" replace />} />
+              {/* Money lives on its own page; goals on the Plan */}
+              <Route path="/budget"   element={<Navigate to="/money" replace />} />
+              <Route path="/debt"     element={<Navigate to="/money" replace />} />
+              <Route path="/accounts" element={<Navigate to="/money" replace />} />
               <Route path="/goals"    element={<Navigate to="/plan#goals" replace />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
