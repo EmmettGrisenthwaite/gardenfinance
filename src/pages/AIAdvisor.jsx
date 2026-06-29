@@ -16,7 +16,7 @@ const GOAL_INTENT = /\b(sav(e|ing|ings)|buy|buying|afford|down\s?-?payment|house
 const GUIDE_INTENT = /\b(open|start|set\s?up|sign\s?up|create|switch|roll\s?over|move|transfer|enroll)\b[^.?!]*\b(roth|ira|401k|403b|hsa|brokerage|savings? account|hysa|high.?yield|index fund|etf|mutual fund|emergency fund|life insurance|will|credit|account|invest)\b|\bwalk me through\b|\bstep[-\s]?by[-\s]?step\b|\bhow (do|can) i (open|start|set\s?up|sign\s?up|get|invest)\b/i
 import {
   Send, Bot, Sparkles, RefreshCw, ArrowDown,
-  Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Lightbulb, Shield, Sprout,
+  Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Shield, Sprout,
   ClipboardList, Loader2,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -476,30 +476,41 @@ export default function AIAdvisor() {
 
   useEffect(() => {
     async function load() {
-      const [g, d, conv, pl, ac] = await Promise.all([
-        supabase.from('goals').select('*').eq('user_id', user.id),
-        supabase.from('debts').select('*').eq('user_id', user.id),
-        supabase.from('conversations').select('messages').eq('user_id', user.id).single(),
-        listPlans(user.id),
-        supabase.from('accounts').select('*').eq('user_id', user.id),
-      ])
-      setGoals(g.data ?? [])
-      setDebts(d.data ?? [])
-      setPlans(pl ?? [])
-      setAccounts(ac.data ?? [])
+      try {
+        const [g, d, conv, pl, ac] = await Promise.all([
+          supabase.from('goals').select('*').eq('user_id', user.id),
+          supabase.from('debts').select('*').eq('user_id', user.id),
+          supabase.from('conversations').select('messages').eq('user_id', user.id).single(),
+          listPlans(user.id),
+          supabase.from('accounts').select('*').eq('user_id', user.id),
+        ])
+        setGoals(g.data ?? [])
+        setDebts(d.data ?? [])
+        setPlans(pl ?? [])
+        setAccounts(ac.data ?? [])
 
-      // Merge Supabase history: use whichever has more messages
-      if (conv.data?.messages?.length) {
-        const remoteMessages = conv.data.messages
-        setMessages(prev => remoteMessages.length >= prev.length ? remoteMessages : prev)
-        // Update localStorage cache
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteMessages)) } catch {}
+        // Merge Supabase history: keep whichever side has more context and cache it.
+        if (conv.data?.messages?.length) {
+          const remoteMessages = conv.data.messages
+          setMessages(prev => {
+            const merged = remoteMessages.length >= prev.length ? remoteMessages : prev
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
+            } catch (error) {
+              console.warn('Could not cache advisor messages locally:', error)
+            }
+            return merged
+          })
+        }
+      } catch (error) {
+        setError(error.message ?? 'Could not load your advisor context. You can still chat now.')
+      } finally {
+        isLoadingHistory.current = false
+        setHistoryLoading(false)
       }
-      isLoadingHistory.current = false
-      setHistoryLoading(false)
     }
     load()
-  }, [user.id])
+  }, [user.id, STORAGE_KEY])
 
   // A Plan "Smart next step" can route here with a pre-filled question — auto-ask it.
   useEffect(() => {
@@ -514,7 +525,11 @@ export default function AIAdvisor() {
   useEffect(() => {
     if (isLoadingHistory.current) return
     if (loading || analyzing) return
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)) } catch {}
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages))
+    } catch (error) {
+      console.warn('Could not cache advisor messages locally:', error)
+    }
     // Supabase upsert — fire and forget
     supabase.from('conversations').upsert(
       { user_id: user.id, messages, updated_at: new Date().toISOString() },
