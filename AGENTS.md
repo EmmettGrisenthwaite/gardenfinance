@@ -24,6 +24,8 @@ VITE_SUPABASE_ANON_KEY=your-anon-public-key
 - With **placeholder** values (e.g. `https://placeholder.supabase.co` + any string) the app boots and renders the `/login` page, but any auth/data call fails with "Failed to fetch". This is enough to verify the frontend dev environment renders.
 - For **real** end-to-end auth + data (sign up, onboarding, dashboard, goals, accounts), you need a real Supabase project's URL + anon key in `.env`. These are not committed and must be supplied as secrets.
 
+> **Gotcha — use the right Supabase key type.** `VITE_SUPABASE_ANON_KEY` must be the **publishable / anon** client key: either the new-format `sb_publishable_...` key or the legacy anon JWT (starts with `eyJ`). It must **not** be a secret key (`sb_secret_...`, the new service-role key). `supabase-js` refuses secret keys in the browser with the error **"Forbidden use of secret API key in browser"**, so auth/data calls fail even though the same secret key works for server-side `curl` against the REST/auth endpoints. (Email confirmation is disabled on the hosted project, so a valid signup logs the user straight in.)
+
 ### Backend schema is NOT in the repo
 The base tables (`profiles`, `accounts`, `budgets`, `goals`, `debts`, `advisor_plans`, `conversations`, `net_worth_snapshots`, `budget_limits`) are **not** defined anywhere in the repo — `supabase/migrations.sql` and `SETUP.md` only contain incremental ALTERs. The canonical schema lives in the hosted Supabase project, so a fully working backend cannot be reconstructed locally from this repo alone.
 
