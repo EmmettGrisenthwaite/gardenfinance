@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import Onboarding from '@/components/Onboarding'
 import {
   ChevronLeft, UserCircle, Pencil, Wallet, ArrowRight, Download, ShieldCheck,
-  LogOut, Trash2, Loader2, Check,
+  LogOut, Trash2, Loader2,
 } from 'lucide-react'
 
 const APP_VERSION = '1.0'
@@ -164,7 +164,7 @@ export default function Settings() {
             </span>
             <p className="text-xs text-white/50 leading-relaxed">
               Your data is private to your account. Garden Financial offers educational
-              guidance — it isn't a substitute for a licensed financial planner.
+              guidance — it isn&apos;t a substitute for a licensed financial planner.
             </p>
           </div>
         </Card>
@@ -184,7 +184,7 @@ export default function Settings() {
               <p className="text-sm text-rose-100 font-medium">Delete everything?</p>
               <p className="text-xs text-white/55 leading-relaxed">
                 This permanently deletes your profile, money, goals, debts, plans, and advisor
-                history, then signs you out. This can't be undone.
+                history, then signs you out. This can&apos;t be undone.
               </p>
               <div className="flex gap-2">
                 <button onClick={() => setConfirmDelete(false)} disabled={deleting}
