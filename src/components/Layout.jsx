@@ -22,6 +22,9 @@ export default function Layout({ children }) {
   // (no main padding): the garden dashboard and the advisor chat.
   const isGarden    = pathname === '/'
   const isImmersive = isGarden || pathname === '/advisor'
+  // Secondary pages reached from the gear / links — back-button navigation, so
+  // the floating tab bar is hidden (it would imply they're top-level tabs).
+  const isSubPage   = pathname === '/settings' || pathname === '/money'
 
   // Hide the floating nav while a text field is focused (mobile keyboard up) so
   // it never covers an input's save button.
@@ -135,16 +138,16 @@ export default function Layout({ children }) {
 
           {/* Page content — immersive pages (garden, advisor) are full-bleed and
               own their scroll; other pages keep clearance for the floating nav */}
-          <main className={`flex-1 min-h-0 ${isImmersive ? 'overflow-hidden' : 'overflow-auto pb-28 md:pb-6'}`}>
+          <main className={`flex-1 min-h-0 ${isImmersive ? 'overflow-hidden' : `overflow-auto ${isSubPage ? 'pb-6' : 'pb-28 md:pb-6'}`}`}>
             {children}
           </main>
         </div>
       </div>
 
-      {/* ── Mobile HUD: floating pill nav (hides while typing) ── */}
+      {/* ── Mobile HUD: floating pill nav (hidden on sub-pages + while typing) ── */}
       <nav
         className={`md:hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ${
-          typing ? 'opacity-0 translate-y-8 pointer-events-none' : 'translate-y-0'}`}
+          (typing || isSubPage) ? 'opacity-0 translate-y-8 pointer-events-none' : 'translate-y-0'}`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="flex items-center gap-0.5 bg-black/40 backdrop-blur-2xl rounded-2xl border border-white/[0.11] px-1.5 py-1.5"

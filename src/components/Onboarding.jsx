@@ -212,12 +212,12 @@ function DebtsStep({ debts, setDebts }) {
       <div className="flex gap-2 items-stretch">
         <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Visa, student loan"
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-          className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border-2 border-white/15 bg-white/[0.075] text-white text-sm focus:outline-none focus:border-emerald-500 transition-colors" />
+          className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border-2 border-white/15 bg-white/[0.075] text-white text-base md:text-sm focus:outline-none focus:border-emerald-500 transition-colors" />
         <div className="flex items-center bg-white/[0.075] border-2 border-white/15 rounded-xl px-2.5 w-24 focus-within:border-emerald-500 transition-colors">
           <span className="text-white/40 text-sm mr-0.5">$</span>
           <input type="number" inputMode="decimal" min="0" value={bal} onChange={e => setBal(e.target.value)} placeholder="0"
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-            className="w-full min-w-0 bg-transparent text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+            className="w-full min-w-0 bg-transparent text-base md:text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
         </div>
         <button type="button" onClick={add} disabled={!name.trim() || !(parseFloat(bal) > 0)}
           className="px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 text-white text-sm font-semibold transition-colors">
@@ -519,7 +519,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                             value={answers[field]}
                             onChange={e => set(field, e.target.value)}
                             placeholder="0"
-                            className="w-full min-w-0 bg-transparent text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                            className="w-full min-w-0 bg-transparent text-base md:text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                         </div>
                       </label>
                     ))}

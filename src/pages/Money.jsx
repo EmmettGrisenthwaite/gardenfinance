@@ -33,7 +33,7 @@ function EditableAmount({ label, value, onSave, color = 'text-white', hint }) {
           onChange={e => setVal(e.target.value)}
           onBlur={() => { if (cancelled.current) { cancelled.current = false; return } commit() }}
           onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { cancelled.current = true; setEditing(false) } }}
-          className="w-full bg-transparent text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+          className="w-full bg-transparent text-base md:text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
         <button onMouseDown={e => e.preventDefault()} onClick={commit} className="p-0.5 text-emerald-400"><Check className="w-3.5 h-3.5" /></button>
       </div>
     )
@@ -55,18 +55,18 @@ function LineRow({ item, showRate, onUpdate, onDelete }) {
     <div className="flex items-center gap-1.5 py-1.5">
       <input value={name} onChange={e => setName(e.target.value)}
         onBlur={() => { if (name.trim() && name !== item.name) onUpdate(item.id, { name }) }}
-        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/90 text-sm focus:outline-none focus:border-emerald-400/40" />
+        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/90 text-base md:text-sm focus:outline-none focus:border-emerald-400/40" />
       <div className="flex items-center bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1.5 w-[88px]">
         <span className="text-white/40 text-xs">$</span>
         <input type="number" inputMode="decimal" value={bal} onChange={e => setBal(e.target.value)}
           onBlur={() => { const n = parseFloat(bal); if (!isNaN(n) && n !== Number(item.balance)) onUpdate(item.id, { balance: n }) }}
-          className="w-full min-w-0 bg-transparent text-sm font-semibold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+          className="w-full min-w-0 bg-transparent text-base md:text-sm font-semibold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
       </div>
       {showRate && (
         <div className="flex items-center bg-white/[0.04] border border-white/[0.08] rounded-lg px-1.5 py-1.5 w-[58px]">
           <input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder="—"
             onBlur={() => { const n = parseFloat(rate); const cur = item.interest_rate ?? null; if ((isNaN(n) ? null : n) !== cur) onUpdate(item.id, { interest_rate: isNaN(n) ? null : n }) }}
-            className="w-full min-w-0 bg-transparent text-sm font-semibold text-amber-200 tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+            className="w-full min-w-0 bg-transparent text-base md:text-sm font-semibold text-amber-200 tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
           <span className="text-white/35 text-xs">%</span>
         </div>
       )}
@@ -77,7 +77,7 @@ function LineRow({ item, showRate, onUpdate, onDelete }) {
 }
 
 // ─── A titled, addable list of line items (investments, property, debts…) ───────
-function LineItemList({ icon: Icon, title, accent = 'emerald', items, presets = [], showRate = false, onAdd, onUpdate, onDelete, emptyHint }) {
+function LineItemList({ icon: Icon, title, accent = 'emerald', items, presets = [], showRate = false, rateLabel = 'APR', onAdd, onUpdate, onDelete, emptyHint }) {
   const [name, setName] = useState('')
   const [bal, setBal]   = useState('')
   const [rate, setRate] = useState('')
@@ -122,18 +122,18 @@ function LineItemList({ icon: Icon, title, accent = 'emerald', items, presets = 
         <div className="flex gap-1.5 items-center pt-1.5 pb-1">
           <input value={name} onChange={e => setName(e.target.value)} placeholder="Name"
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-            className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.06] text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
+            className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.06] text-white text-base md:text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
           <div className="flex items-center bg-white/[0.06] border border-white/[0.08] rounded-lg px-2 py-1.5 w-[88px]">
             <span className="text-white/40 text-xs">$</span>
             <input type="number" inputMode="decimal" value={bal} onChange={e => setBal(e.target.value)} placeholder="0"
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-              className="w-full min-w-0 bg-transparent text-sm text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+              className="w-full min-w-0 bg-transparent text-base md:text-sm text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
           </div>
           {showRate && (
             <div className="flex items-center bg-white/[0.06] border border-white/[0.08] rounded-lg px-1.5 py-1.5 w-[58px]">
-              <input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder="APR"
+              <input type="number" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} placeholder={rateLabel}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-                className="w-full min-w-0 bg-transparent text-sm text-amber-200 tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+                className="w-full min-w-0 bg-transparent text-base md:text-sm text-amber-200 tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
               <span className="text-white/35 text-xs">%</span>
             </div>
           )}
@@ -212,15 +212,17 @@ export default function Money() {
   }
 
   // ── Itemized accounts (investments, property, vehicles, other) ──
-  async function addAccount(type, { name, balance }) {
+  async function addAccount(type, { name, balance, interest_rate }) {
     const { data } = await supabase.from('accounts')
-      .insert({ user_id: user.id, name, type, balance: Math.max(0, Number(balance) || 0) }).select().single()
+      .insert({ user_id: user.id, name, type, balance: Math.max(0, Number(balance) || 0), interest_rate: interest_rate ?? null })
+      .select().single()
     if (data) setAccounts(prev => [...prev, data])
   }
   async function updateAccount(id, fields) {
     const patch = {}
-    if ('name' in fields)    patch.name = fields.name.trim() || 'Account'
-    if ('balance' in fields) patch.balance = Math.max(0, Number(fields.balance) || 0)
+    if ('name' in fields)          patch.name = fields.name.trim() || 'Account'
+    if ('balance' in fields)       patch.balance = Math.max(0, Number(fields.balance) || 0)
+    if ('interest_rate' in fields) patch.interest_rate = fields.interest_rate
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a))
     await supabase.from('accounts').update(patch).eq('id', id)
   }
@@ -304,7 +306,7 @@ export default function Money() {
         </div>
 
         {/* Investments */}
-        <LineItemList icon={LineChart} title="Investments" accent="violet"
+        <LineItemList icon={LineChart} title="Investments" accent="violet" showRate rateLabel="APY"
           items={byType('brokerage')} presets={['Roth IRA', 'Traditional IRA', '401(k)', 'Brokerage', 'HSA']}
           emptyHint="Add retirement & brokerage accounts so your advisor sees your full picture."
           onAdd={(it) => addAccount('brokerage', it)} onUpdate={updateAccount} onDelete={deleteAccount} />
