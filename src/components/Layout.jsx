@@ -117,6 +117,9 @@ export default function Layout({ children }) {
         <div className="flex flex-col flex-1 min-h-0 min-w-0">
 
           {/* Mobile top bar */}
+          {/* The advisor has its own header; skip the global one there to avoid a
+              redundant double header on mobile. */}
+          {pathname !== '/advisor' && (
           <header className="md:hidden flex-shrink-0 px-4 h-14 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 bg-green-500/90 rounded-lg flex items-center justify-center shadow">
@@ -135,6 +138,7 @@ export default function Layout({ children }) {
               <Settings className="w-5 h-5" />
             </NavLink>
           </header>
+          )}
 
           {/* Page content — immersive pages (garden, advisor) are full-bleed and
               own their scroll; other pages keep clearance for the floating nav */}

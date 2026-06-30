@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { callClaude, requestPlan, requestGuide, suggestGoal, chatConfigured } from '@/lib/claude'
@@ -15,7 +15,7 @@ const GOAL_INTENT = /\b(sav(e|ing|ings)|buy|buying|afford|down\s?-?payment|house
 // the guide tool itself makes the final yes/no decision.
 const GUIDE_INTENT = /\b(open|start|set\s?up|sign\s?up|create|switch|roll\s?over|move|transfer|enroll)\b[^.?!]*\b(roth|ira|401k|403b|hsa|brokerage|savings? account|hysa|high.?yield|index fund|etf|mutual fund|emergency fund|life insurance|will|credit|account|invest)\b|\bwalk me through\b|\bstep[-\s]?by[-\s]?step\b|\bhow (do|can) i (open|start|set\s?up|sign\s?up|get|invest)\b/i
 import {
-  Send, Bot, Sparkles, RefreshCw, ArrowDown,
+  Send, Bot, Sparkles, RefreshCw, ArrowDown, Settings,
   Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Lightbulb, Shield, Sprout,
   ClipboardList, Loader2,
 } from 'lucide-react'
@@ -351,11 +351,14 @@ function MessageBubble({ msg }) {
         )
       }
 
-      if (line.trim().startsWith('• ') || line.trim().startsWith('- ')) {
+      if (line.trim().startsWith('• ') || line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+        const body = line.trim().replace(/^[•\-*]\s+/, '')
+        const bparts = body.split(/(\*\*[^*]+\*\*)/).map((p, j) =>
+          p.startsWith('**') ? <strong key={j}>{p.slice(2, -2)}</strong> : p)
         return (
           <div key={i} className="flex gap-2 my-0.5">
             <span className="text-emerald-400 mt-0.5 flex-shrink-0">•</span>
-            <span>{rendered}</span>
+            <span>{bparts}</span>
           </div>
         )
       }
@@ -673,6 +676,10 @@ export default function AIAdvisor() {
                 <RefreshCw className="w-4 h-4" />
               </button>
             )}
+            <Link to="/settings" aria-label="Settings" title="Settings"
+              className="md:hidden p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors">
+              <Settings className="w-4 h-4" />
+            </Link>
           </div>
         </div>
       </div>
@@ -706,7 +713,7 @@ export default function AIAdvisor() {
             </motion.button>
           )}
         </AnimatePresence>
-        <div className={`max-w-3xl mx-auto px-4 py-6 ${isEmpty ? 'min-h-full flex flex-col justify-end' : ''}`}>
+        <div className={`max-w-3xl mx-auto px-4 py-6 ${isEmpty ? 'min-h-full flex flex-col justify-center' : ''}`}>
 
           {isEmpty && !noKey && (
             <WelcomeScreen

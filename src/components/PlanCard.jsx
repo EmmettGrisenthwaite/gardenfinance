@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ClipboardList, Check, Plus, Loader2, Bookmark, Trash2, ArrowRight, PartyPopper, Calendar, X, ArrowUpRight } from 'lucide-react'
+import { ClipboardList, Check, Plus, Loader2, Bookmark, Trash2, ArrowRight, PartyPopper, Calendar, X, ArrowUpRight, ChevronDown, ChevronUp } from 'lucide-react'
 import { applyLabel } from '@/lib/advisorPlans'
 import ResourceLinks from '@/components/ResourceLinks'
 
@@ -144,6 +144,11 @@ export default function PlanCard({ plan, variant = 'chat', saved = false, onSave
   const doneCount = steps.filter(s => s.done).length
   const pct = steps.length ? Math.round((doneCount / steps.length) * 100) : 0
   const complete = steps.length > 0 && doneCount === steps.length
+  // On the Plan page, completed plans start collapsed to keep the list tidy; tap
+  // the header to expand. The chat variant is always open.
+  const [expanded, setExpanded] = useState(variant !== 'page' || !complete)
+  const collapsible = variant === 'page'
+  const showBody = !collapsible || expanded
 
   async function handleSave() {
     setSaving(true)
@@ -160,18 +165,29 @@ export default function PlanCard({ plan, variant = 'chat', saved = false, onSave
         </div>
       )}
 
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10 bg-emerald-500/10">
-        <ClipboardList className="w-4 h-4 text-emerald-300 flex-shrink-0" />
-        <div className="flex-1 min-w-0">
+      <div className={`flex items-center gap-2 px-4 py-2.5 bg-emerald-500/10 ${showBody ? 'border-b border-white/10' : ''}`}>
+        {complete
+          ? <Check className="w-4 h-4 text-emerald-300 flex-shrink-0" strokeWidth={3} />
+          : <ClipboardList className="w-4 h-4 text-emerald-300 flex-shrink-0" />}
+        <button type="button" onClick={collapsible ? () => setExpanded(e => !e) : undefined}
+          className={`flex-1 min-w-0 text-left ${collapsible ? '' : 'cursor-default'}`}>
           <div className="text-sm font-semibold text-white truncate">{plan.title}</div>
           {variant === 'page' && plan.created_at && (
-            <div className="text-[10px] text-white/40">Saved {timeAgo(plan.created_at)}</div>
+            <div className="text-[10px] text-white/40">
+              {complete && !expanded ? 'Complete · tap to view' : `Saved ${timeAgo(plan.created_at)}`}
+            </div>
           )}
-        </div>
+        </button>
         {variant === 'page' && (
-          <span className={`text-[11px] font-bold flex-shrink-0 ${complete ? 'text-emerald-300' : 'text-white/45'}`}>
+          <span className={`text-[11px] font-bold flex-shrink-0 tabular-nums ${complete ? 'text-emerald-300' : 'text-white/45'}`}>
             {doneCount}/{steps.length}
           </span>
+        )}
+        {collapsible && (
+          <button onClick={() => setExpanded(e => !e)} aria-label={expanded ? 'Collapse' : 'Expand'}
+            className="p-0.5 text-white/35 hover:text-white/70 transition-colors flex-shrink-0">
+            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
         )}
         {variant === 'page' && onDelete && (
           <button onClick={onDelete} aria-label="Delete plan"
@@ -181,26 +197,28 @@ export default function PlanCard({ plan, variant = 'chat', saved = false, onSave
         )}
       </div>
 
-      <div className="px-4 py-1.5 divide-y divide-white/5">
-        {steps.map(step => (
-          <StepRow key={step.id}
-            step={step}
-            onToggle={variant === 'page' ? onToggle : undefined}
-            onSetDue={variant === 'page' ? onSetDue : undefined}
-            onHowTo={variant === 'page' ? onHowTo : undefined}
-            onApply={onApply} />
-        ))}
-      </div>
+      {showBody && (
+        <div className="px-4 py-1.5 divide-y divide-white/5">
+          {steps.map(step => (
+            <StepRow key={step.id}
+              step={step}
+              onToggle={variant === 'page' ? onToggle : undefined}
+              onSetDue={variant === 'page' ? onSetDue : undefined}
+              onHowTo={variant === 'page' ? onHowTo : undefined}
+              onApply={onApply} />
+          ))}
+        </div>
+      )}
 
       {/* Completion celebration (page variant) */}
-      {variant === 'page' && complete && (
+      {variant === 'page' && complete && showBody && (
         <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/15 border-t border-emerald-400/20 text-xs font-semibold text-emerald-200">
           <PartyPopper className="w-4 h-4" /> Every step done — your garden thanks you.
         </div>
       )}
 
       {/* Add-your-own-step (page variant) */}
-      {variant === 'page' && onAddStep && !complete && (
+      {variant === 'page' && onAddStep && !complete && showBody && (
         <div className="border-t border-white/10">
           <AddStepRow onAdd={onAddStep} />
         </div>
