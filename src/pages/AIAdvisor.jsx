@@ -22,15 +22,17 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 
 // ─── Quick questions ───────────────────────────────────────────────────────────
+// `label` is the compact chip text (two fit per row at 375px); `q` is the full
+// question actually sent to the advisor.
 const SUGGESTIONS = [
-  { label: "What should I prioritize right now?", icon: Target },
-  { label: "Help me open a Roth IRA",             icon: Sparkles },
-  { label: "How's my budget looking?",            icon: BarChart3 },
-  { label: "How do I tackle my debt?",            icon: CreditCard },
-  { label: "Am I saving enough?",                 icon: PiggyBank },
-  { label: "Should I start investing?",           icon: TrendingUp },
-  { label: "How big should my emergency fund be?",icon: Shield },
-  { label: "How can I grow my garden score?",     icon: Sprout },
+  { label: 'What do I do first?',  q: 'What should I prioritize right now?',       icon: Target },
+  { label: 'Open a Roth IRA',      q: 'Help me open a Roth IRA',                   icon: Sparkles },
+  { label: "How's my budget?",     q: "How's my budget looking?",                  icon: BarChart3 },
+  { label: 'Tackle my debt',       q: 'How do I tackle my debt?',                  icon: CreditCard },
+  { label: 'Am I saving enough?',  q: 'Am I saving enough?',                       icon: PiggyBank },
+  { label: 'Start investing?',     q: 'Should I start investing?',                 icon: TrendingUp },
+  { label: 'Emergency fund size',  q: 'How big should my emergency fund be?',      icon: Shield },
+  { label: 'Grow my garden',       q: 'How can I grow my garden faster?',          icon: Sprout },
 ]
 
 // ─── System prompt ─────────────────────────────────────────────────────────────
@@ -398,15 +400,22 @@ function MessageBubble({ msg }) {
 }
 
 // ─── Welcome / empty state ─────────────────────────────────────────────────────
+// One composed column: glowing hero → headline → CTA → a wrapped cloud of
+// discovery chips. Everything is visible (no horizontal scroll) so the screen
+// reads as a designed landing, not a void with a strip of cut-off pills.
 function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building }) {
   return (
-    <motion.div className="text-center py-6"
+    <motion.div className="text-center py-4"
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500/30 to-emerald-700/30 ring-1 ring-emerald-400/20 flex items-center justify-center mx-auto mb-4 shadow-lg">
-        <Bot className="w-8 h-8 text-emerald-300" />
+      {/* Hero with a soft ambient glow so the space feels lit, not empty */}
+      <div className="relative w-16 h-16 mx-auto mb-4">
+        <div className="absolute -inset-8 rounded-full bg-emerald-500/[0.14] blur-2xl pointer-events-none" />
+        <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500/30 to-emerald-700/30 ring-1 ring-emerald-400/20 flex items-center justify-center shadow-lg">
+          <Bot className="w-8 h-8 text-emerald-300" />
+        </div>
       </div>
       <h2 className="font-display text-[20px] font-medium text-white mb-2">Your personal financial advisor</h2>
-      <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed mb-6">
+      <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed mb-5">
         {hasData
           ? "I've looked at your numbers. Want me to tell you exactly where you stand and build you a plan?"
           : "Ask me anything — and I'll build you a plan you can check off to grow your garden. Add your money & goals on the Plan tab for advice that's about you."}
@@ -433,13 +442,16 @@ function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building })
         </div>
       )}
 
-      {/* Horizontally scrollable on mobile, wrapping on desktop */}
-      <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:flex-wrap md:justify-center md:overflow-x-visible md:-mx-0 md:px-0 md:max-w-lg md:mx-auto">
+      {/* Discovery chips — wrapped + centered, every prompt visible at a glance */}
+      <div className="text-[10px] font-semibold text-white/35 uppercase tracking-wider mb-2.5">Or start with</div>
+      <div className="flex flex-wrap justify-center gap-2 max-w-md mx-auto">
         {SUGGESTIONS.map((s, i) => (
-          <button key={i} onClick={() => onSuggest(s.label)}
-            className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-white/10 border border-white/[0.11] rounded-full text-sm text-white/70 hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-white transition-all">
+          <motion.button key={i} onClick={() => onSuggest(s.q ?? s.label)}
+            initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.12 + i * 0.04, duration: 0.25 }}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white/[0.07] border border-white/[0.11] rounded-full text-[13px] text-white/70 hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-white transition-all">
             <s.icon className="w-3.5 h-3.5 text-emerald-300/80" />{s.label}
-          </button>
+          </motion.button>
         ))}
       </div>
     </motion.div>
@@ -770,9 +782,9 @@ export default function AIAdvisor() {
 
           {/* Mid-conversation suggestion chips — horizontal scroll on mobile */}
           {messages.length > 0 && !loading && !analyzing && (
-            <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:flex-wrap md:overflow-x-visible md:-mx-0 md:px-0 mt-2 mb-2">
+            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 md:flex-wrap md:overflow-x-visible md:-mx-0 md:px-0 mt-2 mb-2">
               {SUGGESTIONS.slice(0, 4).map((s, i) => (
-                <button key={i} onClick={() => send(s.label)}
+                <button key={i} onClick={() => send(s.q ?? s.label)}
                   className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-white/10 border border-white/[0.11] rounded-full text-xs text-white/60 hover:border-emerald-400/50 hover:text-white transition-all">
                   <s.icon className="w-3 h-3 text-emerald-300/80" /> {s.label}
                 </button>
