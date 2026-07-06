@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { ClipboardList, Check, Plus, Loader2, Bookmark, Trash2, ArrowRight, PartyPopper, Calendar, X, ArrowUpRight, ChevronDown, ChevronUp } from 'lucide-react'
 import { applyLabel } from '@/lib/advisorPlans'
@@ -149,6 +149,13 @@ export default function PlanCard({ plan, variant = 'chat', saved = false, onSave
   const [expanded, setExpanded] = useState(variant !== 'page' || !complete)
   const collapsible = variant === 'page'
   const showBody = !collapsible || expanded
+  // Deleting a whole plan is destructive — require a second tap (auto-disarms).
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return
+    const t = setTimeout(() => setArmed(false), 2500)
+    return () => clearTimeout(t)
+  }, [armed])
 
   async function handleSave() {
     setSaving(true)
@@ -190,9 +197,14 @@ export default function PlanCard({ plan, variant = 'chat', saved = false, onSave
           </button>
         )}
         {variant === 'page' && onDelete && (
-          <button onClick={onDelete} aria-label="Delete plan"
-            className="p-1 -mr-1 text-white/35 hover:text-rose-300 transition-colors flex-shrink-0">
+          <button
+            onClick={() => { if (armed) onDelete(); else setArmed(true) }}
+            aria-label={armed ? 'Tap again to delete plan' : 'Delete plan'}
+            className={`flex items-center gap-1 flex-shrink-0 transition-colors rounded-lg ${
+              armed ? 'px-2 py-1 -mr-1 text-rose-200 bg-rose-500/20 border border-rose-400/40'
+                    : 'p-1 -mr-1 text-white/35 hover:text-rose-300'}`}>
             <Trash2 className="w-3.5 h-3.5" />
+            {armed && <span className="text-[11px] font-semibold whitespace-nowrap">Sure?</span>}
           </button>
         )}
       </div>

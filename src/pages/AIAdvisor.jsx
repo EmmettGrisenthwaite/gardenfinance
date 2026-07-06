@@ -810,7 +810,7 @@ export default function AIAdvisor() {
                 onFocus={() => setInputFocused(true)}
                 onBlur={() => setInputFocused(false)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}
-                placeholder={noKey ? 'Add your API key to start…' : 'Ask anything about your finances…'}
+                placeholder={noKey ? 'Add your API key to start…' : 'Ask me anything…'}
                 disabled={noKey || loading || analyzing}
                 rows={1}
                 className="w-full bg-transparent text-base md:text-sm text-white placeholder-white/35 focus:outline-none resize-none leading-relaxed disabled:opacity-50"

@@ -37,41 +37,15 @@ export default function Login() {
   return (
     <div
       className="min-h-dvh flex items-center justify-center p-4 overflow-hidden"
-      style={{ background: 'linear-gradient(155deg, #020c05 0%, #031508 30%, #04101a 60%, #030b14 100%)' }}
+      style={{ background: '#08110e' }}
     >
-      {/* Ambient orbs */}
-      <div
-        className="fixed rounded-full animate-orb-1 pointer-events-none"
-        style={{
-          top: '-25%', left: '-20%', width: '70%', height: '70%',
-          background: 'radial-gradient(circle at center, rgba(16,185,129,0.22) 0%, transparent 68%)',
-          filter: 'blur(48px)',
-        }}
-      />
-      <div
-        className="fixed rounded-full animate-orb-2 pointer-events-none"
-        style={{
-          bottom: '-30%', right: '-20%', width: '65%', height: '65%',
-          background: 'radial-gradient(circle at center, rgba(20,184,166,0.18) 0%, transparent 68%)',
-          filter: 'blur(48px)',
-        }}
-      />
-      <div
-        className="fixed rounded-full animate-orb-3 pointer-events-none"
-        style={{
-          top: '30%', left: '40%', width: '45%', height: '45%',
-          background: 'radial-gradient(circle at center, rgba(45,212,191,0.10) 0%, transparent 70%)',
-          filter: 'blur(72px)',
-        }}
-      />
-      {/* Dot grid */}
+      {/* Same quiet depth treatment as the app shell — one whisper of forest
+          glow up top, grounding vignette below. */}
       <div
         className="fixed inset-0 pointer-events-none"
-        style={{
-          backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px)',
-          backgroundSize: '28px 28px',
-        }}
+        style={{ background: 'radial-gradient(110% 55% at 50% -8%, rgba(18,58,44,0.45) 0%, transparent 62%)' }}
       />
+      <div className="fixed inset-0 pointer-events-none bg-gradient-to-b from-transparent via-transparent to-black/35" />
 
       {/* Card */}
       <motion.div

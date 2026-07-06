@@ -184,7 +184,7 @@ export default function Dashboard() {
           <button onClick={() => setShowOnboarding(true)}
             className="w-full flex items-center gap-3 px-3 py-2 bg-amber-400/15 rounded-xl border border-amber-400/30 hover:bg-amber-400/25 transition-all text-left">
             <UserCircle className="w-4 h-4 text-amber-300 flex-shrink-0" />
-            <span className="flex-1 min-w-0 text-xs font-semibold text-white truncate">Finish your profile so your advisor knows you</span>
+            <span className="flex-1 min-w-0 text-xs font-semibold text-white leading-snug">Finish your profile so your advisor knows you</span>
             <span className="text-xs font-semibold text-amber-300 flex-shrink-0">Add →</span>
           </button>
         )}
@@ -201,11 +201,11 @@ export default function Dashboard() {
                 </div>
                 {nextSteps.map(({ planId, step }) => (
                   <button key={step.id} onClick={() => toggleStep(planId, step.id, step.text)}
-                    className="w-full flex items-center gap-2.5 px-1 py-1 text-left group">
-                    <span className="w-[18px] h-[18px] rounded-md border border-white/30 group-hover:border-emerald-400 flex items-center justify-center flex-shrink-0 transition-colors">
+                    className="w-full flex items-start gap-2.5 px-1 py-1 text-left group">
+                    <span className="mt-0.5 w-[18px] h-[18px] rounded-md border border-white/30 group-hover:border-emerald-400 flex items-center justify-center flex-shrink-0 transition-colors">
                       <Check className="w-3 h-3 text-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={3} />
                     </span>
-                    <span className="text-sm text-white/90 truncate">{step.text}</span>
+                    <span className="text-sm text-white/90 line-clamp-2 leading-snug">{step.text}</span>
                   </button>
                 ))}
               </div>

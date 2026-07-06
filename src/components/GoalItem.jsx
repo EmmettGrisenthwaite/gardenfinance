@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout, Plus, Wallet } from 'lucide-react'
 
@@ -215,10 +215,13 @@ function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
         </div>
       ) : (
         <div className="flex items-center gap-3">
-          <button onClick={() => { setAccount(defaultAcct); setMode('add') }}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/20 border border-emerald-400/30 px-2.5 py-1.5 rounded-lg transition-colors">
-            <Plus className="w-3 h-3" /> Add money
-          </button>
+          {/* A reached goal doesn't need more money — just the option to adjust. */}
+          {pct < 100 && (
+            <button onClick={() => { setAccount(defaultAcct); setMode('add') }}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/20 border border-emerald-400/30 px-2.5 py-1.5 rounded-lg transition-colors">
+              <Plus className="w-3 h-3" /> Add money
+            </button>
+          )}
           <button onClick={() => { setAbsVal(goal.current_amount); setMode('adjust') }}
             className="text-xs text-white/45 hover:text-white/70 font-medium py-1">
             Adjust
@@ -273,6 +276,14 @@ function TimelineBadge({ goal }) {
 // ─── Editable goal card ─────────────────────────────────────────────────────────
 export function GoalItem({ goal, accounts, onEdit, onDelete, onUpdateProgress, onContribute }) {
   const isInv = goal.goal_type === 'investment'
+  // Deleting a goal is destructive — require a second tap to confirm (the armed
+  // state disarms itself after a moment).
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return
+    const t = setTimeout(() => setArmed(false), 2500)
+    return () => clearTimeout(t)
+  }, [armed])
   return (
     <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
       className="bg-white/[0.075] rounded-xl border border-white/[0.11] p-4 md:p-5">
@@ -301,9 +312,14 @@ export function GoalItem({ goal, accounts, onEdit, onDelete, onUpdateProgress, o
             className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-white/40 hover:text-white/80 rounded-lg hover:bg-white/5 transition-colors">
             <Pencil className="w-3.5 h-3.5" />
           </button>
-          <button onClick={() => onDelete(goal.id)} aria-label="Delete goal"
-            className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-white/40 hover:text-rose-400 rounded-lg hover:bg-rose-500/15 transition-colors">
+          <button
+            onClick={() => { if (armed) onDelete(goal.id); else setArmed(true) }}
+            aria-label={armed ? 'Tap again to delete' : 'Delete goal'}
+            className={`p-2 min-h-[44px] flex items-center justify-center gap-1 rounded-lg transition-colors ${
+              armed ? 'min-w-0 px-2.5 text-rose-200 bg-rose-500/20 border border-rose-400/40'
+                    : 'min-w-[44px] text-white/40 hover:text-rose-400 hover:bg-rose-500/15'}`}>
             <Trash2 className="w-3.5 h-3.5" />
+            {armed && <span className="text-[11px] font-semibold whitespace-nowrap">Sure?</span>}
           </button>
         </div>
       </div>

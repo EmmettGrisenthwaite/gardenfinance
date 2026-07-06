@@ -782,7 +782,7 @@ function Signpost({ name, progress, type = 'savings', icon, yOffset = 0, empty =
             borderRadius: '7px', padding: '1.5px 6px', whiteSpace: 'nowrap', backdropFilter: 'blur(3px)',
             opacity: empty ? 0.85 : 1,
           }}>
-            <span style={{ fontSize: '9px', fontWeight: 800, color: empty ? 'rgba(255,255,255,0.8)' : '#fff', maxWidth: '64px',
+            <span style={{ fontSize: '9px', fontWeight: 800, color: empty ? 'rgba(255,255,255,0.8)' : '#fff', maxWidth: '82px',
               overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
             {!empty && <span style={{ fontSize: '8.5px', fontWeight: 800, color: accent }}>{progress}%</span>}
           </div>
@@ -859,7 +859,7 @@ function CementedBase() {
 function GoalSlot({ position, goal, onSelect, yOffset = 0 }) {
   const p = goalPct(goal), st = plantStage(p), done = p >= 100
   const isInv = goal.goal_type === 'investment'
-  const nm = goal.name.length > 8 ? goal.name.slice(0, 8) + '…' : goal.name
+  const nm = goal.name.length > 14 ? goal.name.slice(0, 13) + '…' : goal.name
   return (
     <InteractivePlot position={position} onSelect={onSelect}>
       <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.01,0]} receiveShadow>
