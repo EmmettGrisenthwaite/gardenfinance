@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import { getMemories, deleteMemory, createMemory } from '@/lib/memory'
 import Onboarding from '@/components/Onboarding'
 import {
   ChevronLeft, UserCircle, Pencil, Wallet, ArrowRight, Download, ShieldCheck,
-  LogOut, Trash2, Loader2, Check,
+  LogOut, Trash2, Loader2, Check, Brain, X, Plus, Tag, Clock,
 } from 'lucide-react'
 
 const APP_VERSION = '1.0'
@@ -17,7 +18,25 @@ const GOALS = {
   major_purchase: 'Save for a major purchase', optimize: 'Optimize finances', organize: 'Get organized',
 }
 
-// One labelled row inside a settings card.
+const CATEGORY_LABELS = {
+  income: 'Income', employment: 'Employment', life_event: 'Life Event',
+  risk_preference: 'Risk', goal: 'Goal', debt: 'Debt',
+  family: 'Family', health: 'Health', investment: 'Investment', other: 'Other',
+}
+
+const CATEGORY_COLORS = {
+  income: 'bg-emerald-500/15 text-emerald-300 border-emerald-400/25',
+  employment: 'bg-blue-500/15 text-blue-300 border-blue-400/25',
+  life_event: 'bg-amber-500/15 text-amber-300 border-amber-400/25',
+  risk_preference: 'bg-purple-500/15 text-purple-300 border-purple-400/25',
+  goal: 'bg-orange-500/15 text-orange-300 border-orange-400/25',
+  debt: 'bg-rose-500/15 text-rose-300 border-rose-400/25',
+  family: 'bg-pink-500/15 text-pink-300 border-pink-400/25',
+  health: 'bg-red-500/15 text-red-300 border-red-400/25',
+  investment: 'bg-sky-500/15 text-sky-300 border-sky-400/25',
+  other: 'bg-white/10 text-white/50 border-white/15',
+}
+
 function Row({ icon: Icon, title, sub, onClick, to, danger, busy, trailing }) {
   const cls = `w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${
     danger ? 'hover:bg-rose-500/10' : 'hover:bg-white/[0.04]'}`
@@ -53,16 +72,52 @@ export default function Settings() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
   const [editProfile, setEditProfile] = useState(false)
-  const [exporting, setExporting]     = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [deleting, setDeleting]       = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [memories, setMemories] = useState([])
+  const [memoriesLoading, setMemoriesLoading] = useState(true)
+  const [showAddMemory, setShowAddMemory] = useState(false)
+  const [newFact, setNewFact] = useState('')
+  const [newCategory, setNewCategory] = useState('other')
+  const [addingMemory, setAddingMemory] = useState(false)
+  const [deletingMemory, setDeletingMemory] = useState(null)
 
-  const name  = user.user_metadata?.full_name || profile?.first_name || 'there'
-  const bits  = [
+  const name = user.user_metadata?.full_name || profile?.first_name || 'there'
+  const bits = [
     profile?.age && `${profile.age}`,
     profile?.employment_type && EMPLOYMENT[profile.employment_type],
     profile?.primary_goal && GOALS[profile.primary_goal],
   ].filter(Boolean)
+
+  useEffect(() => {
+    loadMemories()
+  }, [])
+
+  async function loadMemories() {
+    setMemoriesLoading(true)
+    const m = await getMemories()
+    setMemories(m)
+    setMemoriesLoading(false)
+  }
+
+  async function handleAddMemory() {
+    if (!newFact.trim()) return
+    setAddingMemory(true)
+    await createMemory(newFact.trim(), newCategory)
+    setNewFact('')
+    setNewCategory('other')
+    setShowAddMemory(false)
+    await loadMemories()
+    setAddingMemory(false)
+  }
+
+  async function handleDeleteMemory(id) {
+    setDeletingMemory(id)
+    await deleteMemory(id)
+    await loadMemories()
+    setDeletingMemory(null)
+  }
 
   async function signOut() {
     await supabase.auth.signOut()
@@ -73,19 +128,21 @@ export default function Settings() {
     setExporting(true)
     try {
       const uid = user.id
-      const [g, d, a, p, c, s] = await Promise.all([
+      const [g, d, a, p, c, s, m] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', uid),
         supabase.from('debts').select('*').eq('user_id', uid),
         supabase.from('accounts').select('*').eq('user_id', uid),
         supabase.from('advisor_plans').select('*').eq('user_id', uid),
         supabase.from('conversations').select('*').eq('user_id', uid),
         supabase.from('net_worth_snapshots').select('*').eq('user_id', uid),
+        supabase.from('advisor_memories').select('*').eq('user_id', uid),
       ])
       const payload = {
         exported_at: new Date().toISOString(),
         account: { email: user.email, name },
         profile, goals: g.data ?? [], debts: d.data ?? [], accounts: a.data ?? [],
         plans: p.data ?? [], conversations: c.data ?? [], net_worth_snapshots: s.data ?? [],
+        memories: m.data ?? [],
       }
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
@@ -108,6 +165,7 @@ export default function Settings() {
         supabase.from('advisor_plans').delete().eq('user_id', uid),
         supabase.from('conversations').delete().eq('user_id', uid),
         supabase.from('net_worth_snapshots').delete().eq('user_id', uid),
+        supabase.from('advisor_memories').delete().eq('user_id', uid),
         supabase.from('profiles').delete().eq('id', uid),
       ])
     } catch { /* best-effort */ }
@@ -149,6 +207,112 @@ export default function Settings() {
             to="/money" trailing={<ArrowRight className="w-4 h-4 text-white/30" />} />
         </Card>
 
+        {/* What your advisor remembers */}
+        <Card label="What your advisor remembers">
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-2 mb-3">
+              <Brain className="w-4 h-4 text-emerald-300" />
+              <span className="text-sm text-white/70">
+                {memories.length} fact{memories.length !== 1 ? 's' : ''} remembered
+              </span>
+            </div>
+
+            {memoriesLoading ? (
+              <div className="flex items-center gap-2 py-2">
+                <Loader2 className="w-4 h-4 animate-spin text-white/40" />
+                <span className="text-xs text-white/40">Loading memories…</span>
+              </div>
+            ) : memories.length === 0 ? (
+              <p className="text-xs text-white/40 py-1">
+                Your advisor hasn't learned anything about you yet. Chat with it and it'll remember durable facts.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {memories.map((mem) => (
+                  <motion.div
+                    key={mem.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex items-start gap-2 group"
+                  >
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border flex-shrink-0 mt-0.5 ${
+                      CATEGORY_COLORS[mem.category] || CATEGORY_COLORS.other
+                    }`}>
+                      {CATEGORY_LABELS[mem.category] || 'Other'}
+                    </span>
+                    <span className="text-sm text-white/70 flex-1 min-w-0">{mem.fact}</span>
+                    <button
+                      onClick={() => handleDeleteMemory(mem.id)}
+                      disabled={deletingMemory === mem.id}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/10 text-white/30 hover:text-rose-300 flex-shrink-0"
+                      title="Forget this"
+                    >
+                      {deletingMemory === mem.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <X className="w-3 h-3" />
+                      )}
+                    </button>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+
+            {/* Add memory */}
+            <AnimatePresence>
+              {showAddMemory ? (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-3 space-y-2"
+                >
+                  <textarea
+                    value={newFact}
+                    onChange={(e) => setNewFact(e.target.value)}
+                    placeholder="e.g., My employer matches 4% on my 401k"
+                    rows={2}
+                    className="w-full bg-white/[0.06] border border-white/[0.12] rounded-xl px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-400/40 resize-none"
+                  />
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={newCategory}
+                      onChange={(e) => setNewCategory(e.target.value)}
+                      className="bg-white/[0.06] border border-white/[0.12] rounded-lg px-2 py-1.5 text-xs text-white/70 focus:outline-none focus:border-emerald-400/40"
+                    >
+                      {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+                        <option key={key} value={key}>{label}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleAddMemory}
+                      disabled={addingMemory || !newFact.trim()}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 text-white rounded-lg text-xs font-semibold transition-colors"
+                    >
+                      {addingMemory ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                      Add
+                    </button>
+                    <button
+                      onClick={() => setShowAddMemory(false)}
+                      className="px-3 py-1.5 bg-white/[0.06] hover:bg-white/10 text-white/60 rounded-lg text-xs transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </motion.div>
+              ) : (
+                <button
+                  onClick={() => setShowAddMemory(true)}
+                  className="mt-2 flex items-center gap-1.5 text-xs text-emerald-300/70 hover:text-emerald-200 transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  Add a memory manually
+                </button>
+              )}
+            </AnimatePresence>
+          </div>
+        </Card>
+
         {/* Data & privacy */}
         <Card label="Data & privacy">
           <Row icon={Download} title="Export my data" sub="Download everything as JSON"
@@ -179,8 +343,8 @@ export default function Settings() {
             <div className="px-4 py-4 space-y-3">
               <p className="text-sm text-rose-100 font-medium">Delete everything?</p>
               <p className="text-xs text-white/55 leading-relaxed">
-                This permanently deletes your profile, money, goals, debts, plans, and advisor
-                history, then signs you out. This can't be undone.
+                This permanently deletes your profile, money, goals, debts, plans, advisor
+                history, and memories, then signs you out. This can't be undone.
               </p>
               <div className="flex gap-2">
                 <button onClick={() => setConfirmDelete(false)} disabled={deleting}

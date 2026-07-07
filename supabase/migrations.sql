@@ -42,3 +42,20 @@ CREATE POLICY "Users manage own snapshots" ON net_worth_snapshots
 ALTER TABLE goals
   ADD COLUMN IF NOT EXISTS goal_type text NOT NULL DEFAULT 'savings'
   CHECK (goal_type IN ('savings', 'investment'));
+
+-- 5. Advisor memories — durable facts the advisor remembers across sessions
+CREATE TABLE IF NOT EXISTS advisor_memories (
+  id          uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id     uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  fact        text NOT NULL,
+  category    text NOT NULL DEFAULT 'other',
+  created_at  timestamptz DEFAULT now(),
+  updated_at  timestamptz DEFAULT now()
+);
+ALTER TABLE advisor_memories ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users manage own advisor memories" ON advisor_memories;
+CREATE POLICY "Users manage own advisor memories" ON advisor_memories
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_advisor_memories_user_id ON advisor_memories(user_id);
+CREATE INDEX IF NOT EXISTS idx_advisor_memories_created_at ON advisor_memories(created_at DESC);
