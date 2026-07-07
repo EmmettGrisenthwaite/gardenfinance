@@ -129,7 +129,15 @@ export default function Dashboard() {
   }, [loading, netWorth, user.id])
 
   // Next 1–2 uncompleted steps (across plans) — checkable right from the garden.
-  const nextSteps = plans.flatMap(p => p.steps.filter(s => !s.done).map(s => ({ planId: p.id, step: s }))).slice(0, 2)
+  // Steps with due dates surface first (overdue/soonest at the top), then the
+  // rest in plan order.
+  const nextSteps = plans
+    .flatMap(p => p.steps.filter(s => !s.done).map(s => ({ planId: p.id, step: s })))
+    .sort((a, b) => {
+      if (a.step.due && b.step.due) return a.step.due.localeCompare(b.step.due)
+      return (a.step.due ? -1 : 0) - (b.step.due ? -1 : 0)
+    })
+    .slice(0, 2)
 
   function toggleStep(planId, stepId, text) {
     // Celebrate synchronously if this check crosses a stage boundary.

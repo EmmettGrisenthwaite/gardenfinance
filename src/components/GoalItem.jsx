@@ -1,8 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout, Plus, Wallet } from 'lucide-react'
-
-const LIQUID_TYPES = ['checking', 'savings', 'emergency', 'money_market']
+import { THRESHOLDS, LIQUID_TYPES } from '@/lib/finance'
 
 // ─── Timeline projection ───────────────────────────────────────────────────────
 // Investment goals compound (~6%/yr) so long horizons stay realistic.
@@ -15,7 +14,7 @@ export function getProjection(goal) {
 
   let monthsLeft
   if (goal.goal_type === 'investment') {
-    const i = 0.06 / 12
+    const i = THRESHOLDS.investReturn / 12
     let bal = current, n = 0
     while (bal < target && n < 1200) { bal = bal * (1 + i) + monthly; n++ }
     monthsLeft = n

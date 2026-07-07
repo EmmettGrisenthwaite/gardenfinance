@@ -5,8 +5,9 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import {
   ChevronLeft, Plus, Trash2, TrendingUp, TrendingDown, Wallet,
-  LineChart, Home, Car, Boxes, CreditCard, Check,
+  LineChart, Home, Car, Boxes, CreditCard, Check, Activity, ArrowRight,
 } from 'lucide-react'
+import { computeSnapshot } from '@/lib/finance'
 
 const fmt = (n) => `${n < 0 ? '-' : ''}$${Math.abs(Math.round(Number(n) || 0)).toLocaleString()}`
 
@@ -181,6 +182,12 @@ export default function Money() {
   const totalDebt   = debts.reduce((s, d) => s + Number(d.balance || 0), 0)
   const netWorth    = totalAssets - totalDebt
   const surplus     = income - expenses
+  // The shared finance engine's read on the whole picture (runway, savings
+  // rate, debt-free date, next-dollar priority).
+  const snap = computeSnapshot({
+    profile: { ...profile, monthly_income: income, monthly_expenses: expenses },
+    accounts, debts,
+  })
 
   // Keep the profile's net worth in sync so the dashboard and advisor agree.
   useEffect(() => {
@@ -266,7 +273,7 @@ export default function Money() {
       </div>
 
       {/* Net worth hero */}
-      <div className="bg-gradient-to-br from-emerald-500/[0.12] to-emerald-700/[0.06] rounded-2xl border border-emerald-400/20 px-4 py-4 mb-5">
+      <div className="bg-gradient-to-br from-emerald-500/[0.12] to-emerald-700/[0.06] rounded-2xl border border-emerald-400/20 px-4 py-4 mb-4">
         <div className="text-[10px] font-semibold text-emerald-200/70 uppercase tracking-wide mb-0.5">Net worth</div>
         <div className={`text-3xl font-bold tabular-nums leading-none ${netWorth >= 0 ? 'text-white' : 'text-rose-300'}`}>{fmt(netWorth)}</div>
         <div className="flex items-center gap-3 mt-2 text-xs">
@@ -275,6 +282,49 @@ export default function Money() {
           <span className="text-rose-200/90 tabular-nums">Debts {fmt(totalDebt)}</span>
         </div>
       </div>
+
+      {/* Financial health — the deterministic engine's read on the numbers */}
+      {!loading && (income > 0 || expenses > 0 || totalAssets > 0) && (
+        <div className="bg-white/[0.05] rounded-2xl border border-white/[0.10] px-4 py-3.5 mb-4">
+          <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+            <Activity className="w-3 h-3 text-emerald-300" /> Financial health
+          </div>
+          <div className="grid grid-cols-3 gap-3 mb-3">
+            <div>
+              <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-0.5">Runway</div>
+              <div className={`text-base font-bold tabular-nums leading-tight ${
+                snap.efMonths >= snap.efTargetMonths ? 'text-emerald-300' : snap.efMonths >= 1 ? 'text-amber-300' : 'text-rose-300'}`}>
+                {snap.expenses > 0 ? `${snap.efMonths.toFixed(1)} mo` : '—'}
+              </div>
+              <div className="text-[10px] text-white/35">target {snap.efTargetMonths} mo</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-0.5">Savings rate</div>
+              <div className={`text-base font-bold tabular-nums leading-tight ${
+                snap.savingsRate >= 0.2 ? 'text-emerald-300' : snap.savingsRate >= 0 ? 'text-amber-300' : 'text-rose-300'}`}>
+                {snap.income > 0 ? `${Math.round(snap.savingsRate * 100)}%` : '—'}
+              </div>
+              <div className="text-[10px] text-white/35">target 20%+</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide mb-0.5">Debt-free</div>
+              <div className="text-base font-bold tabular-nums leading-tight text-sky-300">
+                {totalDebt === 0 ? 'Now ✓' : snap.debtFree && !snap.debtFree.stuck ? `~${snap.debtFree.debtFreeLabel}` : '—'}
+              </div>
+              {totalDebt > 0 && snap.debtFree && !snap.debtFree.stuck && (
+                <div className="text-[10px] text-white/35">if surplus → debt</div>
+              )}
+            </div>
+          </div>
+          <div className={`flex items-start gap-2 px-3 py-2 rounded-lg border ${
+            snap.next.urgent ? 'bg-amber-400/[0.08] border-amber-400/25' : 'bg-emerald-500/[0.08] border-emerald-400/20'}`}>
+            <ArrowRight className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${snap.next.urgent ? 'text-amber-300' : 'text-emerald-300'}`} />
+            <p className="text-xs text-white/85 leading-snug">
+              <span className="font-semibold text-white">Next dollar goes to:</span> {snap.next.title}. <span className="text-white/55">{snap.next.why}</span>
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-4">
         {/* Monthly cash flow */}

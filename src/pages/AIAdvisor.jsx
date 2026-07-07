@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { callClaude, requestPlan, requestGuide, suggestGoal, chatConfigured } from '@/lib/claude'
 import { savePlan, applyStep, addGoal, normalizeSteps, listPlans } from '@/lib/advisorPlans'
+import { computeSnapshot, LIMITS } from '@/lib/finance'
 import PlanCard from '@/components/PlanCard'
 import GuideCard from '@/components/GuideCard'
 import GoalSuggestionCard from '@/components/GoalSuggestionCard'
@@ -114,8 +115,8 @@ Teach this often. Most young adults don't know what to do FIRST:
 2. **Kill high-interest debt** (>7% APR) — guaranteed return = the interest rate
 3. **Get the full 401k employer match** — instant 50–100% return, free money
 4. **3–6 month emergency fund** — in a high-yield savings account (HYSA, currently ~4–5% APY)
-5. **Max Roth IRA** ($7,000/year) — tax-free growth, best tool for young people
-6. **Max 401k** ($23,000/year)
+5. **Max Roth IRA** ($${LIMITS.rothIra.toLocaleString()}/year) — tax-free growth, best tool for young people
+6. **Max 401k** ($${LIMITS.k401.toLocaleString()}/year)
 7. **Taxable investing or specific goals** — house, car, travel, etc.
 
 Most people get stuck between steps 2–5 and don't know which order. Be very clear.
@@ -128,10 +129,10 @@ KEY FINANCIAL KNOWLEDGE
 $1 invested at 22 → ~$16 at 62 at 7% real return. Every year of delay cuts the final amount significantly. The math is brutal — waiting 10 years to start investing doesn't lose 10 years of returns, it loses over half the final balance. Lead with this when talking about investing with someone who hasn't started.
 
 **Roth IRA specifically:**
-- $7,000/year limit (2024)
+- $${LIMITS.rothIra.toLocaleString()}/year limit (${LIMITS.year})
 - Contributions (not earnings) can be withdrawn anytime penalty-free
 - Tax-free growth and withdrawal in retirement
-- Income limit: phases out above $146k single / $230k married
+- Income limit: phases out at $${Math.round(LIMITS.rothPhaseOutSingle[0] / 1000)}k–$${Math.round(LIMITS.rothPhaseOutSingle[1] / 1000)}k single / $${Math.round(LIMITS.rothPhaseOutMarried[0] / 1000)}k–$${Math.round(LIMITS.rothPhaseOutMarried[1] / 1000)}k married
 - Best for people who expect to be in a higher tax bracket later (= almost every young adult)
 - Can be opened at Fidelity, Schwab, or Vanguard in 10 minutes
 
@@ -186,6 +187,26 @@ function buildContext(money, goals, debts, profile, extras = {}) {
   }
 
   let ctx = ''
+
+  // ── Computed diagnostics — the app's deterministic finance engine ───────────
+  // Hand the model finished numbers so it coaches instead of doing arithmetic.
+  const snap = computeSnapshot({ profile, accounts, debts, goals })
+  ctx += 'COMPUTED DIAGNOSTICS (calculated by the app — trust these numbers, do NOT recompute or contradict them):\n'
+  if (snap.income > 0) ctx += `  Savings rate: ${Math.round(snap.savingsRate * 100)}% of income\n`
+  if (snap.expenses > 0) {
+    ctx += `  Emergency runway: ${snap.efMonths.toFixed(1)} months of expenses in liquid cash — personal target ${snap.efTargetMonths} months ($${snap.efTargetAmount.toLocaleString()})${snap.efTargetMonths === 6 ? ' because their income varies' : ''}\n`
+  }
+  if (snap.avalanche.length > 0) {
+    ctx += `  Debt avalanche order (pay in this order — highest APR first):\n`
+    snap.avalanche.forEach((d, i) => {
+      ctx += `    ${i + 1}. ${d.name}: $${d.balance.toLocaleString()}${d.apr ? ` at ${d.apr}% APR (~$${Math.round(d.monthlyInterest)}/mo interest)` : ''}\n`
+    })
+    if (snap.debtFree && !snap.debtFree.stuck) {
+      ctx += `  If their full $${snap.surplus.toLocaleString()}/mo surplus went to debt: debt-free in ${snap.debtFree.months} months (~${snap.debtFree.debtFreeLabel}), paying ~$${snap.debtFree.totalInterest.toLocaleString()} interest\n`
+    }
+  }
+  ctx += `  NEXT-DOLLAR PRIORITY: ${snap.next.title} — ${snap.next.why}\n`
+  ctx += `  Lead with this priority unless the user asks about something else.\n\n`
 
   // ── Money snapshot (from the "Your money" card on the Plan tab) ─────────────
   const surplus = net >= 0 ? `+$${net.toLocaleString()} surplus` : `-$${Math.abs(net).toLocaleString()} DEFICIT`

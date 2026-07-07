@@ -1,21 +1,19 @@
 import { Shield, CreditCard, Building2, TrendingUp, PiggyBank, HeartPulse, Target, Sparkles, AlertTriangle, ArrowRight, Plus } from 'lucide-react'
+import { computeSnapshot, THRESHOLDS } from '@/lib/finance'
 
-// A smart, situation-aware engine: looks at the user's money, profile, goals and
-// existing steps, and surfaces the most relevant next questions — each one tap
-// from becoming a task, a goal, or an advisor conversation. This is what makes
-// the Plan a *smart* financial task list, not just a static checklist.
-function buildSuggestions({ money, profile, goals, debts, plans = [] }) {
-  const income   = Number(money.income) || 0
-  const expenses = Number(money.expenses) || 0
-  const surplus  = income - expenses
-  const totalDebt = debts.reduce((s, d) => s + Number(d.balance || 0), 0)
+// A smart, situation-aware engine driven by the shared finance engine — the
+// same computed snapshot the advisor reads, so suggestions and advice always
+// agree. Each card is one tap from becoming a task, a goal, or a conversation.
+function buildSuggestions({ profile, goals, debts, accounts = [], plans = [] }) {
+  const s = computeSnapshot({ profile, accounts, debts, goals })
+  const { income, expenses, surplus } = s
   const p = profile || {}
 
   const all = []
   // Already covered by an existing goal OR a plan step? Don't prompt again.
   const corpus = [
     ...goals.map(g => g.name || ''),
-    ...plans.flatMap(pl => pl.steps.map(s => s.text || '')),
+    ...plans.flatMap(pl => pl.steps.map(st => st.text || '')),
   ].join(' ').toLowerCase()
   const has = (...kws) => kws.some(kw => corpus.includes(kw))
 
@@ -35,23 +33,32 @@ function buildSuggestions({ money, profile, goals, debts, plans = [] }) {
     cta: 'Ask advisor', action: { kind: 'ask', q: 'I don\'t have health insurance. What are my options and what should I do?' },
   })
 
-  // 3) Starter emergency fund.
-  if (!has('emergency')) all.push({
+  // 3) Emergency fund — personalized target (6 months for variable income).
+  if (!has('emergency') && expenses > 0 && s.efMonths < s.efTargetMonths) all.push({
     id: 'efund', icon: Shield,
-    q: 'Do you have a starter emergency fund?',
-    sub: `Aim for $${Math.max(1000, Math.round(expenses * 3)).toLocaleString()} — 3 months of expenses.`,
+    q: s.liquid < THRESHOLDS.starterEmergency
+      ? 'Do you have a starter emergency fund?'
+      : `Your cushion covers ${s.efMonths.toFixed(1)} months — grow it to ${s.efTargetMonths}?`,
+    sub: `Aim for $${s.efTargetAmount.toLocaleString()} — ${s.efTargetMonths} months of expenses${s.efTargetMonths === 6 ? ' (your income varies)' : ''}.`,
     cta: 'Start the goal',
     action: { kind: 'goal', preset: { name: 'Emergency fund', goal_type: 'savings',
-      target_amount: Math.max(1000, Math.round(expenses * 3) || 3000),
+      target_amount: Math.max(THRESHOLDS.starterEmergency, s.efTargetAmount || 3000),
+      current_amount_hint: s.liquid,
       monthly_contribution: Math.max(50, Math.round(surplus > 0 ? surplus * 0.4 : 100)) } },
   })
 
-  // 4) High-interest / any debt without a payoff plan.
-  if (totalDebt > 0 && !has('debt', 'payoff', 'pay off')) all.push({
+  // 4) Debt — name the worst offender with its real monthly interest cost.
+  const worst = s.avalanche[0]
+  if (worst && !has('debt', 'payoff', 'pay off', worst.name.toLowerCase())) all.push({
     id: 'debt', icon: CreditCard,
-    q: 'Want a plan to clear your debt faster?',
-    sub: `$${totalDebt.toLocaleString()} tracked. I'll order it the smart way.`,
-    cta: 'Ask advisor', action: { kind: 'ask', q: 'Build me a step-by-step plan to pay off my debt as fast as possible.' },
+    urgent: worst.apr >= THRESHOLDS.crisisApr,
+    q: worst.apr > THRESHOLDS.highApr
+      ? `${worst.name} at ${worst.apr}% APR is your costliest debt.`
+      : 'Want a plan to clear your debt faster?',
+    sub: worst.apr > 0
+      ? `It costs you ~$${Math.round(worst.monthlyInterest).toLocaleString()}/mo in interest${s.debtFree && !s.debtFree.stuck ? ` — your surplus could make you debt-free by ${s.debtFree.debtFreeLabel}` : ''}.`
+      : `$${s.totalDebt.toLocaleString()} tracked. I'll order it the smart way.`,
+    cta: 'Ask advisor', action: { kind: 'ask', q: 'Build me a step-by-step plan to pay off my debt as fast as possible, highest interest rate first.' },
   })
 
   // 5) Full 401(k) match — free money.
@@ -72,7 +79,7 @@ function buildSuggestions({ money, profile, goals, debts, plans = [] }) {
   })
 
   // 7) Automate the surplus.
-  if (surplus > 100 && !has('automat', 'auto-transfer', 'transfer to savings')) all.push({
+  if (surplus > THRESHOLDS.autoTransferMin && !has('automat', 'auto-transfer', 'transfer to savings')) all.push({
     id: 'automate', icon: PiggyBank,
     q: `You've got $${surplus.toLocaleString()}/mo spare — automate it?`,
     sub: 'Pay yourself first: a transfer that fires on payday before you can spend it.',
@@ -87,12 +94,13 @@ function buildSuggestions({ money, profile, goals, debts, plans = [] }) {
     cta: 'Set a goal', action: { kind: 'goal' },
   })
 
-  // Keep urgent ones first, then top 3 overall.
-  return all.sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0)).slice(0, 3)
+  // The engine's next-dollar priority floats to the front; urgent first overall.
+  const rank = (x) => (x.urgent ? 2 : 0) + (s.next.key.startsWith(x.id) || x.id.startsWith(s.next.key.split('_')[0]) ? 1 : 0)
+  return all.sort((a, b) => rank(b) - rank(a)).slice(0, 3)
 }
 
-export default function SmartSuggestions({ money, profile, goals, debts, plans = [], onAddTask, onAddGoal, onAsk }) {
-  const suggestions = buildSuggestions({ money, profile, goals, debts, plans })
+export default function SmartSuggestions({ profile, goals, debts, accounts = [], plans = [], onAddTask, onAddGoal, onAsk }) {
+  const suggestions = buildSuggestions({ profile, goals, debts, accounts, plans })
   if (suggestions.length === 0) return null
 
   const run = (action) => {

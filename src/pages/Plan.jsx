@@ -172,9 +172,13 @@ export default function Plan() {
   // One-tap goal from a preset, else open the modal to fill in details.
   async function addSuggestedGoal(preset) {
     if (!preset) { setModal('new'); return }
+    // An emergency-fund goal starts at the user's existing liquid cushion (the
+    // engine passes it as a hint) instead of pretending they're at $0.
+    const target = Math.round(preset.target_amount) || 0
+    const startAt = Math.min(Math.max(0, Math.round(preset.current_amount_hint || 0)), target)
     const { data } = await supabase.from('goals').insert({
       user_id: user.id, name: preset.name, goal_type: preset.goal_type || 'savings',
-      target_amount: Math.round(preset.target_amount) || 0, current_amount: 0,
+      target_amount: target, current_amount: startAt,
       monthly_contribution: Math.round(preset.monthly_contribution) || 0, deadline: null,
     }).select().single()
     if (data) setGoals(gs => [...gs, data])
@@ -239,7 +243,7 @@ export default function Plan() {
           transition={{ duration: 0.18 }} className="space-y-5">
 
           {/* ── Smart, situation-aware prompts ── */}
-          <SmartSuggestions money={money} profile={profile} goals={goals} debts={debts} plans={plans}
+          <SmartSuggestions profile={profile} goals={goals} debts={debts} accounts={accounts} plans={plans}
             onAddTask={addSuggestedTask} onAddGoal={addSuggestedGoal} onAsk={askAdvisor} />
 
           {/* ── Action steps (the hero — checking grows the garden) ── */}
