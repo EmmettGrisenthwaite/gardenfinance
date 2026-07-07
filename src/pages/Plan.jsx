@@ -51,12 +51,18 @@ export default function Plan() {
     load().catch(() => setLoading(false))
   }, [user.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Deep-link support: /plan#goals etc.
+  // Steps and Goals are different animals (a checklist you do vs money targets
+  // you grow), so they live on separate tabs. /plan#goals deep-links (garden
+  // "Add a goal", advisor goal cards) open the Goals tab.
+  const [tab, setTab] = useState(() => (window.location.hash === '#goals' ? 'goals' : 'steps'))
   useEffect(() => {
-    if (loading) return
-    const id = window.location.hash.slice(1)
-    if (id) setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
-  }, [loading])
+    const onHash = () => {
+      if (window.location.hash === '#goals') setTab('goals')
+      else if (window.location.hash === '#steps') setTab('steps')
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   // ── Derived milestone counts ─────────────────────────────────────────────────
   const completedSteps = plans.reduce((n, p) => n + p.steps.filter(s => s.done).length, 0)
@@ -196,14 +202,80 @@ export default function Plan() {
     >
       <div>
         <h1 className="font-display text-[26px] font-medium text-white drop-shadow-lg">Your Plan</h1>
-        <p className="text-white/60 mt-1 text-sm">Check off steps to grow your garden.</p>
+        <p className="text-white/60 mt-1 text-sm">
+          {tab === 'steps'
+            ? 'Check off steps to grow your garden.'
+            : 'Each goal plants a tree that grows as you save.'}
+        </p>
+      </div>
+
+      {/* ── Steps | Goals switcher — a checklist you DO vs targets you GROW ── */}
+      <div className="flex p-1 rounded-xl bg-white/[0.06] border border-white/[0.10]">
+        {[
+          { id: 'steps', icon: ClipboardList, label: 'Steps',
+            badge: totalSteps === 0 ? null : (totalSteps - completedSteps === 0 ? 'all done' : `${totalSteps - completedSteps} left`) },
+          { id: 'goals', icon: Target, label: 'Goals',
+            badge: goals.length === 0 ? null : `${goalsReached}/${goals.length} reached` },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-semibold transition-all ${
+              tab === t.id ? 'bg-emerald-500/20 ring-1 ring-emerald-400/30 text-white' : 'text-white/50 hover:text-white/80'}`}>
+            <t.icon className={`w-4 h-4 flex-shrink-0 ${tab === t.id ? 'text-emerald-300' : ''}`} />
+            {t.label}
+            {t.badge && (
+              <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full whitespace-nowrap ${
+                tab === t.id ? 'bg-emerald-400/20 text-emerald-200' : 'bg-white/10 text-white/45'}`}>
+                {t.badge}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       {loading ? (
         <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-28 bg-white/[0.075] rounded-2xl animate-pulse" />)}</div>
+      ) : tab === 'steps' ? (
+        <motion.div key="steps" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.18 }} className="space-y-5">
+
+          {/* ── Smart, situation-aware prompts ── */}
+          <SmartSuggestions money={money} profile={profile} goals={goals} debts={debts} plans={plans}
+            onAddTask={addSuggestedTask} onAddGoal={addSuggestedGoal} onAsk={askAdvisor} />
+
+          {/* ── Action steps (the hero — checking grows the garden) ── */}
+          {plans.length === 0 ? (
+            <div className="bg-white/[0.075] rounded-2xl border border-white/[0.11] p-8 text-center">
+              <div className="w-11 h-11 mx-auto mb-3 rounded-full bg-emerald-500/15 flex items-center justify-center">
+                <Sprout className="w-5 h-5 text-emerald-400" />
+              </div>
+              <p className="text-white font-semibold text-sm mb-1">Your garden is waiting</p>
+              <p className="text-white/45 text-xs max-w-xs mx-auto mb-4">
+                Ask your advisor what to do next, then add the steps here. Each one you check off grows your garden.
+              </p>
+              <Link to="/advisor"
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors">
+                <Bot className="w-4 h-4" /> Talk to your advisor
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {sortedPlans.map(plan => (
+                <PlanCard key={plan.id} plan={plan} variant="page"
+                  onToggle={(stepId) => toggleStep(plan.id, stepId)}
+                  onApply={(step) => applyAndMark(plan.id, step)}
+                  onAddStep={(text) => addStep(plan.id, text)}
+                  onSetDue={(stepId, due) => setDue(plan.id, stepId, due)}
+                  onHowTo={howTo}
+                  onDelete={() => removePlan(plan.id)} />
+              ))}
+            </div>
+          )}
+        </motion.div>
       ) : (
-        <>
-          {/* Living headline */}
+        <motion.div key="goals" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.18 }} className="space-y-3">
+
+          {/* Living headline — this is goal news, so it lives on the Goals tab */}
           {nearest && (
             <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/[0.1] border border-emerald-400/20">
               <Sprout className="w-4 h-4 text-emerald-300 flex-shrink-0" />
@@ -214,79 +286,36 @@ export default function Plan() {
             </div>
           )}
 
-          {/* ── Smart, situation-aware prompts ── */}
-          <SmartSuggestions money={money} profile={profile} goals={goals} debts={debts} plans={plans}
-            onAddTask={addSuggestedTask} onAddGoal={addSuggestedGoal} onAsk={askAdvisor} />
+          {/* Saved-so-far summary + add */}
+          <div className="flex items-center justify-between">
+            {goals.length > 0 ? (
+              <span className="text-xs text-white/45 tabular-nums">
+                ${goals.reduce((s, g) => s + Number(g.current_amount || 0), 0).toLocaleString()} saved
+                {' '}of ${goals.reduce((s, g) => s + Number(g.target_amount || 0), 0).toLocaleString()}
+              </span>
+            ) : <span />}
+            <button onClick={() => setModal('new')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors">
+              <Plus className="w-3.5 h-3.5" /> Add goal
+            </button>
+          </div>
 
-          {/* ── Action steps (the hero — checking grows the garden) ── */}
-          <section id="steps" className="scroll-mt-16">
-            <div className="flex items-center justify-between mb-2.5">
-              <h2 className="text-sm font-semibold text-white flex items-center gap-1.5">
-                <ClipboardList className="w-4 h-4 text-emerald-300" /> Action steps
-              </h2>
-              {totalSteps > 0 && (
-                <span className="text-xs text-white/45 tabular-nums">{completedSteps}/{totalSteps} done</span>
-              )}
+          {goals.length === 0 ? (
+            <div className="bg-white/[0.075] rounded-xl border border-white/[0.11] p-6 text-center">
+              <p className="text-white/55 text-xs max-w-xs mx-auto">
+                Saving toward something — a house, emergency fund, a trip? Add a goal to plant a tree. Reaching it grows your garden.
+              </p>
             </div>
-
-            {plans.length === 0 ? (
-              <div className="bg-white/[0.075] rounded-2xl border border-white/[0.11] p-8 text-center">
-                <div className="w-11 h-11 mx-auto mb-3 rounded-full bg-emerald-500/15 flex items-center justify-center">
-                  <Sprout className="w-5 h-5 text-emerald-400" />
-                </div>
-                <p className="text-white font-semibold text-sm mb-1">Your garden is waiting</p>
-                <p className="text-white/45 text-xs max-w-xs mx-auto mb-4">
-                  Ask your advisor what to do next, then add the steps here. Each one you check off grows your garden.
-                </p>
-                <Link to="/advisor"
-                  className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors">
-                  <Bot className="w-4 h-4" /> Talk to your advisor
-                </Link>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {sortedPlans.map(plan => (
-                  <PlanCard key={plan.id} plan={plan} variant="page"
-                    onToggle={(stepId) => toggleStep(plan.id, stepId)}
-                    onApply={(step) => applyAndMark(plan.id, step)}
-                    onAddStep={(text) => addStep(plan.id, text)}
-                    onSetDue={(stepId, due) => setDue(plan.id, stepId, due)}
-                    onHowTo={howTo}
-                    onDelete={() => removePlan(plan.id)} />
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* ── Goals ── */}
-          <section id="goals" className="scroll-mt-16 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-white flex items-center gap-1.5">
-                <Target className="w-4 h-4 text-emerald-300" /> Goals
-              </h2>
-              <button onClick={() => setModal('new')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors">
-                <Plus className="w-3.5 h-3.5" /> Add goal
-              </button>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-3">
+              {goals.map(g => (
+                <GoalItem key={g.id} goal={g} accounts={[]}
+                  onEdit={setModal} onDelete={deleteGoal}
+                  onUpdateProgress={updateProgress} onContribute={contribute} />
+              ))}
             </div>
-
-            {goals.length === 0 ? (
-              <div className="bg-white/[0.075] rounded-xl border border-white/[0.11] p-6 text-center">
-                <p className="text-white/55 text-xs max-w-xs mx-auto">
-                  Saving toward something — a house, emergency fund, a trip? Add a goal to plant a tree. Reaching it grows your garden.
-                </p>
-              </div>
-            ) : (
-              <div className="grid sm:grid-cols-2 gap-3">
-                {goals.map(g => (
-                  <GoalItem key={g.id} goal={g} accounts={[]}
-                    onEdit={setModal} onDelete={deleteGoal}
-                    onUpdateProgress={updateProgress} onContribute={contribute} />
-                ))}
-              </div>
-            )}
-          </section>
-        </>
+          )}
+        </motion.div>
       )}
 
       {modal && <GoalModal goal={modal === 'new' ? null : modal} onSave={saveGoal} onClose={() => setModal(null)} />}
