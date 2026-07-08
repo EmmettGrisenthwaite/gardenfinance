@@ -195,7 +195,14 @@ ${transcript.slice(0, 8000)}`
       }),
     })
 
-    if (!res.ok) return []
+    if (!res.ok) {
+      // Log the real upstream reason (429/529/etc.) instead of failing silent
+      // and unexplained — this is a background call, so we still degrade
+      // gracefully to [], but future debugging shouldn't require re-deriving
+      // this from network tab archaeology.
+      console.warn(`Memory distill failed (${res.status}):`, await res.text().catch(() => ''))
+      return []
+    }
     const data = await res.json()
     const memories = data?.memories || data?.result?.memories || []
     return Array.isArray(memories) ? memories : []

@@ -774,9 +774,10 @@ export default function AIAdvisor() {
       }]
       setMessages(convo)
 
-      // Periodically distill durable facts in the background (no extra call per
-      // message — that doubles cost for little gain).
-      if (convo.length >= 6 && convo.length % 12 === 0) {
+      // Periodically distill durable facts in the background — every 3
+      // exchanges (no extra call per message, which would double cost for
+      // little gain, but frequent enough that a real conversation reaches it).
+      if (convo.length >= 6 && convo.length % 6 === 0) {
         distillAndSave(convo)
       }
 

@@ -6,6 +6,15 @@ const CHAT_ENDPOINT = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/chat` : null
 // True when the app is configured to reach the secure chat proxy.
 export const chatConfigured = Boolean(CHAT_ENDPOINT)
 
+// Local message objects carry UI-only fields (artifacts, options, quickReplies)
+// alongside role/content. Anthropic's Messages API rejects unknown properties
+// on message objects — sending those straight through causes a 400 the moment
+// a reply with an artifact/options block becomes part of the next request's
+// history. Strip to {role, content} right before it leaves the browser.
+function sanitizeMessages(messages) {
+  return messages.map(({ role, content }) => ({ role, content }))
+}
+
 // Calls Claude via the Supabase Edge Function proxy (`supabase/functions/chat`).
 // The Anthropic key lives only on the server — never in the browser bundle.
 // Pass `onDelta(fullTextSoFar)` to stream the reply token-by-token; without it
@@ -25,7 +34,7 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 1024, onD
       Authorization: `Bearer ${token}`,
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ messages, system: systemPrompt, maxTokens, stream: Boolean(onDelta) }),
+    body: JSON.stringify({ messages: sanitizeMessages(messages), system: systemPrompt, maxTokens, stream: Boolean(onDelta) }),
   })
 
   if (!res.ok) {
@@ -86,7 +95,7 @@ export async function requestPlan(messages, systemPrompt) {
   const res = await fetch(CHAT_ENDPOINT, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ messages, system: systemPrompt, maxTokens: 1536, tool: 'action_plan' }),
+    body: JSON.stringify({ messages: sanitizeMessages(messages), system: systemPrompt, maxTokens: 1536, tool: 'action_plan' }),
   })
 
   if (!res.ok) {
@@ -111,9 +120,10 @@ export async function requestGuide(messages, systemPrompt) {
   if (!token) return null
 
   // Forced tool-use requires the turn to end with a user message.
-  const probe = messages[messages.length - 1]?.role === 'assistant'
-    ? [...messages, { role: 'user', content: 'If my latest request is about actually setting something up (opening an account, starting investing, etc.), build me a step-by-step guide with reputable provider links; otherwise set should_guide to false.' }]
-    : messages
+  const clean = sanitizeMessages(messages)
+  const probe = clean[clean.length - 1]?.role === 'assistant'
+    ? [...clean, { role: 'user', content: 'If my latest request is about actually setting something up (opening an account, starting investing, etc.), build me a step-by-step guide with reputable provider links; otherwise set should_guide to false.' }]
+    : clean
 
   try {
     const res = await fetch(CHAT_ENDPOINT, {
@@ -139,9 +149,10 @@ export async function suggestGoal(messages, systemPrompt) {
   if (!token) return null
 
   // Forced tool-use requires the turn to end with a user message.
-  const probe = messages[messages.length - 1]?.role === 'assistant'
-    ? [...messages, { role: 'user', content: 'Based on my messages above, if there is a specific financial goal worth tracking, capture it; otherwise set should_suggest to false.' }]
-    : messages
+  const clean = sanitizeMessages(messages)
+  const probe = clean[clean.length - 1]?.role === 'assistant'
+    ? [...clean, { role: 'user', content: 'Based on my messages above, if there is a specific financial goal worth tracking, capture it; otherwise set should_suggest to false.' }]
+    : clean
 
   try {
     const res = await fetch(CHAT_ENDPOINT, {

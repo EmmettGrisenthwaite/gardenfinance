@@ -201,10 +201,9 @@ Deno.serve(async (req) => {
     body.stream = Boolean(stream)
   }
 
-  // ── Proxy to Anthropic ──────────────────────────────────────────────────────
-  let res: Response
-  try {
-    res = await fetch('https://api.anthropic.com/v1/messages', {
+  // ── Proxy to Anthropic — one retry on transient overload/rate-limit ─────────
+  async function callAnthropic(): Promise<Response> {
+    return fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'x-api-key': ANTHROPIC_API_KEY,
@@ -213,13 +212,30 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify(body),
     })
+  }
+
+  let res: Response
+  try {
+    res = await callAnthropic()
+    // 429 (rate limit) / 529 (overloaded) are transient — bursts of parallel
+    // calls (streamed reply + a suggest_goal/guide call + a background memory
+    // distill) can collide. One short-backoff retry absorbs that instead of
+    // failing the whole request.
+    if ((res.status === 429 || res.status === 529) && !stream) {
+      await new Promise((r) => setTimeout(r, 700))
+      res = await callAnthropic()
+    }
   } catch (e) {
     return json({ error: 'Upstream request failed', detail: String(e).slice(0, 300) }, 502)
   }
 
   if (!res.ok) {
+    // Preserve the real upstream status (429/5xx) instead of laundering every
+    // failure into 502 — callers can distinguish "try again later" from a
+    // genuine server error, and error messages in logs are actually useful.
     const detail = (await res.text()).slice(0, 500)
-    return json({ error: `Anthropic error ${res.status}`, detail }, 502)
+    const status = res.status >= 400 && res.status < 600 ? res.status : 502
+    return json({ error: `Anthropic error ${res.status}`, detail }, status)
   }
 
   // Streaming: pipe Anthropic's SSE straight through to the browser
