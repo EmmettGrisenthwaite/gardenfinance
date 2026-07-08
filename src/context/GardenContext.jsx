@@ -33,12 +33,15 @@ export function GardenProvider({ children }) {
   const [goals,      setGoals]      = useState([])
   const [debts,      setDebts]      = useState([])
   const [milestones, setMilestones] = useState({ completedSteps: 0, totalSteps: 0, goalsReached: 0, done: 0 })
+  const [burstAt,    setBurstAt]    = useState(null)
   const [weather,    setWeather]    = useState({
     windStrength: 0.2, hasDeficit: false, deficitSeverity: 0, surplusRatio: 0,
     cloudCount: 0, darkClouds: false, hasWindfall: false, pollenCount: 0,
     butterflyCount: 0, emergencyMonths: 0, hasRetirement: false, netWorth: 0,
     netWorthTier: 0, savingsTier: 0, investTier: 0, debtLevel: 0,
   })
+
+  const triggerBurst = useCallback(() => setBurstAt(Date.now()), [])
 
   // Growth is driven by milestones; a light weather layer still reflects the
   // money card (negative surplus → clouds/rain) so budget shows up visually.
@@ -79,7 +82,7 @@ export function GardenProvider({ children }) {
   }, [])
 
   return (
-    <GardenContext.Provider value={{ stage, weather, goals, debts, milestones, updateGarden }}>
+    <GardenContext.Provider value={{ stage, weather, goals, debts, milestones, burstAt, triggerBurst, updateGarden }}>
       {children}
     </GardenContext.Provider>
   )

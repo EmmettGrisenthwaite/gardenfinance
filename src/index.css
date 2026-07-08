@@ -227,3 +227,13 @@ button:focus-visible {
            hover:bg-white/15 border border-white/15 text-white text-sm font-semibold transition-colors;
   }
 }
+
+@keyframes hud-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.animate-hud-shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(52,211,153,0.35) 50%, rgba(255,255,255,0) 100%);
+  background-size: 200% 100%;
+  animation: hud-shimmer 600ms ease-out;
+}

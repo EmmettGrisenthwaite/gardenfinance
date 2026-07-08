@@ -13,7 +13,7 @@ import GardenGrowthToast from '@/components/GardenGrowthToast'
 
 export default function Plan() {
   const { user, profile, setProfile } = useAuth()
-  const { updateGarden } = useGarden()
+  const { updateGarden, triggerBurst } = useGarden()
   const navigate = useNavigate()
   const [plans,   setPlans]   = useState([])
   const [goals,   setGoals]   = useState([])
@@ -95,7 +95,10 @@ export default function Plan() {
   // Fire the celebration synchronously when an action crosses a stage boundary.
   function celebrate(deltaMilestones, stepText) {
     const newStage = milestonesToStage(completedSteps + goalsReached + deltaMilestones)
-    if (newStage > stage) setGrowth({ stage: newStage, stepText })
+    if (newStage > stage) {
+      setGrowth({ stage: newStage, stepText })
+      triggerBurst()
+    }
   }
 
   // ── Plan-step handlers (functional updaters → burst-safe) ────────────────────

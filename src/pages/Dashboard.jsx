@@ -1,5 +1,5 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Sprout, Bot, ArrowRight, UserCircle, Check, ClipboardList, TrendingUp, TrendingDown } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -44,9 +44,20 @@ function isProfileIncompleteFn(profile) {
 function GardenHud({ stage, done }) {
   const next = STAGE_THRESHOLDS[stage + 1]
   const remaining = next ? next - done : 0
+  const [flash, setFlash] = useState(false)
+  const prevDone = useRef(done)
+  useEffect(() => {
+    if (done > prevDone.current) {
+      setFlash(true)
+      const t = setTimeout(() => setFlash(false), 600)
+      return () => clearTimeout(t)
+    }
+    prevDone.current = done
+  }, [done])
   return (
     <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-      <div className="flex items-center gap-2.5 bg-black/45 backdrop-blur-md border border-white/10 rounded-full pl-3.5 pr-4 py-1.5 shadow-lg">
+      <div className="relative flex items-center gap-2.5 bg-black/45 backdrop-blur-md border border-white/10 rounded-full pl-3.5 pr-4 py-1.5 shadow-lg overflow-hidden">
+        {flash && <div className="absolute inset-0 animate-hud-shimmer pointer-events-none" />} 
         <span className="w-2.5 h-2.5 rounded-full ring-2 ring-white/20"
           style={{ background: ['#8a6a44','#a3b35a','#6cc24a','#3fa53b','#2f9e44','#34d399'][stage] }} />
         <span className="text-xs font-bold text-white whitespace-nowrap">{STAGE_NAMES[stage]}</span>
@@ -64,7 +75,8 @@ function GardenHud({ stage, done }) {
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { user, profile } = useAuth()
-  const { updateGarden } = useGarden()
+  const { updateGarden, triggerBurst } = useGarden()
+  const navigate = useNavigate()
 
   const [plans,   setPlans]   = useState([])
   const [goals,   setGoals]   = useState([])
@@ -74,6 +86,7 @@ export default function Dashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [growth,  setGrowth]  = useState(null)
   const [trend,   setTrend]   = useState(null)
+  const [goalSheet, setGoalSheet] = useState(null)
 
   const profileIncomplete = isProfileIncompleteFn(profile)
 
@@ -142,7 +155,10 @@ export default function Dashboard() {
   function toggleStep(planId, stepId, text) {
     // Celebrate synchronously if this check crosses a stage boundary.
     const newStage = milestonesToStage(completedSteps + goalsReached + 1)
-    if (newStage > stage) setGrowth({ stage: newStage, stepText: text })
+    if (newStage > stage) {
+      setGrowth({ stage: newStage, stepText: text })
+      triggerBurst()
+    }
     setPlans(prev => prev.map(p => {
       if (p.id !== planId) return p
       const steps = p.steps.map(s => s.id === stepId ? { ...s, done: true } : s)
@@ -258,11 +274,50 @@ export default function Dashboard() {
             WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, black 26px, black calc(100% - 96px), transparent 100%)',
           }}>
           <Suspense fallback={<GardenLoading />}>
-            <Garden3D />
+            <Garden3D onSelectGoal={(g) => setGoalSheet(g)} onAddGoal={() => navigate('/plan#goals')} />
           </Suspense>
         </div>
         {!loading && <GardenHud stage={stage} done={done} />}
       </div>
+
+      {goalSheet && (
+        <div className="fixed inset-0 z-50" onClick={() => setGoalSheet(null)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className="absolute bottom-24 left-4 right-4 md:left-auto md:right-8 md:w-80 bg-black/45 backdrop-blur-md border border-white/10 rounded-2xl p-4 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <h3 className="text-base font-bold text-white leading-tight">{goalSheet.name}</h3>
+              <button
+                onClick={() => setGoalSheet(null)}
+                className="w-7 h-7 flex items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition-colors flex-shrink-0"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-white/70 tabular-nums mb-2">
+              ${Number(goalSheet.current_amount || 0).toLocaleString()} of ${Number(goalSheet.target_amount || 0).toLocaleString()}
+            </p>
+            {(() => {
+              const pct = Math.min(100, Math.round((Number(goalSheet.current_amount || 0) / (Number(goalSheet.target_amount) || 1)) * 100))
+              return (
+                <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden mb-4">
+                  <div className="h-full bg-emerald-400 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                </div>
+              )
+            })()}
+            <Link
+              to="/plan#goals"
+              className="btn-primary w-full justify-center"
+              onClick={() => setGoalSheet(null)}
+            >
+              Add money
+            </Link>
+          </div>
+        </div>
+      )}
 
       <GardenGrowthToast data={growth} onDismiss={() => setGrowth(null)} />
     </motion.div>

@@ -1,6 +1,5 @@
-import { memo, useRef, useMemo, Suspense, Component } from 'react'
+import { memo, useRef, useMemo, useEffect, Suspense, Component } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { useNavigate } from 'react-router-dom'
 import {
   Float, Html, Sparkles, ContactShadows,
   AdaptiveDpr, PerformanceMonitor, MeshDistortMaterial, useGLTF,
@@ -8,6 +7,12 @@ import {
 import { EffectComposer, Bloom, Vignette, HueSaturation, BrightnessContrast } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import { useGarden } from '@/context/GardenContext'
+
+// ─── Drag-to-peek camera state (no React state in the canvas) ─────────────────
+let dragAzimuth = 0
+let dragVelocity = 0
+let isCanvasDragging = false
+const Y_UP = new THREE.Vector3(0, 1, 0)
 
 // ─── Soft shading ramp — Hay Day style ────────────────────────────────────────
 // Smooth, warm gradient (not hard cel bands). Shadows are warm + lifted so the
@@ -162,6 +167,46 @@ function getTimeOfDay() {
 }
 const TOD = getTimeOfDay()
 
+// ─── Sky backdrop ─────────────────────────────────────────────────────────────
+// A large inverted gradient sphere fills the canvas so tall phones never see a
+// black void around the island. The bottom edge fades into the page bgColor.
+function makeSkyTexture(top, bottom) {
+  const S = 512
+  const c = document.createElement('canvas')
+  c.width = c.height = S
+  const ctx = c.getContext('2d')
+  const grad = ctx.createLinearGradient(0, 0, 0, S)
+  grad.addColorStop(0, top)
+  grad.addColorStop(0.55, bottom)
+  grad.addColorStop(1, bottom)
+  ctx.fillStyle = grad
+  ctx.fillRect(0, 0, S, S)
+  // Radial falloff darkens the corners so the sphere blends into the page edge.
+  const rad = ctx.createRadialGradient(S * 0.5, S * 0.45, S * 0.25, S * 0.5, S * 0.45, S * 0.88)
+  rad.addColorStop(0, 'rgba(0,0,0,0)')
+  rad.addColorStop(1, 'rgba(0,0,0,0.55)')
+  ctx.fillStyle = rad
+  ctx.fillRect(0, 0, S, S)
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
+const skyTexture = makeSkyTexture(TOD.skyTop, TOD.bgColor)
+function SkySphere() {
+  return (
+    <mesh>
+      <sphereGeometry args={[70, 32, 32]} />
+      <meshBasicMaterial map={skyTexture} side={THREE.BackSide} depthWrite={false} />
+    </mesh>
+  )
+}
+function StarField() {
+  return (
+    <Sparkles count={40} scale={[70, 28, 40]} position={[0, 24, -36]}
+      size={2.0} speed={0.05} color="#ffffff" opacity={0.65} />
+  )
+}
+
 // ─── Responsive orthographic zoom ────────────────────────────────────────────
 // Island radius = 8.3 world units. Viewed isometrically at 45° the island
 // projects ±8.3 units on the camera right axis → full span ≈ 16.6 wu.
@@ -170,6 +215,7 @@ const TOD = getTimeOfDay()
 // Clamp so it never feels microscopic on huge desktop monitors.
 function ResponsiveCamera() {
   const { camera, size } = useThree()
+  const basePos = useMemo(() => new THREE.Vector3(18, 28, 18), [])
   useFrame(({ clock }) => {
     // Fit the WHOLE island in both axes. In the iso projection the island spans
     // ~17 world-units wide and ~21 tall (disc ellipse + the dirt underside), so
@@ -182,11 +228,23 @@ function ResponsiveCamera() {
       camera.zoom += (target - camera.zoom) * 0.08
       camera.updateProjectionMatrix()
     }
+    // Drag-to-peek spring-back when the user releases.
+    if (!isCanvasDragging) {
+      dragVelocity = dragVelocity * 0.86 - dragAzimuth * 0.035
+      dragAzimuth += dragVelocity
+      dragAzimuth = Math.max(-0.42, Math.min(0.42, dragAzimuth))
+      if (Math.abs(dragAzimuth) < 0.002 && Math.abs(dragVelocity) < 0.0002) {
+        dragAzimuth = 0
+        dragVelocity = 0
+      }
+    }
     // Subtle living drift — gentle sway, kept small so the island stays centred
     const t = clock.elapsedTime
-    camera.position.x = 18 + Math.sin(t * 0.08) * 0.9
-    camera.position.z = 18 + Math.cos(t * 0.08) * 0.9
-    camera.position.y = 28 + Math.sin(t * 0.05) * 0.5
+    const driftX = Math.sin(t * 0.08) * 0.9
+    const driftZ = Math.cos(t * 0.08) * 0.9
+    const driftY = Math.sin(t * 0.05) * 0.5
+    const targetPos = basePos.clone().applyAxisAngle(Y_UP, dragAzimuth)
+    camera.position.set(targetPos.x + driftX, targetPos.y + driftY, targetPos.z + driftZ)
     // Aim a bit below the disc so the island sits centred (underside hangs down)
     camera.lookAt(0, -0.8, 0)
   })
@@ -268,6 +326,64 @@ function FloatingIsland({ stage, netWorthTier = 0 }) {
         <coneGeometry args={[3.6, 3.6, 32]} />
         <meshToonMaterial color="#5a3416" gradientMap={getToonGrad()} />
       </mesh>
+      <HangingRoots />
+      <FloatingRocks />
+    </group>
+  )
+}
+
+// ─── Island underside dressing — roots and bobbing rock shards ────────────────
+const ROOT_DEFS = [
+  { p: [2.4, -0.35, 2.0], r: [2.6, 0.2, -0.3], h: 2.2 },
+  { p: [-3.0, -0.40, 1.4], r: [2.5, -0.3, 0.2], h: 2.6 },
+  { p: [1.2, -0.30, -2.8], r: [2.7, 0.1, 0.3], h: 2.0 },
+  { p: [-2.2, -0.35, -2.2], r: [2.55, -0.2, -0.2], h: 2.4 },
+  { p: [4.0, -0.25, -0.8], r: [2.85, 0.4, 0.0], h: 1.7 },
+]
+function HangingRoots() {
+  const refs = useRef([])
+  useFrame(({ clock }) => {
+    refs.current.forEach((r, i) => {
+      if (!r) return
+      r.rotation.z = ROOT_DEFS[i].r[2] + Math.sin(clock.elapsedTime * 0.7 + i) * 0.05
+      r.rotation.x = ROOT_DEFS[i].r[1] + Math.cos(clock.elapsedTime * 0.55 + i) * 0.04
+    })
+  })
+  return (
+    <group>
+      {ROOT_DEFS.map((d, i) => (
+        <mesh key={i} ref={el => { refs.current[i] = el }} position={d.p} rotation={[Math.PI - d.r[1], d.r[2], 0]}>
+          <coneGeometry args={[0.08, d.h, 6]} />
+          <meshToonMaterial color="#5a3416" gradientMap={getToonGrad()} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+const ROCK_SHARDS = [
+  { p: [3.2, -3.0, 2.4], c: '#7a5a3c', s: 0.55 },
+  { p: [-2.8, -3.4, -1.6], c: '#6b4e34', s: 0.42 },
+  { p: [0.6, -2.7, -3.2], c: '#856245', s: 0.38 },
+]
+function FloatingRocks() {
+  const refs = useRef([])
+  useFrame(({ clock }) => {
+    refs.current.forEach((r, i) => {
+      if (!r) return
+      r.position.y = ROCK_SHARDS[i].p[1] + Math.sin(clock.elapsedTime * 0.5 + i * 2.1) * 0.18
+      r.rotation.x += 0.0012
+      r.rotation.y += 0.0018
+    })
+  })
+  return (
+    <group>
+      {ROCK_SHARDS.map((d, i) => (
+        <mesh key={i} ref={el => { refs.current[i] = el }} position={d.p}>
+          <icosahedronGeometry args={[d.s, 0]} />
+          <meshToonMaterial color={d.c} gradientMap={getToonGrad()} />
+        </mesh>
+      ))}
     </group>
   )
 }
@@ -444,6 +560,44 @@ function Stream() {
   )
 }
 
+// ─── Waterfalls off the stream ends ───────────────────────────────────────────
+const FALL_COLOR = '#4ee8ff'
+function WaterfallPlane({ x, phase = 0 }) {
+  const ref = useRef(), matRef = useRef()
+  useFrame(({ clock }) => {
+    if (!ref.current || !matRef.current) return
+    const t = clock.elapsedTime + phase
+    matRef.current.opacity = 0.45 + Math.sin(t * 2.4) * 0.18
+    // A gentle vertical undulation sells downward motion without extra textures.
+    ref.current.scale.y = 1 + Math.sin(t * 3.0) * 0.04
+  })
+  return (
+    <mesh ref={ref} position={[x, -0.8, 0]}>
+      <planeGeometry args={[0.22, 2.6, 1, 10]} />
+      <meshToonMaterial ref={matRef} color={FALL_COLOR} transparent opacity={0.5} side={THREE.DoubleSide} depthWrite={false} />
+    </mesh>
+  )
+}
+function Waterfalls() {
+  return (
+    <group>
+      {/* East end */}
+      {[-0.24, 0, 0.24].map((o, i) => (
+        <WaterfallPlane key={`wfe${i}`} x={6.35 + o} phase={i * 0.9} />
+      ))}
+      {/* West end */}
+      {[-0.24, 0, 0.24].map((o, i) => (
+        <WaterfallPlane key={`wfw${i}`} x={-6.35 + o} phase={i * 0.9 + 1.5} />
+      ))}
+      {/* Mist puffs at the bases */}
+      <Sparkles count={10} scale={[1.2, 0.7, 1.0]} position={[-6.35, -2.05, 0]}
+        size={1.8} speed={0.45} color="#a8f0ff" opacity={0.5} />
+      <Sparkles count={10} scale={[1.2, 0.7, 1.0]} position={[6.35, -2.05, 0]}
+        size={1.8} speed={0.45} color="#a8f0ff" opacity={0.5} />
+    </group>
+  )
+}
+
 // ─── Stone bridge over the stream ─────────────────────────────────────────────
 // Spans the stream at x=0, z≈-2.1. Bridge runs along Z axis (path direction).
 function StreamBridge() {
@@ -573,6 +727,37 @@ function StreamDecor() {
       {REED_POS.map((p, i) => <Reed key={i} position={[p[0],p[1],p[2]]} ry={p[3]} />)}
       {LILY_POS.map((p, i) => <LilyPad key={i} position={[p[0],p[1],p[2]]} flower={i < 2} ry={p[3]} />)}
       {SPROUT_POS.map((p, i) => <Sprout key={`sp${i}`} position={[p[0],p[1],p[2]]} color={p[3]} />)}
+    </group>
+  )
+}
+
+// ─── Stream ripples ───────────────────────────────────────────────────────────
+const RIPPLE_SPOTS = [
+  { x: -3.8, z: 0.18, cycle: 2.4, delay: 0.0 },
+  { x: 0.6, z: -0.22, cycle: 2.8, delay: 0.9 },
+  { x: 4.2, z: 0.12, cycle: 2.6, delay: 1.7 },
+]
+function StreamRipples() {
+  const refs = useRef([])
+  useFrame(({ clock }) => {
+    refs.current.forEach((r, i) => {
+      if (!r) return
+      const d = RIPPLE_SPOTS[i]
+      const t = ((clock.elapsedTime + d.delay) % d.cycle) / d.cycle
+      r.position.set(d.x, 0.985, d.z)
+      const s = 0.2 + t * 1.3
+      r.scale.set(s, s, s)
+      r.material.opacity = (1 - t) * 0.55
+    })
+  })
+  return (
+    <group>
+      {RIPPLE_SPOTS.map((d, i) => (
+        <mesh key={i} ref={el => { refs.current[i] = el }} rotation={[-Math.PI/2, 0, 0]}>
+          <ringGeometry args={[0.22, 0.32, 24]} />
+          <meshBasicMaterial color="#aef0ff" transparent opacity={0.55} side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>
+      ))}
     </group>
   )
 }
@@ -796,19 +981,56 @@ function Signpost({ name, progress, type = 'savings', icon, yOffset = 0, empty =
 function InteractivePlot({ position, onSelect, children }) {
   const ref = useRef()
   const hover = useRef(false)
+  const pressed = useRef(false)
+  const start = useRef({ x: 0, y: 0, t: 0 })
   useFrame(() => {
     if (!ref.current) return
-    const target = hover.current ? 1.07 : 1.0
+    let target = 1.0
+    if (pressed.current) target = 1.07
+    else if (hover.current) target = 1.07
     const s = ref.current.scale.x + (target - ref.current.scale.x) * 0.18
     ref.current.scale.set(s, s, s)
   })
+  if (!onSelect) {
+    return <group position={position}>{children}</group>
+  }
   const enter = (e) => { e.stopPropagation(); hover.current = true; document.body.style.cursor = 'pointer' }
-  const leave = () => { hover.current = false; document.body.style.cursor = 'auto' }
+  const leave = (e) => { e.stopPropagation(); hover.current = false; pressed.current = false; document.body.style.cursor = 'auto' }
+  const onPointerDown = (e) => {
+    e.stopPropagation()
+    pressed.current = true
+    start.current = { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY, t: performance.now() }
+    if (ref.current) ref.current.scale.setScalar(0.94)
+  }
+  const onPointerMove = (e) => {
+    if (!pressed.current) return
+    const dx = e.nativeEvent.clientX - start.current.x
+    const dy = e.nativeEvent.clientY - start.current.y
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8 || performance.now() - start.current.t > 250) {
+      pressed.current = false
+    }
+  }
+  const onPointerUp = (e) => {
+    if (!pressed.current) return
+    e.stopPropagation()
+    pressed.current = false
+    const dx = e.nativeEvent.clientX - start.current.x
+    const dy = e.nativeEvent.clientY - start.current.y
+    const dt = performance.now() - start.current.t
+    if (dt < 250 && Math.abs(dx) < 8 && Math.abs(dy) < 8) onSelect()
+  }
   return (
     <group position={position} ref={ref}
-      onClick={onSelect ? (e) => { e.stopPropagation(); onSelect() } : undefined}
-      onPointerOver={onSelect ? enter : undefined}
-      onPointerOut={onSelect ? leave : undefined}>
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerOver={enter}
+      onPointerOut={leave}>
+      {/* Large transparent hit mesh so taps are easy on mobile. */}
+      <mesh rotation={[-Math.PI/2, 0, 0]} position={[0, 0.02, 0]}>
+        <circleGeometry args={[1.5, 32]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
       {children}
     </group>
   )
@@ -835,22 +1057,72 @@ function EmptyPlot({ position, label = 'Add a goal', onSelect, signYOffset = 0 }
 // ─── Cemented accomplishment — a reached goal is set in stone ─────────────────
 // A stone plinth + gold plaque ring the plot, so a completed goal reads as a
 // permanent monument rather than an in-progress planting.
-function CementedBase() {
+const DUST_SPOTS = [
+  { start: [0.45, 0.12, 0.45], dir: [0.55, 0.85, 0.55] },
+  { start: [-0.40, 0.10, 0.42], dir: [-0.50, 0.90, 0.50] },
+  { start: [0.35, 0.08, -0.38], dir: [0.45, 0.80, -0.48] },
+  { start: [-0.42, 0.14, -0.35], dir: [-0.55, 0.75, -0.45] },
+  { start: [0.10, 0.10, 0.55], dir: [0.15, 0.95, 0.55] },
+  { start: [-0.12, 0.11, -0.52], dir: [-0.18, 0.88, -0.52] },
+]
+function CementedBase({ animateIn = false }) {
+  const groupRef = useRef()
+  const dustRef = useRef()
+  const startedAt = useRef(null)
+  const hasAnimated = useRef(false)
+  useFrame(() => {
+    if (!groupRef.current) return
+    if (!animateIn || hasAnimated.current) {
+      groupRef.current.scale.setScalar(1)
+      if (dustRef.current) dustRef.current.visible = false
+      return
+    }
+    if (startedAt.current === null) startedAt.current = performance.now()
+    const t = Math.min(1, (performance.now() - startedAt.current) / 520)
+    let s
+    if (t < 0.55) s = (t / 0.55) * 1.15
+    else s = 1.15 - (t - 0.55) / 0.45 * 0.15
+    groupRef.current.scale.setScalar(s)
+    if (dustRef.current) {
+      dustRef.current.visible = true
+      const dt = Math.min(1, (performance.now() - startedAt.current) / 800)
+      dustRef.current.children.forEach((c, i) => {
+        const d = DUST_SPOTS[i]
+        c.position.set(d.start[0], d.start[1], d.start[2])
+        c.position.x += d.dir[0] * dt * 0.8
+        c.position.y += d.dir[1] * dt * 0.8
+        c.position.z += d.dir[2] * dt * 0.8
+        c.scale.setScalar(0.08 + dt * 0.45)
+        c.material.opacity = (1 - dt) * 0.5
+      })
+    }
+    if (t >= 1) hasAnimated.current = true
+  })
   return (
     <group>
-      <mesh position={[0, 0.07, 0]} receiveShadow castShadow>
-        <cylinderGeometry args={[1.08, 1.18, 0.18, 28]} />
-        <meshToonMaterial color="#9aa3ad" gradientMap={getToonGrad()} />
-      </mesh>
-      <mesh position={[0, 0.17, 0]} receiveShadow>
-        <cylinderGeometry args={[1.0, 1.04, 0.05, 28]} />
-        <meshToonMaterial color="#c6d0da" gradientMap={getToonGrad()} />
-      </mesh>
-      {/* gold plaque on the front lip */}
-      <mesh position={[0, 0.16, 0.96]} rotation={[-0.55, 0, 0]} castShadow>
-        <boxGeometry args={[0.54, 0.30, 0.05]} />
-        <meshToonMaterial color="#d9b945" emissive="#a8801a" emissiveIntensity={0.25} gradientMap={getToonGrad()} />
-      </mesh>
+      <group ref={groupRef}>
+        <mesh position={[0, 0.07, 0]} receiveShadow castShadow>
+          <cylinderGeometry args={[1.08, 1.18, 0.18, 28]} />
+          <meshToonMaterial color="#9aa3ad" gradientMap={getToonGrad()} />
+        </mesh>
+        <mesh position={[0, 0.17, 0]} receiveShadow>
+          <cylinderGeometry args={[1.0, 1.04, 0.05, 28]} />
+          <meshToonMaterial color="#c6d0da" gradientMap={getToonGrad()} />
+        </mesh>
+        {/* gold plaque on the front lip */}
+        <mesh position={[0, 0.16, 0.96]} rotation={[-0.55, 0, 0]} castShadow>
+          <boxGeometry args={[0.54, 0.30, 0.05]} />
+          <meshToonMaterial color="#d9b945" emissive="#a8801a" emissiveIntensity={0.25} gradientMap={getToonGrad()} />
+        </mesh>
+      </group>
+      <group ref={dustRef}>
+        {DUST_SPOTS.map((d, i) => (
+          <mesh key={i} position={d.start}>
+            <sphereGeometry args={[0.12, 6, 6]} />
+            <meshBasicMaterial color="#a0a8b0" transparent opacity={0.5} depthWrite={false} />
+          </mesh>
+        ))}
+      </group>
     </group>
   )
 }
@@ -860,6 +1132,9 @@ function GoalSlot({ position, goal, onSelect, yOffset = 0 }) {
   const p = goalPct(goal), st = plantStage(p), done = p >= 100
   const isInv = goal.goal_type === 'investment'
   const nm = goal.name.length > 14 ? goal.name.slice(0, 13) + '…' : goal.name
+  const wasDoneRef = useRef(done)
+  useEffect(() => { wasDoneRef.current = done }, [done])
+  const animateIn = done && !wasDoneRef.current
   return (
     <InteractivePlot position={position} onSelect={onSelect}>
       <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.01,0]} receiveShadow>
@@ -874,7 +1149,7 @@ function GoalSlot({ position, goal, onSelect, yOffset = 0 }) {
         <cylinderGeometry args={[0.98, 0.98, 0.048, 40]} />
         <meshToonMaterial color="#7c4a22" gradientMap={getToonGrad()} />
       </mesh>
-      {done && <CementedBase />}
+      {done && <CementedBase animateIn={animateIn} />}
       {isInv ? <InvestPlant stage={st} /> : <SavingsPlant stage={st} />}
       <Signpost name={nm} progress={p} type={isInv ? 'investment' : 'savings'}
         icon={done ? '🏆' : goalIcon(goal.name, isInv ? 'investment' : 'savings')} yOffset={yOffset} />
@@ -991,12 +1266,13 @@ const MUSHROOM_DEFS = [
 ]
 
 // ─── Clouds ───────────────────────────────────────────────────────────────────
-function CloudShape({ position, scale = 1, dark = false, speed = 1 }) {
+function CloudShape({ position, scale = 1, dark = false, speed = 1, opacity = 1, windStrength = 0 }) {
   const ref = useRef()
   const t0  = useMemo(() => Math.random()*100, [])
   useFrame(({ clock }) => {
     if (!ref.current) return
-    ref.current.position.x = position[0] + Math.sin((clock.elapsedTime+t0)*0.06*speed)*3
+    const ws = 0.06 + windStrength * 0.10
+    ref.current.position.x = position[0] + Math.sin((clock.elapsedTime+t0)*ws*speed)*3
     ref.current.position.y = position[1] + Math.sin((clock.elapsedTime+t0)*0.04*speed)*0.4
   })
   return (
@@ -1005,9 +1281,20 @@ function CloudShape({ position, scale = 1, dark = false, speed = 1 }) {
         .map((s,i) => (
           <mesh key={i} position={s.p}>
             <sphereGeometry args={[s.r,10,10]} />
-            <meshToonMaterial color={dark?'#5e6c7c':'#cfdde6'} gradientMap={getToonGrad()} transparent opacity={dark?0.72:0.45} />
+            <meshToonMaterial color={dark?'#5e6c7c':'#cfdde6'} gradientMap={getToonGrad()} transparent opacity={(dark?0.72:0.45)*opacity} />
           </mesh>
         ))}
+    </group>
+  )
+}
+
+// ─── Cloud framing — high, large clouds for tall phone viewports ──────────────
+function CloudFraming({ dark = false, windStrength = 0 }) {
+  const opacity = TOD.isNight ? 0.08 : 0.55
+  return (
+    <group>
+      <CloudShape position={[-11, 8.5, -14]} scale={1.7} dark={dark} speed={0.35} opacity={opacity} windStrength={windStrength} />
+      <CloudShape position={[13, 7.8, -12]} scale={1.5} dark={dark} speed={0.42} opacity={opacity} windStrength={windStrength} />
     </group>
   )
 }
@@ -1094,6 +1381,66 @@ function Birds({ count = 3 }) {
         </group>
       ))}
     </group>
+  )
+}
+
+// ─── Falling leaves (stage ≥ 2) ───────────────────────────────────────────────
+const LEAF_COUNT = 14
+const LEAF_TONES = ['#c97a2a', '#d99030', '#b5562a', '#cc8a3a', '#7a9e3e']
+function FallingLeaves({ windStrength }) {
+  const meshRef = useRef()
+  const dummy = useMemo(() => new THREE.Object3D(), [])
+  const tmpCol = useMemo(() => new THREE.Color(), [])
+  const trees = useMemo(() => [...SAVINGS_ZONE_TREES, ...INVEST_ZONE_TREES], [])
+  const leaves = useMemo(() => Array.from({ length: LEAF_COUNT }, (_, i) => {
+    const t = trees[i % trees.length]
+    return {
+      baseX: t.p[0] + (Math.random() - 0.5) * 1.6,
+      baseZ: t.p[2] + (Math.random() - 0.5) * 1.6,
+      y0: 2.6 + Math.random() * 1.8,
+      speed: 0.22 + Math.random() * 0.18,
+      phase: Math.random() * Math.PI * 2,
+      sway: 0.25 + Math.random() * 0.3,
+      tone: LEAF_TONES[i % LEAF_TONES.length],
+      size: 0.08 + Math.random() * 0.07,
+    }
+  }), [trees])
+  useFrame(({ clock }) => {
+    if (!meshRef.current) return
+    const t = clock.elapsedTime
+    const ws = windStrength * 0.18
+    for (let i = 0; i < LEAF_COUNT; i++) {
+      const l = leaves[i]
+      const cycle = (t * l.speed + l.phase) % 3.6
+      const y = l.y0 - cycle
+      const s = l.size * Math.min(1, cycle * 2.2) * Math.min(1, (3.6 - cycle) * 1.8)
+      const x = l.baseX + Math.sin(t * 0.9 + l.phase) * l.sway + ws * t
+      const z = l.baseZ + Math.cos(t * 0.7 + l.phase) * l.sway
+      dummy.position.set(x, Math.max(0.7, y), z)
+      dummy.rotation.set(Math.sin(t + l.phase) * 0.6, 0, Math.cos(t * 1.2 + l.phase) * 0.8)
+      dummy.scale.setScalar(Math.max(0.001, s))
+      dummy.updateMatrix()
+      meshRef.current.setMatrixAt(i, dummy.matrix)
+      tmpCol.set(l.tone)
+      if (TOD.isNight) tmpCol.multiplyScalar(0.45)
+      meshRef.current.setColorAt(i, tmpCol)
+    }
+    meshRef.current.instanceMatrix.needsUpdate = true
+    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true
+  })
+  return (
+    <instancedMesh ref={meshRef} args={[null, null, LEAF_COUNT]}>
+      <planeGeometry args={[1, 1]} />
+      <meshToonMaterial vertexColors transparent opacity={0.85} side={THREE.DoubleSide} gradientMap={getToonGrad()} depthWrite={false} />
+    </instancedMesh>
+  )
+}
+
+// ─── Fireflies at night (stage ≥ 1) ───────────────────────────────────────────
+function Fireflies() {
+  return (
+    <Sparkles count={20} scale={[14, 1.1, 14]} position={[0, 1.7, 0]}
+      size={2.0} speed={0.12} color="#fde047" opacity={0.70} />
   )
 }
 
@@ -1225,6 +1572,69 @@ function FarmLife() {
   )
 }
 
+// ─── Celebration burst — scene-side reward when the garden grows ──────────────
+const BURST_PARTICLES = 16
+const BURST_DURATION = 1600
+const BURST_COLORS = ['#fbbf24', '#f472b6', '#86efac', '#60a5fa']
+function CelebrationBurst() {
+  const { burstAt } = useGarden()
+  const meshRef = useRef()
+  const lightRef = useRef()
+  const dummy = useMemo(() => new THREE.Object3D(), [])
+  const tmpCol = useMemo(() => new THREE.Color(), [])
+  const particles = useMemo(() => Array.from({ length: BURST_PARTICLES }, () => ({
+    vx: (Math.random() - 0.5) * 4.0,
+    vy: 3.0 + Math.random() * 3.0,
+    vz: (Math.random() - 0.5) * 4.0,
+    rot: Math.random() * Math.PI,
+    spin: (Math.random() - 0.5) * 4,
+    color: BURST_COLORS[Math.floor(Math.random() * BURST_COLORS.length)],
+    size: 0.10 + Math.random() * 0.12,
+  })), [])
+  useFrame(() => {
+    if (!meshRef.current) return
+    if (!burstAt) {
+      meshRef.current.visible = false
+      if (lightRef.current) lightRef.current.intensity = 0
+      return
+    }
+    const t = Math.min(1, (performance.now() - burstAt) / BURST_DURATION)
+    if (t >= 1) {
+      meshRef.current.visible = false
+      if (lightRef.current) lightRef.current.intensity = 0
+      return
+    }
+    meshRef.current.visible = true
+    if (lightRef.current) lightRef.current.intensity = Math.sin(t * Math.PI) * 2.4
+    const g = 9.8
+    for (let i = 0; i < BURST_PARTICLES; i++) {
+      const p = particles[i]
+      const x = p.vx * t * 1.8
+      const y = p.vy * t * 1.8 - 0.5 * g * t * t * 2.8
+      const z = p.vz * t * 1.8
+      const s = p.size * (1 - t * 0.75)
+      dummy.position.set(x, Math.max(0.7, 1.1 + y), z)
+      dummy.rotation.set(p.spin * t, p.rot + p.spin * t, 0)
+      dummy.scale.setScalar(Math.max(0.001, s))
+      dummy.updateMatrix()
+      meshRef.current.setMatrixAt(i, dummy.matrix)
+      tmpCol.set(p.color)
+      meshRef.current.setColorAt(i, tmpCol)
+    }
+    meshRef.current.instanceMatrix.needsUpdate = true
+    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true
+  })
+  return (
+    <group>
+      <instancedMesh ref={meshRef} args={[null, null, BURST_PARTICLES]}>
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial vertexColors transparent opacity={0.92} side={THREE.DoubleSide} depthWrite={false} />
+      </instancedMesh>
+      <pointLight ref={lightRef} position={[0, 2.5, 0]} intensity={0} color="#fbbf24" distance={8} decay={2} />
+    </group>
+  )
+}
+
 // ─── Island group ─────────────────────────────────────────────────────────────
 function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal }) {
   const { darkClouds, windStrength, netWorthTier = 0,
@@ -1243,8 +1653,10 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal }) {
       <FloatingIsland stage={stage} netWorthTier={netWorthTier} />
       <GrassBlades stage={stage} windStrength={windStrength} />
       <Stream />
+      <StreamRipples />
       <StreamDecor />
       <StreamBridge />
+      <Waterfalls />
       <PathStones />
       <SceneRocks />
       <Fence />
@@ -1288,6 +1700,8 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal }) {
 
       {birdCount > 0 && <Birds count={birdCount} />}
 
+      {stage >= 2 && <FallingLeaves windStrength={windStrength} />}
+
       {netWorthTier >= 3 && (
         <Sparkles count={24} scale={[10, 3, 10]} position={[0, 3.0, 0]}
           size={2.5} speed={0.18} color="#fbbf24" opacity={0.52} />
@@ -1298,11 +1712,13 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal }) {
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
 function Scene({ goals, debts, stage, weather, onSelectGoal, onAddGoal }) {
-  const { cloudCount, darkClouds, hasDeficit, deficitSeverity, pollenCount, butterflyCount, netWorthTier = 0 } = weather
+  const { cloudCount, darkClouds, hasDeficit, deficitSeverity, pollenCount, butterflyCount, windStrength, netWorthTier = 0 } = weather
   return (
     <>
       <ResponsiveCamera />
       <color attach="background" args={[darkClouds ? '#1c262e' : TOD.bgColor]} />
+      <SkySphere />
+      {TOD.isNight && <StarField />}
       <hemisphereLight skyColor={TOD.skyTop} groundColor={TOD.skyGnd} intensity={TOD.ambInt} />
       <directionalLight
         position={TOD.sunPos}
@@ -1332,6 +1748,8 @@ function Scene({ goals, debts, stage, weather, onSelectGoal, onAddGoal }) {
           onSelectGoal={onSelectGoal} onAddGoal={onAddGoal} />
       </Float>
 
+      <CelebrationBurst />
+
       {stage >= 2 && (
         <Sparkles count={TOD.isNight ? 28 : 10} scale={[14, 6, 14]} position={[0, 1.8, 0]}
           size={TOD.isNight ? 3.5 : 2.2} speed={0.25}
@@ -1343,15 +1761,17 @@ function Scene({ goals, debts, stage, weather, onSelectGoal, onAddGoal }) {
       {BF_CONFIGS.slice(0, butterflyCount).map((b, i) => (
         <Butterfly key={i} startPos={b.start} colors={b.colors} t0={b.t0} />
       ))}
+      {TOD.isNight && stage >= 1 && <Fireflies />}
       {/* Decorative distant clouds — always present for sky depth */}
-      <CloudShape position={[-23, 12, -15]} scale={1.5} dark={darkClouds} speed={0.5} />
-      <CloudShape position={[ 22, 14, -18]} scale={1.2} dark={darkClouds} speed={0.6} />
+      <CloudFraming dark={darkClouds} windStrength={windStrength} />
+      <CloudShape position={[-23, 12, -15]} scale={1.5} dark={darkClouds} speed={0.5} windStrength={windStrength} />
+      <CloudShape position={[ 22, 14, -18]} scale={1.2} dark={darkClouds} speed={0.6} windStrength={windStrength} />
       {cloudCount > 0 && (
         <>
-          <CloudShape position={[-16, 10, -6]} scale={1.3} dark={darkClouds} speed={0.8} />
-          {cloudCount > 1 && <CloudShape position={[14, 8, -10]} scale={1.1} dark={darkClouds} speed={1.2} />}
-          {cloudCount > 2 && <CloudShape position={[-10, 12, 4]} scale={0.9} dark={darkClouds} speed={0.9} />}
-          {cloudCount > 3 && <CloudShape position={[18, 9, 5]} scale={1.0} dark={darkClouds} speed={1.0} />}
+          <CloudShape position={[-16, 10, -6]} scale={1.3} dark={darkClouds} speed={0.8} windStrength={windStrength} />
+          {cloudCount > 1 && <CloudShape position={[14, 8, -10]} scale={1.1} dark={darkClouds} speed={1.2} windStrength={windStrength} />}
+          {cloudCount > 2 && <CloudShape position={[-10, 12, 4]} scale={0.9} dark={darkClouds} speed={0.9} windStrength={windStrength} />}
+          {cloudCount > 3 && <CloudShape position={[18, 9, 5]} scale={1.0} dark={darkClouds} speed={1.0} windStrength={windStrength} />}
         </>
       )}
       {hasDeficit && <RainSystem severity={deficitSeverity} />}
@@ -1402,12 +1822,46 @@ class GardenErrorBoundary extends Component {
 }
 
 // ─── Export ───────────────────────────────────────────────────────────────────
-const Garden3D = memo(function Garden3D() {
+const Garden3D = memo(function Garden3D({ onSelectGoal, onAddGoal }) {
   const { stage, weather, goals, debts } = useGarden()
-  const navigate = useNavigate()
-  const goToGoals = () => navigate('/plan#goals')
+  const containerRef = useRef()
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    let active = false, sx = 0, sy = 0, st = 0, moved = false, pid = null
+    const down = (e) => {
+      active = true; moved = false; sx = e.clientX; sy = e.clientY; st = performance.now(); pid = e.pointerId
+    }
+    const move = (e) => {
+      if (!active || e.pointerId !== pid) return
+      const dx = e.clientX - sx
+      if (!moved && Math.abs(dx) > 8) {
+        moved = true; isCanvasDragging = true; el.setPointerCapture(pid)
+      }
+      if (moved) {
+        dragAzimuth = Math.max(-0.42, Math.min(0.42, dragAzimuth + dx * 0.003))
+        dragVelocity = dx * 0.001
+        sx = e.clientX
+      }
+    }
+    const up = (e) => {
+      if (!active || e.pointerId !== pid) return
+      active = false; isCanvasDragging = false; pid = null
+      if (moved) { try { el.releasePointerCapture(e.pointerId) } catch (_) {} }
+    }
+    el.addEventListener('pointerdown', down)
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+    el.addEventListener('pointercancel', up)
+    return () => {
+      el.removeEventListener('pointerdown', down)
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', up)
+      el.removeEventListener('pointercancel', up)
+    }
+  }, [])
   return (
-    <div className="w-full h-full">
+    <div ref={containerRef} className="w-full h-full touch-none" style={{ touchAction: 'none' }}>
       <GardenErrorBoundary>
         <Canvas
           orthographic
@@ -1422,7 +1876,7 @@ const Garden3D = memo(function Garden3D() {
           <PerformanceMonitor>
             <Suspense fallback={null}>
               <Scene goals={goals} debts={debts} stage={stage} weather={weather}
-                onSelectGoal={goToGoals} onAddGoal={goToGoals} />
+                onSelectGoal={onSelectGoal} onAddGoal={onAddGoal} />
             </Suspense>
           </PerformanceMonitor>
         </Canvas>
