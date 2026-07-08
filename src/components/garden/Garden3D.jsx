@@ -364,7 +364,7 @@ function HangingRoots() {
       {ROOT_DEFS.map((d, i) => (
         <mesh key={i} ref={el => { refs.current[i] = el }} position={d.p} rotation={[Math.PI - d.r[1], d.r[2], 0]}>
           <coneGeometry args={[0.08, d.h, 6]} />
-          <meshToonMaterial color={ROOT_COLOR} gradientMap={getToonGrad()} />
+          <meshToonMaterial color={ROOT_COLOR} emissive="#3d1f0a" emissiveIntensity={0.25} gradientMap={getToonGrad()} />
         </mesh>
       ))}
     </group>
@@ -372,9 +372,9 @@ function HangingRoots() {
 }
 
 const ROCK_SHARDS = [
-  { p: [3.2, -3.0, 2.4], c: '#9c7650', s: 0.55 },
-  { p: [-2.8, -3.4, -1.6], c: '#8b6848', s: 0.42 },
-  { p: [0.6, -2.7, -3.2], c: '#a67c52', s: 0.38 },
+  { p: [3.6, -3.2, 2.6], c: '#b08a60', s: 0.62 },
+  { p: [-3.2, -3.6, -1.8], c: '#9f7850', s: 0.48 },
+  { p: [0.8, -2.9, -3.6], c: '#b89462', s: 0.44 },
 ]
 function FloatingRocks() {
   const refs = useRef([])
@@ -391,7 +391,7 @@ function FloatingRocks() {
       {ROCK_SHARDS.map((d, i) => (
         <mesh key={i} ref={el => { refs.current[i] = el }} position={d.p}>
           <icosahedronGeometry args={[d.s, 0]} />
-          <meshToonMaterial color={d.c} gradientMap={getToonGrad()} />
+          <meshToonMaterial color={d.c} emissive="#2a1a10" emissiveIntensity={0.18} gradientMap={getToonGrad()} />
         </mesh>
       ))}
     </group>
@@ -577,33 +577,33 @@ function WaterfallPlane({ x, phase = 0 }) {
   useFrame(({ clock }) => {
     if (!ref.current || !matRef.current) return
     const t = clock.elapsedTime + phase
-    matRef.current.opacity = 0.55 + Math.sin(t * 2.4) * 0.20
+    matRef.current.opacity = 0.60 + Math.sin(t * 2.4) * 0.22
     // A gentle vertical undulation sells downward motion without extra textures.
     ref.current.scale.y = 1 + Math.sin(t * 3.0) * 0.04
   })
   return (
-    <mesh ref={ref} position={[x, -0.75, 0]}>
-      <planeGeometry args={[0.26, 2.8, 1, 10]} />
-      <meshBasicMaterial ref={matRef} color={FALL_COLOR} transparent opacity={0.6} side={THREE.DoubleSide} depthWrite={false} />
+    <mesh ref={ref} position={[x, -0.35, 0]}>
+      <planeGeometry args={[0.32, 2.6, 1, 10]} />
+      <meshBasicMaterial ref={matRef} color={FALL_COLOR} transparent opacity={0.7} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
   )
 }
 function Waterfalls() {
   return (
     <group>
-      {/* East end */}
-      {[-0.26, 0, 0.26].map((o, i) => (
-        <WaterfallPlane key={`wfe${i}`} x={6.75 + o} phase={i * 0.9} />
+      {/* East end — placed at the actual island rim, past the stream end */}
+      {[-0.28, 0, 0.28].map((o, i) => (
+        <WaterfallPlane key={`wfe${i}`} x={8.05 + o} phase={i * 0.9} />
       ))}
       {/* West end */}
-      {[-0.26, 0, 0.26].map((o, i) => (
-        <WaterfallPlane key={`wfw${i}`} x={-6.75 + o} phase={i * 0.9 + 1.5} />
+      {[-0.28, 0, 0.28].map((o, i) => (
+        <WaterfallPlane key={`wfw${i}`} x={-8.05 + o} phase={i * 0.9 + 1.5} />
       ))}
       {/* Mist puffs at the bases */}
-      <Sparkles count={12} scale={[1.6, 0.9, 1.3]} position={[-6.75, -2.0, 0]}
-        size={2.2} speed={0.45} color="#c8fbff" opacity={0.65} />
-      <Sparkles count={12} scale={[1.6, 0.9, 1.3]} position={[6.75, -2.0, 0]}
-        size={2.2} speed={0.45} color="#c8fbff" opacity={0.65} />
+      <Sparkles count={14} scale={[2.0, 1.0, 1.6]} position={[-8.05, -1.65, 0]}
+        size={2.6} speed={0.45} color="#c8fbff" opacity={0.75} />
+      <Sparkles count={14} scale={[2.0, 1.0, 1.6]} position={[8.05, -1.65, 0]}
+        size={2.6} speed={0.45} color="#c8fbff" opacity={0.75} />
     </group>
   )
 }
@@ -1300,11 +1300,11 @@ function CloudShape({ position, scale = 1, dark = false, speed = 1, opacity = 1,
 
 // ─── Cloud framing — high, large clouds for tall phone viewports ──────────────
 function CloudFraming({ dark = false, windStrength = 0 }) {
-  const opacity = TOD.isNight ? 0.08 : 0.32
+  const opacity = TOD.isNight ? 0.06 : 0.22
   return (
     <group>
-      <CloudShape position={[-12, 11, -18]} scale={1.5} dark={dark} speed={0.35} opacity={opacity} windStrength={windStrength} />
-      <CloudShape position={[14, 10, -16]} scale={1.3} dark={dark} speed={0.42} opacity={opacity} windStrength={windStrength} />
+      <CloudShape position={[-14, 13, -22]} scale={1.2} dark={dark} speed={0.35} opacity={opacity} windStrength={windStrength} />
+      <CloudShape position={[16, 12, -20]} scale={1.0} dark={dark} speed={0.42} opacity={opacity} windStrength={windStrength} />
     </group>
   )
 }
