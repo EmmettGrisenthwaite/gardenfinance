@@ -4,7 +4,7 @@ import {
   Float, Html, Sparkles, ContactShadows,
   AdaptiveDpr, PerformanceMonitor, MeshDistortMaterial, useGLTF,
 } from '@react-three/drei'
-import { EffectComposer, Bloom, Vignette, HueSaturation, BrightnessContrast } from '@react-three/postprocessing'
+import { EffectComposer, Bloom, Vignette, HueSaturation } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import { useGarden } from '@/context/GardenContext'
 
@@ -1781,7 +1781,6 @@ function Scene({ goals, debts, stage, weather, onSelectGoal, onAddGoal }) {
         <Bloom intensity={0.42} luminanceThreshold={0.60} luminanceSmoothing={0.85} mipmapBlur radius={0.66} />
         {/* Hay Day "candy" grade — lush saturation + gentle contrast */}
         <HueSaturation saturation={TOD.isNight ? 0.05 : 0.18} />
-        <BrightnessContrast brightness={0.02} contrast={0.08} />
         <Vignette eskil={false} offset={0.26} darkness={TOD.isNight ? 0.80 : 0.40} />
       </EffectComposer>
     </>
@@ -1868,7 +1867,7 @@ const Garden3D = memo(function Garden3D({ onSelectGoal, onAddGoal }) {
           shadows={{ type: THREE.PCFSoftShadowMap }}
           dpr={[1, 1.5]}
           gl={{ antialias: true, powerPreference: 'high-performance',
-                toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: TOD.isNight ? 0.80 : 1.10 }}
+                toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: TOD.isNight ? 0.80 : 1.13 }}
           camera={{ position: [18, 28, 18], zoom: 21 }}
           onCreated={({ camera }) => { camera.lookAt(0, 0.5, 0); camera.updateProjectionMatrix() }}
         >
