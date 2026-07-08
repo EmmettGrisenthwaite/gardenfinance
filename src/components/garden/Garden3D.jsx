@@ -192,18 +192,27 @@ function makeSkyTexture(top, bottom) {
   return tex
 }
 const skyTexture = makeSkyTexture(TOD.skyTop, TOD.bgColor)
-function SkySphere() {
+function SkyBackdrop() {
+  const groupRef = useRef()
+  const { camera } = useThree()
+  useFrame(() => {
+    if (!groupRef.current) return
+    const dir = new THREE.Vector3()
+    camera.getWorldDirection(dir)
+    groupRef.current.position.copy(camera.position).add(dir.multiplyScalar(-55))
+    groupRef.current.lookAt(camera.position)
+  })
   return (
-    <mesh>
-      <sphereGeometry args={[70, 32, 32]} />
-      <meshBasicMaterial map={skyTexture} side={THREE.BackSide} depthWrite={false} />
-    </mesh>
-  )
-}
-function StarField() {
-  return (
-    <Sparkles count={40} scale={[70, 28, 40]} position={[0, 24, -36]}
-      size={2.0} speed={0.05} color="#ffffff" opacity={0.65} />
+    <group ref={groupRef}>
+      <mesh>
+        <planeGeometry args={[160, 160]} />
+        <meshBasicMaterial map={skyTexture} side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      {TOD.isNight && (
+        <Sparkles count={40} scale={[70, 30, 1]} position={[0, 0, 4]}
+          size={1.8} speed={0.04} color="#ffffff" opacity={0.7} />
+      )}
+    </group>
   )
 }
 
@@ -222,7 +231,7 @@ function ResponsiveCamera() {
     // zoom to the more constraining axis — otherwise a wide/short container
     // (like the dashboard card) clips the top and bottom.
     const zoomW  = size.width  / 19.8
-    const zoomH  = size.height / 21
+    const zoomH  = size.height / 24
     const target = Math.min(Math.max(Math.min(zoomW, zoomH), 12), 56)
     if (Math.abs(camera.zoom - target) > 0.3) {
       camera.zoom += (target - camera.zoom) * 0.08
@@ -574,7 +583,7 @@ function WaterfallPlane({ x, phase = 0 }) {
   return (
     <mesh ref={ref} position={[x, -0.8, 0]}>
       <planeGeometry args={[0.22, 2.6, 1, 10]} />
-      <meshToonMaterial ref={matRef} color={FALL_COLOR} transparent opacity={0.5} side={THREE.DoubleSide} depthWrite={false} />
+      <meshBasicMaterial ref={matRef} color={FALL_COLOR} transparent opacity={0.5} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
   )
 }
@@ -1431,7 +1440,7 @@ function FallingLeaves({ windStrength }) {
   return (
     <instancedMesh ref={meshRef} args={[null, null, LEAF_COUNT]}>
       <planeGeometry args={[1, 1]} />
-      <meshToonMaterial vertexColors transparent opacity={0.85} side={THREE.DoubleSide} gradientMap={getToonGrad()} depthWrite={false} />
+      <meshBasicMaterial vertexColors transparent opacity={0.70} side={THREE.DoubleSide} depthWrite={false} />
     </instancedMesh>
   )
 }
@@ -1717,8 +1726,7 @@ function Scene({ goals, debts, stage, weather, onSelectGoal, onAddGoal }) {
     <>
       <ResponsiveCamera />
       <color attach="background" args={[darkClouds ? '#1c262e' : TOD.bgColor]} />
-      <SkySphere />
-      {TOD.isNight && <StarField />}
+      <SkyBackdrop />
       <hemisphereLight skyColor={TOD.skyTop} groundColor={TOD.skyGnd} intensity={TOD.ambInt} />
       <directionalLight
         position={TOD.sunPos}

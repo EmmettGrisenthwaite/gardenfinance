@@ -270,8 +270,8 @@ export default function Dashboard() {
       <div className="relative flex-1 min-h-[340px]">
         <div className="absolute inset-0"
           style={{
-            maskImage: 'linear-gradient(to bottom, transparent 0, black 26px, black calc(100% - 96px), transparent 100%)',
-            WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, black 26px, black calc(100% - 96px), transparent 100%)',
+            maskImage: 'linear-gradient(to bottom, transparent 0, black 48px, black calc(100% - 80px), transparent 100%)',
+            WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, black 48px, black calc(100% - 80px), transparent 100%)',
           }}>
           <Suspense fallback={<GardenLoading />}>
             <Garden3D onSelectGoal={(g) => setGoalSheet(g)} onAddGoal={() => navigate('/plan#goals')} />
