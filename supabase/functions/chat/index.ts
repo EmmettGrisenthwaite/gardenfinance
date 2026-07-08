@@ -163,9 +163,36 @@ Deno.serve(async (req) => {
     },
   }
 
-  const TOOLS: Record<string, unknown> = { action_plan: ACTION_PLAN_TOOL, suggest_goal: SUGGEST_GOAL_TOOL, guide: CREATE_GUIDE_TOOL }
+  const EXTRACT_MEMORIES_TOOL = {
+    name: 'extract_memories',
+    description: 'Extract durable facts about the user\'s financial life from the conversation — things likely to stay true for months (income, employment, employer match, goals, debts, family/life events, risk preferences, upcoming large expenses). Skip transient states ("stressed today", "market is down"). Return an empty array when nothing durable was revealed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        memories: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              fact:     { type: 'string', description: 'One durable fact, phrased in third person, e.g. "Employer matches 401k up to 4%"' },
+              category: { type: 'string', enum: ['income', 'employment', 'life_event', 'risk_preference', 'goal', 'debt', 'family', 'health', 'investment', 'other'] },
+            },
+            required: ['fact', 'category'],
+          },
+        },
+      },
+      required: ['memories'],
+    },
+  }
 
-  const body: Record<string, unknown> = { model, max_tokens, system, messages }
+  const TOOLS: Record<string, unknown> = { action_plan: ACTION_PLAN_TOOL, suggest_goal: SUGGEST_GOAL_TOOL, guide: CREATE_GUIDE_TOOL, extract_memories: EXTRACT_MEMORIES_TOOL }
+
+  // Cache the (large, mostly-stable) system prompt — cuts input cost ~90% and
+  // speeds first-token on every follow-up message in a conversation.
+  const systemBlocks = system
+    ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
+    : undefined
+  const body: Record<string, unknown> = { model, max_tokens, system: systemBlocks, messages }
   if (tool && TOOLS[tool]) {
     const def = TOOLS[tool] as { name: string }
     body.tools = [def]

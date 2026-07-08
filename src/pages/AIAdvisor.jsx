@@ -7,8 +7,8 @@ import { savePlan, applyStep, addGoal, normalizeSteps, listPlans } from '@/lib/a
 import { computeSnapshot, LIMITS } from '@/lib/finance'
 import { netWorthTrend } from '@/lib/netWorth'
 import {
-  createMemory, getMemories, deleteMemory, findSimilarMemory,
-  formatMemoriesForContext, distillConversation, extractFactsFromMessage
+  createMemory, getMemories, findSimilarMemory,
+  formatMemoriesForContext, distillConversation,
 } from '@/lib/memory'
 import PlanCard from '@/components/PlanCard'
 import GuideCard from '@/components/GuideCard'
@@ -63,12 +63,16 @@ When discussing debt payoff, include the artifact trigger: <artifact type="debt_
 When discussing goal progress, include the artifact trigger: <artifact type="goal_projection" />
 When discussing net worth or overall progress, include the artifact trigger: <artifact type="net_worth" />
 
-After your response, suggest 2–3 quick follow-up questions the user might ask next. Format them as:
-<quick_replies>
-- Question 1
-- Question 2
-- Question 3
-</quick_replies>
+**Tappable answer options — REQUIRED whenever you end with a question.**
+When your response ends with a follow-up question, always append an options block containing 2–4 short ANSWERS the user can tap (answers to YOUR question — never new questions). Cover the likely responses; include a "Not sure" style option when it fits. For yes/no questions give both, with the useful detail baked in.
+Format (exactly, after everything else):
+<options>
+- Yes — with a match
+- Yes — but no match
+- No 401k at work
+- Not sure
+</options>
+Keep each option under 6 words. If your response does NOT end with a question, do not include an options block.
 
 ━━━━━━━━━━━━━━━━━━━━━━━
 INITIAL ASSESSMENT FRAMEWORK
@@ -359,21 +363,34 @@ function parseArtifacts(text) {
   return artifacts
 }
 
-function parseQuickReplies(text) {
-  const match = text.match(/<quick_replies>([\s\S]*?)<\/quick_replies>/)
+// Tappable answers to the advisor's own follow-up question (<options> block).
+// Also accepts the legacy <quick_replies> tag from older saved conversations.
+function parseOptions(text) {
+  const match = text.match(/<(?:options|quick_replies)>([\s\S]*?)<\/(?:options|quick_replies)>/)
   if (!match) return []
   return match[1]
     .split('\n')
     .map(l => l.replace(/^-\s*/, '').trim())
-    .filter(l => l.length > 0 && l.length < 100)
-    .slice(0, 3)
+    .filter(l => l.length > 0 && l.length < 80)
+    .slice(0, 4)
 }
 
 function stripArtifactsAndReplies(text) {
   return text
     .replace(/<artifact\s+type="[^"]+"(?:\s+goalId="[^"]*")?\s*\/>/g, '')
-    .replace(/<quick_replies>[\s\S]*?<\/quick_replies>/g, '')
+    .replace(/<(?:options|quick_replies)>[\s\S]*?<\/(?:options|quick_replies)>/g, '')
     .trim()
+}
+
+// During streaming the tail of the text may contain a half-received tag — strip
+// complete tags AND any unterminated trailing fragment so raw markup never
+// flashes in the bubble.
+function stripForStreaming(text) {
+  return stripArtifactsAndReplies(text)
+    .replace(/<(?:options|quick_replies)>[\s\S]*$/, '')   // opened, not yet closed
+    .replace(/<[a-z_]*$/, '')                             // partially received "<opt…"
+    .replace(/<artifact[^>]*$/, '')
+    .trimEnd()
 }
 
 // ─── Typing indicator ──────────────────────────────────────────────────────────
@@ -397,9 +414,8 @@ function TypingIndicator() {
 }
 
 // ─── Message bubble ────────────────────────────────────────────────────────────
-function MessageBubble({ msg, onArtifactAction, onAddToPlan, debts, goals, accounts, profile }) {
+function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goals, accounts, profile }) {
   const isUser = msg.role === 'user'
-  const [showArtifacts, setShowArtifacts] = useState(false)
 
   function renderContent(text) {
     return text.split('\n').map((line, i) => {
@@ -450,7 +466,10 @@ function MessageBubble({ msg, onArtifactAction, onAddToPlan, debts, goals, accou
   }
 
   const hasArtifacts = msg.artifacts && msg.artifacts.length > 0
-  const hasQuickReplies = msg.quickReplies && msg.quickReplies.length > 0
+  // Tappable answers to the advisor's question — only on the latest reply
+  // (answering moves the conversation on; stale options would mislead).
+  const options = msg.options ?? msg.quickReplies ?? []
+  const showOptions = isLast && options.length > 0
 
   return (
     <motion.div className="flex items-end gap-2 mb-4"
@@ -481,19 +500,23 @@ function MessageBubble({ msg, onArtifactAction, onAddToPlan, debts, goals, accou
           </div>
         )}
 
-        {/* Quick reply chips */}
-        {hasQuickReplies && (
-          <div className="flex flex-wrap gap-1.5">
-            {msg.quickReplies.map((reply, i) => (
-              <button
-                key={i}
-                onClick={() => onArtifactAction?.('reply', reply)}
-                className="px-3 py-1.5 bg-white/[0.08] border border-white/[0.12] rounded-full text-xs text-white/70 hover:bg-emerald-500/20 hover:border-emerald-400/40 hover:text-emerald-200 transition-all"
-              >
-                {reply}
-              </button>
-            ))}
-          </div>
+        {/* Tappable answers to the advisor's follow-up question */}
+        {showOptions && (
+          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2, delay: 0.05 }} className="space-y-1.5">
+            <div className="text-[10px] font-semibold text-white/35 uppercase tracking-wider pl-1">Tap to answer</div>
+            <div className="flex flex-wrap gap-1.5">
+              {options.map((opt, i) => (
+                <button
+                  key={i}
+                  onClick={() => onArtifactAction?.('reply', opt)}
+                  className="px-3.5 py-2 bg-emerald-500/[0.08] border border-emerald-400/30 rounded-xl text-[13px] font-medium text-emerald-100 hover:bg-emerald-500/20 hover:border-emerald-400/50 active:scale-[0.98] transition-all"
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </motion.div>
         )}
 
         {/* Add to plan action */}
@@ -596,7 +619,13 @@ export default function AIAdvisor() {
   const [pendingGoal, setPendingGoal]   = useState(null)
   const [pendingGuide, setPendingGuide] = useState(null)
   const [progressDelta, setProgressDelta] = useState(null)
-  const [showMemoryToast, setShowMemoryToast] = useState(false)
+  const [toast, setToast] = useState(null)   // transient status pill, e.g. "Added to your Plan"
+  const toastTimer = useRef(null)
+  function flashToast(message) {
+    setToast(message)
+    clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 2600)
+  }
   const bottomRef    = useRef(null)
   const inputRef     = useRef(null)
   const scrollRef    = useRef(null)
@@ -725,43 +754,30 @@ export default function AIAdvisor() {
     if (opts.analyzing) setAnalyzing(true); else setLoading(true)
 
     try {
-      // Stream the reply
+      // Stream the reply — strip artifact/options markup (including half-received
+      // tag fragments) so raw tags never flash in the bubble mid-stream.
       const reply = await callClaude(next, systemPrompt, {
         maxTokens: 1024,
-        onDelta: (text) => setMessages([...next, { role: 'assistant', content: text }]),
+        onDelta: (text) => setMessages([...next, { role: 'assistant', content: stripForStreaming(text) }]),
       })
 
-      // Parse artifacts and quick replies from the response
+      // Parse artifacts and tappable answer options from the response
       const artifacts = parseArtifacts(reply)
-      const quickReplies = parseQuickReplies(reply)
+      const options = parseOptions(reply)
       const cleanReply = stripArtifactsAndReplies(reply)
 
       const convo = [...next, {
         role: 'assistant',
         content: cleanReply,
         artifacts: artifacts.length > 0 ? artifacts : undefined,
-        quickReplies: quickReplies.length > 0 ? quickReplies : undefined,
+        options: options.length > 0 ? options : undefined,
       }]
       setMessages(convo)
 
-      // Extract memories from the conversation
-      const facts = await extractFactsFromMessage(text.trim(), cleanReply)
-      if (facts.length > 0) {
-        let newMemories = 0
-        for (const fact of facts) {
-          const similar = findSimilarMemory(fact.fact, memories)
-          if (!similar) {
-            await createMemory(fact.fact, fact.category)
-            newMemories++
-          }
-        }
-        if (newMemories > 0) {
-          // Refresh memories
-          const updated = await getMemories()
-          setMemories(updated)
-          setShowMemoryToast(true)
-          setTimeout(() => setShowMemoryToast(false), 3000)
-        }
+      // Periodically distill durable facts in the background (no extra call per
+      // message — that doubles cost for little gain).
+      if (convo.length >= 6 && convo.length % 12 === 0) {
+        distillAndSave(convo)
       }
 
       // After the reply, offer relevant follow-ups
@@ -815,34 +831,29 @@ export default function AIAdvisor() {
     catch (err) { setError(err.message ?? 'Could not apply that step.'); throw err }
   }
 
-  // ── Distill-on-clear ──────────────────────────────────────────────────────
-  async function handleClearChat() {
-    if (messages.length > 2) {
-      // Distill conversation into memories before clearing
-      setLoading(true)
-      try {
-        const distilled = await distillConversation(messages)
-        if (distilled.length > 0) {
-          let newMemories = 0
-          for (const fact of distilled) {
-            const similar = findSimilarMemory(fact.fact, memories)
-            if (!similar) {
-              await createMemory(fact.fact, fact.category)
-              newMemories++
-            }
-          }
-          if (newMemories > 0) {
-            const updated = await getMemories()
-            setMemories(updated)
-          }
+  // ── Memory distillation (always in the background — never blocks the UI) ────
+  async function distillAndSave(convo) {
+    try {
+      const distilled = await distillConversation(convo)
+      let added = 0
+      for (const fact of distilled) {
+        if (!findSimilarMemory(fact.fact, memories)) {
+          const row = await createMemory(fact.fact, fact.category)
+          if (row) added++
         }
-      } catch (err) {
-        console.error('Error distilling conversation:', err)
-      } finally {
-        setLoading(false)
       }
+      if (added > 0) {
+        setMemories(await getMemories())
+        flashToast('Your advisor remembered something new')
+      }
+    } catch (err) {
+      console.error('Error distilling conversation:', err)
     }
+  }
 
+  // ── Start over: clear instantly, distill the old thread in the background ───
+  function handleClearChat() {
+    const snapshot = messages
     setMessages([])
     setError(null)
     setPendingPlan(null)
@@ -850,6 +861,7 @@ export default function AIAdvisor() {
     setPendingGuide(null)
     localStorage.removeItem(STORAGE_KEY)
     supabase.from('conversations').delete().eq('user_id', user.id).then(() => {})
+    if (snapshot.length > 2) distillAndSave(snapshot)
   }
 
   // ── Add to plan from chat message ───────────────────────────────────────────
@@ -864,9 +876,7 @@ export default function AIAdvisor() {
       const normalized = { ...plan, steps: normalizeSteps(plan.steps), saved: false }
       await savePlan(user.id, normalized)
       setError(null)
-      // Show a brief success indicator
-      setShowMemoryToast(true)
-      setTimeout(() => setShowMemoryToast(false), 2000)
+      flashToast('Added to your Plan')
     } catch (err) {
       setError(err.message ?? 'Could not add to plan.')
     } finally {
@@ -946,9 +956,9 @@ export default function AIAdvisor() {
         </div>
       </div>
 
-      {/* Memory toast */}
+      {/* Status toast (memory saved, plan added, …) */}
       <AnimatePresence>
-        {showMemoryToast && (
+        {toast && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -958,7 +968,7 @@ export default function AIAdvisor() {
             <div className="max-w-3xl mx-auto px-4 pt-2">
               <div className="flex items-center gap-2 px-3 py-2 bg-emerald-500/15 border border-emerald-400/25 rounded-lg">
                 <Brain className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs text-emerald-200">Advisor remembered something new</span>
+                <span className="text-xs text-emerald-200">{toast}</span>
               </div>
             </div>
           </motion.div>
@@ -1011,6 +1021,7 @@ export default function AIAdvisor() {
               <MessageBubble
                 key={i}
                 msg={msg}
+                isLast={i === messages.length - 1 && !loading && !analyzing}
                 onArtifactAction={handleArtifactAction}
                 onAddToPlan={handleAddToPlan}
                 debts={debts}
