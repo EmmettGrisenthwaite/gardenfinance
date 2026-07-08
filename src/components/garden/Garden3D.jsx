@@ -349,6 +349,7 @@ const ROOT_DEFS = [
   { p: [-2.2, -0.35, -2.2], r: [2.55, -0.2, -0.2], h: 2.4 },
   { p: [4.0, -0.25, -0.8], r: [2.85, 0.4, 0.0], h: 1.7 },
 ]
+const ROOT_COLOR = '#754225'
 function HangingRoots() {
   const refs = useRef([])
   useFrame(({ clock }) => {
@@ -363,7 +364,7 @@ function HangingRoots() {
       {ROOT_DEFS.map((d, i) => (
         <mesh key={i} ref={el => { refs.current[i] = el }} position={d.p} rotation={[Math.PI - d.r[1], d.r[2], 0]}>
           <coneGeometry args={[0.08, d.h, 6]} />
-          <meshToonMaterial color="#5a3416" gradientMap={getToonGrad()} />
+          <meshToonMaterial color={ROOT_COLOR} gradientMap={getToonGrad()} />
         </mesh>
       ))}
     </group>
@@ -371,9 +372,9 @@ function HangingRoots() {
 }
 
 const ROCK_SHARDS = [
-  { p: [3.2, -3.0, 2.4], c: '#7a5a3c', s: 0.55 },
-  { p: [-2.8, -3.4, -1.6], c: '#6b4e34', s: 0.42 },
-  { p: [0.6, -2.7, -3.2], c: '#856245', s: 0.38 },
+  { p: [3.2, -3.0, 2.4], c: '#9c7650', s: 0.55 },
+  { p: [-2.8, -3.4, -1.6], c: '#8b6848', s: 0.42 },
+  { p: [0.6, -2.7, -3.2], c: '#a67c52', s: 0.38 },
 ]
 function FloatingRocks() {
   const refs = useRef([])
@@ -570,20 +571,20 @@ function Stream() {
 }
 
 // ─── Waterfalls off the stream ends ───────────────────────────────────────────
-const FALL_COLOR = '#4ee8ff'
+const FALL_COLOR = '#7df9ff'
 function WaterfallPlane({ x, phase = 0 }) {
   const ref = useRef(), matRef = useRef()
   useFrame(({ clock }) => {
     if (!ref.current || !matRef.current) return
     const t = clock.elapsedTime + phase
-    matRef.current.opacity = 0.45 + Math.sin(t * 2.4) * 0.18
+    matRef.current.opacity = 0.55 + Math.sin(t * 2.4) * 0.20
     // A gentle vertical undulation sells downward motion without extra textures.
     ref.current.scale.y = 1 + Math.sin(t * 3.0) * 0.04
   })
   return (
-    <mesh ref={ref} position={[x, -0.8, 0]}>
-      <planeGeometry args={[0.22, 2.6, 1, 10]} />
-      <meshBasicMaterial ref={matRef} color={FALL_COLOR} transparent opacity={0.5} side={THREE.DoubleSide} depthWrite={false} />
+    <mesh ref={ref} position={[x, -0.75, 0]}>
+      <planeGeometry args={[0.26, 2.8, 1, 10]} />
+      <meshBasicMaterial ref={matRef} color={FALL_COLOR} transparent opacity={0.6} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
   )
 }
@@ -591,18 +592,18 @@ function Waterfalls() {
   return (
     <group>
       {/* East end */}
-      {[-0.24, 0, 0.24].map((o, i) => (
-        <WaterfallPlane key={`wfe${i}`} x={6.35 + o} phase={i * 0.9} />
+      {[-0.26, 0, 0.26].map((o, i) => (
+        <WaterfallPlane key={`wfe${i}`} x={6.75 + o} phase={i * 0.9} />
       ))}
       {/* West end */}
-      {[-0.24, 0, 0.24].map((o, i) => (
-        <WaterfallPlane key={`wfw${i}`} x={-6.35 + o} phase={i * 0.9 + 1.5} />
+      {[-0.26, 0, 0.26].map((o, i) => (
+        <WaterfallPlane key={`wfw${i}`} x={-6.75 + o} phase={i * 0.9 + 1.5} />
       ))}
       {/* Mist puffs at the bases */}
-      <Sparkles count={10} scale={[1.2, 0.7, 1.0]} position={[-6.35, -2.05, 0]}
-        size={1.8} speed={0.45} color="#a8f0ff" opacity={0.5} />
-      <Sparkles count={10} scale={[1.2, 0.7, 1.0]} position={[6.35, -2.05, 0]}
-        size={1.8} speed={0.45} color="#a8f0ff" opacity={0.5} />
+      <Sparkles count={12} scale={[1.6, 0.9, 1.3]} position={[-6.75, -2.0, 0]}
+        size={2.2} speed={0.45} color="#c8fbff" opacity={0.65} />
+      <Sparkles count={12} scale={[1.6, 0.9, 1.3]} position={[6.75, -2.0, 0]}
+        size={2.2} speed={0.45} color="#c8fbff" opacity={0.65} />
     </group>
   )
 }
@@ -1299,11 +1300,11 @@ function CloudShape({ position, scale = 1, dark = false, speed = 1, opacity = 1,
 
 // ─── Cloud framing — high, large clouds for tall phone viewports ──────────────
 function CloudFraming({ dark = false, windStrength = 0 }) {
-  const opacity = TOD.isNight ? 0.08 : 0.55
+  const opacity = TOD.isNight ? 0.08 : 0.32
   return (
     <group>
-      <CloudShape position={[-11, 8.5, -14]} scale={1.7} dark={dark} speed={0.35} opacity={opacity} windStrength={windStrength} />
-      <CloudShape position={[13, 7.8, -12]} scale={1.5} dark={dark} speed={0.42} opacity={opacity} windStrength={windStrength} />
+      <CloudShape position={[-12, 11, -18]} scale={1.5} dark={dark} speed={0.35} opacity={opacity} windStrength={windStrength} />
+      <CloudShape position={[14, 10, -16]} scale={1.3} dark={dark} speed={0.42} opacity={opacity} windStrength={windStrength} />
     </group>
   )
 }
@@ -1464,7 +1465,7 @@ const QUADRANT_SLOTS = [
   [-4.4, 0.93,  3.8], [ 4.4, 0.93,  3.8], [-4.4, 0.93, -4.1], [ 4.4, 0.93, -4.1],
 ]
 // Lift markers that would otherwise share a screen column with their neighbour.
-const SLOT_SIGN_OFFSET = [0, 0, 0.7, 0.7, 0, 0, 1.3, 1.3]
+const SLOT_SIGN_OFFSET = [0, 0, 0.6, 0.6, 1.1, 0.9, 1.7, 1.5]
 
 
 // Lush round-canopy tree — fuller + more Hay Day than the low-poly cones.
