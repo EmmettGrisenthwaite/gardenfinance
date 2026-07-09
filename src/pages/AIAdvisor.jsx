@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext'
 import { callClaude, requestPlan, requestGuide, suggestGoal, chatConfigured } from '@/lib/claude'
 import { savePlan, appendSteps, applyStep, addGoal, normalizeSteps, listPlans } from '@/lib/advisorPlans'
 import { buildContext, buildSystemPrompt } from '@/lib/advisorContext'
+import { getDataGaps } from '@/lib/dataGaps'
 import { computeSnapshot } from '@/lib/finance'
 import { netWorthTrend } from '@/lib/netWorth'
 import {
@@ -431,6 +432,25 @@ export default function AIAdvisor() {
   const noKey  = !chatConfigured
   const hasData = goals.length > 0 || debts.length > 0 || plans.length > 0 || money.income > 0 || money.expenses > 0 || money.netWorth !== 0
 
+  // ── Data gaps — a light, dismissable nudge to fill in what sharpens advice
+  // most (a debt's rate, an investment balance…). Purely derived from live
+  // data, so once a field is filled the gap vanishes on its own — no separate
+  // "stop asking" bookkeeping needed. The model gets the same ranked list in
+  // its context and can ask about the top one in conversation too.
+  const GAP_DISMISS_KEY = `advisor-gaps-dismissed-${user.id}`
+  const [dismissedGaps, setDismissedGaps] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(GAP_DISMISS_KEY)) ?? [] } catch { return [] }
+  })
+  const gaps = useMemo(
+    () => getDataGaps({ profile, accounts, debts, goals }).filter(g => !dismissedGaps.includes(g.id)),
+    [profile, accounts, debts, goals, dismissedGaps],
+  )
+  function dismissGap(id) {
+    const next = [...dismissedGaps, id]
+    setDismissedGaps(next)
+    try { localStorage.setItem(GAP_DISMISS_KEY, JSON.stringify(next)) } catch {}
+  }
+
   // ── Send message ────────────────────────────────────────────────────────────
   async function send(text, opts = {}) {
     if (!text.trim() || loading || noKey) return
@@ -670,6 +690,26 @@ export default function AIAdvisor() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Data-gap nudge — the single highest-value missing field, dismissable.
+          Disappears on its own once the field is filled (see getDataGaps). */}
+      {!noKey && !historyLoading && gaps.length > 0 && (
+        <div className="flex-shrink-0 max-w-3xl w-full mx-auto px-4 pt-3">
+          <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/[0.07] border border-emerald-400/20">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-300/80 flex-shrink-0" />
+            <span className="flex-1 min-w-0 text-xs text-white/70 leading-snug">
+              {gaps[0].label}
+              {gaps.length > 1 && <span className="text-white/35"> +{gaps.length - 1} more</span>}
+            </span>
+            <Link to={gaps[0].href}
+              className="text-xs font-semibold text-emerald-300 hover:text-emerald-200 whitespace-nowrap flex-shrink-0">
+              {gaps[0].cta}
+            </Link>
+            <button onClick={() => dismissGap(gaps[0].id)} aria-label="Dismiss"
+              className="p-1 -m-1 text-white/25 hover:text-white/55 flex-shrink-0"><X className="w-3.5 h-3.5" /></button>
+          </div>
+        </div>
+      )}
 
       {/* Not-configured banner */}
       {noKey && (

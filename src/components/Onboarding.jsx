@@ -223,15 +223,20 @@ function OptionCard({ option, selected, onClick, multi }) {
 }
 
 // ─── Debts step — add-as-you-go list (optional) ────────────────────────────────
+// The rate is optional here too (rough is fine — Money page tightens it up
+// later), but capturing it now means one less thing the advisor has to ask
+// for after setup.
 function DebtsStep({ debts, setDebts }) {
   const [name, setName] = useState('')
   const [bal,  setBal]  = useState('')
+  const [rate, setRate] = useState('')
 
   function add() {
     const b = parseFloat(bal)
     if (!name.trim() || isNaN(b) || b <= 0) return
-    setDebts([...debts, { name: name.trim(), balance: b }])
-    setName(''); setBal('')
+    const r = parseFloat(rate)
+    setDebts([...debts, { name: name.trim(), balance: b, interest_rate: isNaN(r) ? null : r }])
+    setName(''); setBal(''); setRate('')
   }
 
   return (
@@ -242,6 +247,7 @@ function DebtsStep({ debts, setDebts }) {
             <div key={i} className="flex items-center justify-between bg-white/[0.075] border border-white/10 rounded-lg px-3 py-2">
               <span className="text-sm text-white/85 truncate">{d.name}</span>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {d.interest_rate != null && <span className="text-xs text-amber-200/80 tabular-nums">{d.interest_rate}%</span>}
                 <span className="text-sm font-semibold text-rose-300 tabular-nums">${Math.round(d.balance).toLocaleString()}</span>
                 <button type="button" onClick={() => setDebts(debts.filter((_, j) => j !== i))}
                   className="text-white/30 hover:text-rose-400 transition-colors text-lg leading-none">×</button>
@@ -260,12 +266,18 @@ function DebtsStep({ debts, setDebts }) {
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
             className="w-full min-w-0 bg-transparent text-base md:text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
         </div>
+        <div className="flex items-center bg-white/[0.075] border-2 border-white/15 rounded-xl px-2 w-[70px] focus-within:border-emerald-500 transition-colors">
+          <input type="number" inputMode="decimal" min="0" step="0.1" value={rate} onChange={e => setRate(e.target.value)} placeholder="APR"
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+            className="w-full min-w-0 bg-transparent text-base md:text-sm font-bold text-amber-200 tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+          <span className="text-white/35 text-xs">%</span>
+        </div>
         <button type="button" onClick={add} disabled={!name.trim() || !(parseFloat(bal) > 0)}
           className="px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 text-white text-sm font-semibold transition-colors">
           Add
         </button>
       </div>
-      <p className="text-[11px] text-white/35">No debts? Just hit Next — nice work.</p>
+      <p className="text-[11px] text-white/35">Don't know the rate? Leave it blank — no debts? Just hit Next.</p>
     </div>
   )
 }
@@ -397,7 +409,10 @@ export default function Onboarding({ onClose, profileOnly = false }) {
     // Seed debts so the advisor can plan payoff from day one.
     if (validDebts.length) {
       await supabase.from('debts')
-        .insert(validDebts.map(d => ({ user_id: user.id, name: d.name.trim(), balance: Number(d.balance) })))
+        .insert(validDebts.map(d => ({
+          user_id: user.id, name: d.name.trim(), balance: Number(d.balance),
+          interest_rate: d.interest_rate ?? null,
+        })))
         .then(() => {}, () => {})
     }
 

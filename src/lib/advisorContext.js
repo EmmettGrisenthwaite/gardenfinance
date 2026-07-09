@@ -1,4 +1,5 @@
 import { computeSnapshot, LIMITS } from '@/lib/finance'
+import { getDataGaps } from '@/lib/dataGaps'
 
 // The advisor's system prompt + user-situation context, shared between the
 // advisor chat and the Plan page's one-tap "Build my starter plan" — one brain,
@@ -21,6 +22,8 @@ You are a DIAGNOSTIC advisor, not an encyclopedia. Your job is to:
 **Never be generic.** Every response should reference their real numbers. If you find yourself giving advice that could apply to anyone, stop and make it specific to them.
 
 **One follow-up question at a time.** Never ask more than one question in a response. Pick the most important unknown and ask only that.
+
+**Filling in what's missing.** The "DATA THE APP IS MISSING" list below (when present) is ranked by how much it would sharpen your advice — things the onboarding quiz didn't capture (a debt's interest rate, an investment balance) or that were skipped. Early in a conversation — especially the very first message of a fresh chat — weave in the TOP item as your one follow-up question instead of a generic one, in your own words, tied to what they just asked about if you can. Once the app shows a field as filled (it recomputes every message — don't ask about anything not on the current list), NEVER ask about it again. If the list is empty or you're deep into an unrelated topic, don't force it — this is a light nudge, not an interrogation.
 
 When discussing debt payoff, include the artifact trigger: <artifact type="debt_payoff" />
 When discussing goal progress, include the artifact trigger: <artifact type="goal_projection" />
@@ -265,6 +268,15 @@ export function buildContext(money, goals, debts, profile, extras = {}) {
     ctx += '\n'
   } else {
     ctx += 'DEBTS: None tracked\n\n'
+  }
+
+  // ── Data gaps — ranked, purely derived from live data (see note above the
+  // system prompt's "Filling in what's missing" rule).
+  const gaps = getDataGaps({ profile, accounts, debts, goals })
+  if (gaps.length > 0) {
+    ctx += `DATA THE APP IS MISSING (ranked, top = most valuable to ask about first):\n`
+    gaps.forEach((g, i) => { ctx += `  ${i + 1}. ${g.label}\n` })
+    ctx += '\n'
   }
 
   // ── Their plan
