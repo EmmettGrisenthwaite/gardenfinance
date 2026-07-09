@@ -429,6 +429,7 @@ export default function Plan() {
                 <p className="text-white font-semibold text-sm mb-1">Every step done — your garden thanks you.</p>
                 <p className="text-white/50 text-xs mb-4">Ask your advisor what's next, or add your own.</p>
                 <Link to="/advisor"
+                  state={{ ask: 'I finished my current plan. What should I do next based on my numbers?' }}
                   className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors">
                   <Bot className="w-4 h-4" /> What's next?
                 </Link>
@@ -452,7 +453,9 @@ export default function Plan() {
                 <ClipboardList className="w-4 h-4" /> Build my starter plan
               </button>
               <div className="mt-3">
-                <Link to="/advisor" className="text-xs text-white/40 hover:text-emerald-300 transition-colors">
+                <Link to="/advisor"
+                  state={{ ask: 'I need a simple starter financial plan. Based on my actual numbers, what should I do first?' }}
+                  className="text-xs text-white/40 hover:text-emerald-300 transition-colors">
                   or ask your advisor →
                 </Link>
               </div>

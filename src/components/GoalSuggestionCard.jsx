@@ -36,7 +36,12 @@ export default function GoalSuggestionCard({ suggestion: s, onAdd, onDismiss }) 
 
   async function handleAdd() {
     setBusy(true)
-    try { await onAdd(s); setAdded(true) } finally { setBusy(false) }
+    try {
+      const succeeded = await onAdd(s)
+      if (succeeded !== false) setAdded(true)
+    } catch {
+      // The parent displays the actionable error; keep the card available to retry.
+    } finally { setBusy(false) }
   }
 
   return (
@@ -78,7 +83,7 @@ export default function GoalSuggestionCard({ suggestion: s, onAdd, onDismiss }) 
 
       <div className="px-4 py-3 border-t border-white/10">
         {added ? (
-          <Link to="/plan" className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-colors">
+          <Link to="/plan#goals" className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-colors">
             <Check className="w-3.5 h-3.5" /> Added to your goals &amp; plan · view <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         ) : (

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { useLocation, Link } from 'react-router-dom'
+import { useLocation, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { callClaude, requestPlan, requestGuide, suggestGoal, chatConfigured } from '@/lib/claude'
@@ -27,7 +27,7 @@ const GUIDE_INTENT = /\b(open|start|set\s?up|sign\s?up|create|switch|roll\s?over
 import {
   Send, Bot, Sparkles, RefreshCw, ArrowDown, Settings, ChevronLeft,
   Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Shield, Sprout,
-  ClipboardList, Loader2, Brain, Plus, X,
+  ClipboardList, Loader2, Brain, Plus, X, ArrowRight,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -293,6 +293,7 @@ function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, p
 export default function AIAdvisor() {
   const { user, profile, setProfile } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const STORAGE_KEY = `advisor-chat-${user.id}`
   const LAST_VISIT_KEY = `advisor-last-visit-${user.id}`
 
@@ -316,10 +317,10 @@ export default function AIAdvisor() {
   const [pendingGoal, setPendingGoal]   = useState(null)
   const [pendingGuide, setPendingGuide] = useState(null)
   const [progressDelta, setProgressDelta] = useState(null)
-  const [toast, setToast] = useState(null)   // transient status pill, e.g. "Added to your Plan"
+  const [toast, setToast] = useState(null)   // transient status pill, optionally with a next action
   const toastTimer = useRef(null)
-  function flashToast(message) {
-    setToast(message)
+  function flashToast(message, action = null) {
+    setToast({ message, action })
     clearTimeout(toastTimer.current)
     toastTimer.current = setTimeout(() => setToast(null), 2600)
   }
@@ -395,10 +396,10 @@ export default function AIAdvisor() {
   useEffect(() => {
     const ask = location.state?.ask
     if (!ask || historyLoading) return
-    window.history.replaceState({}, '')
-    send(ask)
+    navigate('/advisor', { replace: true, state: null })
+    void send(ask)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyLoading, location.state])
+  }, [historyLoading, location.state, navigate])
 
   // Persist to localStorage + Supabase when messages settle
   useEffect(() => {
@@ -550,13 +551,29 @@ export default function AIAdvisor() {
   }
 
   async function handleSavePlan() {
-    await savePlan(user.id, pendingPlan)
-    setPendingPlan(p => ({ ...p, saved: true }))
+    try {
+      await savePlan(user.id, pendingPlan)
+      setPendingPlan(p => ({ ...p, saved: true }))
+      setError(null)
+      flashToast('Added your action plan to Plan', { to: '/plan', label: 'View Plan' })
+      return true
+    } catch (err) {
+      setError(err.message ?? 'Could not save that plan. Please try again.')
+      return false
+    }
   }
 
   async function handleSaveGuide() {
-    await savePlan(user.id, { title: pendingGuide.title, steps: pendingGuide.steps }, { source: 'guide' })
-    setPendingGuide(p => ({ ...p, saved: true }))
+    try {
+      await savePlan(user.id, { title: pendingGuide.title, steps: pendingGuide.steps }, { source: 'guide' })
+      setPendingGuide(p => ({ ...p, saved: true }))
+      setError(null)
+      flashToast('Added this guide to Plan', { to: '/plan', label: 'View Plan' })
+      return true
+    } catch (err) {
+      setError(err.message ?? 'Could not save that guide. Please try again.')
+      return false
+    }
   }
 
   // ── Memory distillation (always in the background — never blocks the UI) ────
@@ -607,7 +624,8 @@ export default function AIAdvisor() {
       setError(null)
       flashToast(added === 0
         ? 'Those steps are already in your Plan'
-        : `Added ${added} step${added === 1 ? '' : 's'} to your Plan${skipped ? ` — ${skipped} already there` : ''}`)
+        : `Added ${added} step${added === 1 ? '' : 's'} to your Plan${skipped ? ` — ${skipped} already there` : ''}`,
+        { to: '/plan', label: 'View Plan' })
     } catch (err) {
       setError(err.message ?? 'Could not add to plan.')
     } finally {
@@ -665,8 +683,9 @@ export default function AIAdvisor() {
       setPlans(await listPlans(user.id))
     } catch (err) {
       setError(err.message ?? 'Could not add that goal to your plan.')
-      throw err
+      return false
     }
+    return true
   }
 
   const isEmpty = messages.length === 0 && !loading && !analyzing && !historyLoading && !pendingPlan && !buildingPlan
@@ -693,9 +712,9 @@ export default function AIAdvisor() {
             {!noKey && (
               <button
                 onClick={handleBuildPlan}
-                disabled={buildingPlan || loading || analyzing}
+                disabled={buildingPlan || loading || analyzing || (pendingPlan && !pendingPlan.saved)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs font-semibold hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
-                title="Generate a saveable action plan"
+                title={pendingPlan && !pendingPlan.saved ? 'Save the current plan first' : 'Generate a saveable action plan'}
               >
                 {buildingPlan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">Action plan</span>
@@ -730,7 +749,16 @@ export default function AIAdvisor() {
             <div className="max-w-3xl mx-auto px-4 pt-2">
               <div className="flex items-center gap-2 px-3 py-2 bg-emerald-500/15 border border-emerald-400/25 rounded-lg">
                 <Brain className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs text-emerald-200">{toast}</span>
+                <span className="text-xs text-emerald-200">{toast.message}</span>
+                {toast.action && (
+                  <Link
+                    to={toast.action.to}
+                    onClick={() => setToast(null)}
+                    className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-emerald-300 hover:text-emerald-200 whitespace-nowrap"
+                  >
+                    {toast.action.label} <ArrowRight className="w-3 h-3" />
+                  </Link>
+                )}
               </div>
             </div>
           </motion.div>
