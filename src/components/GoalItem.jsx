@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout, Plus, Wallet } from 'lucide-react'
+import HowToInline from '@/components/HowToInline'
 import { THRESHOLDS, LIQUID_TYPES } from '@/lib/finance'
 
 // ─── Timeline projection ───────────────────────────────────────────────────────
@@ -273,7 +274,7 @@ function TimelineBadge({ goal }) {
 }
 
 // ─── Editable goal card ─────────────────────────────────────────────────────────
-export function GoalItem({ goal, accounts, onEdit, onDelete, onUpdateProgress, onContribute }) {
+export function GoalItem({ goal, accounts, onEdit, onDelete, onUpdateProgress, onContribute, howToContext }) {
   const isInv = goal.goal_type === 'investment'
   // Deleting a goal is destructive — require a second tap to confirm (the armed
   // state disarms itself after a moment).
@@ -324,6 +325,12 @@ export function GoalItem({ goal, accounts, onEdit, onDelete, onUpdateProgress, o
       </div>
       <ProgressInput goal={goal} accounts={accounts} onContribute={onContribute} onUpdate={onUpdateProgress} />
       <TimelineBadge goal={goal} />
+      {/* AI path to the goal, generated in place — how much, where, and how */}
+      {howToContext !== undefined && Number(goal.current_amount) < Number(goal.target_amount) && (
+        <HowToInline
+          subject={`reach my "${goal.name}" ${isInv ? 'investment' : 'savings'} goal — $${Number(goal.current_amount || 0).toLocaleString()} saved of $${Number(goal.target_amount || 0).toLocaleString()}${Number(goal.monthly_contribution) > 0 ? `, currently putting in $${Number(goal.monthly_contribution).toLocaleString()}/mo` : ''}`}
+          context={howToContext} />
+      )}
     </motion.div>
   )
 }

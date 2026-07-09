@@ -74,6 +74,8 @@ Format (exactly, after everything else):
 </options>
 Keep each option under 6 words. If your response does NOT end with a question, do not include an options block.
 
+**Plannable marker.** If — and only if — your response lays out concrete actions the user should actually take (open an account, move money, set up a transfer, a payoff sequence), append <plannable /> at the very end, after everything else. Do NOT include it for explanations, questions, or general education.
+
 ━━━━━━━━━━━━━━━━━━━━━━━
 INITIAL ASSESSMENT FRAMEWORK
 ━━━━━━━━━━━━━━━━━━━━━━━
@@ -318,8 +320,8 @@ function buildContext(money, goals, debts, profile, extras = {}) {
   if (profile) {
     const employmentLabels = { w2: 'W-2 / salaried employee', freelance: 'Freelance / self-employed', student: 'Student', other: 'Other / gig / part-time' }
     const match401kLabels  = { match: 'Yes — with employer match (⚠️ confirm they are capturing the full match)', no_match: 'Yes — but no employer match', none: 'No 401k offered', unsure: 'Unsure — has not checked', na: 'Not applicable' }
-    const goalLabels       = { emergency_fund: 'Build emergency fund', pay_debt: 'Pay off debt', start_investing: 'Start investing', major_purchase: 'Save for major purchase', optimize: 'Optimize existing finances', organize: 'Get organized' }
-    const insuranceLabels  = { employer: 'Yes — employer plan', marketplace: 'Yes — marketplace/ACA', parents: "Yes — on parents' plan (available until 26)", none: '⚠️ NO HEALTH INSURANCE — flag this as urgent' }
+    const goalLabels       = { emergency_fund: 'Build emergency fund', pay_debt: 'Pay off debt', start_investing: 'Start investing', major_purchase: 'Save for major purchase', optimize: 'Optimize existing finances', organize: 'Get organized', retirement_catchup: 'Catch up on retirement (prioritize catch-up contributions and retirement readiness)' }
+    const insuranceLabels  = { employer: 'Yes — employer plan', marketplace: 'Yes — marketplace/ACA', parents: "Yes — on parents' plan (available until 26)", spouse: "Yes — on spouse's plan", none: '⚠️ NO HEALTH INSURANCE — flag this as urgent' }
 
     let p = 'USER PROFILE:\n'
     if (profile.age)             p += `  Age: ${profile.age}\n`
@@ -379,6 +381,7 @@ function stripArtifactsAndReplies(text) {
   return text
     .replace(/<artifact\s+type="[^"]+"(?:\s+goalId="[^"]*")?\s*\/>/g, '')
     .replace(/<(?:options|quick_replies)>[\s\S]*?<\/(?:options|quick_replies)>/g, '')
+    .replace(/<plannable\s*\/>/g, '')
     .trim()
 }
 
@@ -519,14 +522,15 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
           </motion.div>
         )}
 
-        {/* Add to plan action */}
-        {onAddToPlan && (
+        {/* One "add this to my plan" CTA — only on the latest reply, and only
+            when the model marked its advice as concretely actionable. */}
+        {onAddToPlan && isLast && msg.plannable && (
           <button
             onClick={() => onAddToPlan(msg.content)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.05] border border-white/[0.10] rounded-lg text-xs text-white/50 hover:bg-emerald-500/10 hover:border-emerald-400/30 hover:text-emerald-200 transition-all"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500/[0.12] border border-emerald-400/30 rounded-xl text-[13px] font-semibold text-emerald-100 hover:bg-emerald-500/25 hover:border-emerald-400/50 transition-all"
           >
-            <Plus className="w-3 h-3" />
-            Add to my plan
+            <Plus className="w-3.5 h-3.5" />
+            Add this to my plan
           </button>
         )}
       </div>
@@ -761,9 +765,10 @@ export default function AIAdvisor() {
         onDelta: (text) => setMessages([...next, { role: 'assistant', content: stripForStreaming(text) }]),
       })
 
-      // Parse artifacts and tappable answer options from the response
+      // Parse artifacts, tappable answer options, and the plannable marker
       const artifacts = parseArtifacts(reply)
       const options = parseOptions(reply)
+      const plannable = /<plannable\s*\/>/.test(reply)
       const cleanReply = stripArtifactsAndReplies(reply)
 
       const convo = [...next, {
@@ -771,6 +776,7 @@ export default function AIAdvisor() {
         content: cleanReply,
         artifacts: artifacts.length > 0 ? artifacts : undefined,
         options: options.length > 0 ? options : undefined,
+        plannable: plannable || undefined,
       }]
       setMessages(convo)
 

@@ -83,6 +83,22 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 1024, onD
   return full
 }
 
+// Generates a short, concrete "how to get there" mini-guide for one goal or
+// plan step, rendered INLINE in its card (no trip to the advisor chat).
+// Returns plain text: 3–5 numbered steps.
+export async function fetchHowTo(subject, context = '') {
+  const system = `You are a financial advisor inside Garden Financial. Produce a tiny, ultra-concrete how-to for ONE task. Rules:
+- Exactly 3–5 numbered steps, each a single short sentence (imperative voice).
+- Use the user's real numbers when given — specific dollar amounts beat generalities.
+- Name reputable providers where relevant (Fidelity, Schwab, Vanguard, Ally, Marcus, SoFi).
+- No preamble, no closing remarks, no headings — just the numbered steps.`
+  const messages = [{
+    role: 'user',
+    content: `${context ? `My situation:\n${context}\n\n` : ''}Show me exactly how to: ${subject}`,
+  }]
+  return callClaude(messages, system, { maxTokens: 450 })
+}
+
 // Asks Claude to produce a structured action plan via tool-use (non-streaming).
 // Returns { title, steps: [{ text, detail?, apply? }] }.
 export async function requestPlan(messages, systemPrompt) {

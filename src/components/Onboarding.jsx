@@ -110,6 +110,47 @@ const BASE_STEPS = [
   },
 ]
 
+// ─── Adaptive steps — the quiz reshapes itself around earlier answers ──────────
+// A self-employed 50-year-old shouldn't be asked about an employer 401k or see
+// "on my parents' plan" as an insurance option.
+function buildSteps(answers, profileOnly) {
+  const age = Number(answers.age) || 0
+  const emp = answers.employment_type
+
+  return BASE_STEPS
+    // Employer 401k only makes sense for people with an employer.
+    .filter(s => !(s.id === 'retirement' && (emp === 'freelance' || emp === 'student')))
+    // Settings' "Edit profile" skips the money/debts re-entry (managed on /money).
+    .filter(s => !(profileOnly && ['money', 'debts'].includes(s.id)))
+    .map(s => {
+      if (s.id === 'investing' && emp === 'freelance') {
+        return {
+          ...s,
+          sub: "Pick all that apply. Self-employed? A SEP-IRA or Solo 401(k) may fit — your advisor can walk you through it.",
+        }
+      }
+      if (s.id === 'insurance') {
+        let options = [
+          ...s.options.slice(0, 2),
+          { value: 'spouse', label: "Yes — on my spouse's plan", icon: '💑' },
+          ...s.options.slice(2),
+        ]
+        // The parents'-plan option ends at 26 — hide it for anyone older.
+        if (age >= 26) options = options.filter(o => o.value !== 'parents')
+        return { ...s, options }
+      }
+      if (s.id === 'goal' && age >= 45) {
+        // Priorities shift with life stage: retirement readiness leads.
+        const options = [
+          { value: 'retirement_catchup', label: 'Catch up on retirement', icon: '🎯', sub: 'Make the most of catch-up contributions' },
+          ...s.options.map(o => o.value === 'start_investing' ? { ...o, label: 'Grow my investments' } : o),
+        ]
+        return { ...s, options }
+      }
+      return s
+    })
+}
+
 // ─── Preview step (value prop before questions) ────────────────────────────────
 function PreviewStep() {
   const features = [
@@ -234,7 +275,6 @@ export default function Onboarding({ onClose, profileOnly = false }) {
   const { user, profile, setProfile } = useAuth()
   // profileOnly (editing from Settings) shows just the profile questions — no
   // money/debts re-entry (those live on the Plan and stay untouched).
-  const STEPS = profileOnly ? BASE_STEPS.filter(s => !['money', 'debts'].includes(s.id)) : BASE_STEPS
   // When opened manually (editing profile), skip preview + intro → go straight to age
   const startStep = onClose ? 2 : 0
   const [step,    setStep]    = useState(startStep)
@@ -254,9 +294,13 @@ export default function Onboarding({ onClose, profileOnly = false }) {
     debts:            [],   // [{ name, balance }]
   })
 
-  const current = STEPS[step]
-  const isLast  = step === STEPS.length - 1
-  const isFirst = step === 0
+  // Steps recompute as answers change (see buildSteps). Clamp the index in case
+  // an earlier answer just shortened the list.
+  const STEPS = buildSteps(answers, profileOnly)
+  const safeStep = Math.min(step, STEPS.length - 1)
+  const current = STEPS[safeStep]
+  const isLast  = safeStep === STEPS.length - 1
+  const isFirst = safeStep === 0
 
   function set(field, value) {
     setAnswers(prev => ({ ...prev, [field]: value }))
@@ -283,8 +327,16 @@ export default function Onboarding({ onClose, profileOnly = false }) {
 
   // Auto-advance on single select
   function handleSingle(field, value) {
-    set(field, value)
-    setTimeout(() => setStep(s => Math.min(s + 1, STEPS.length - 1)), 260)
+    setAnswers(prev => {
+      const next = { ...prev, [field]: value }
+      // No employer → the 401k question is skipped; record it as N/A so the
+      // profile is still complete.
+      if (field === 'employment_type') {
+        next.employer_401k = (value === 'freelance' || value === 'student') ? 'na' : prev.employer_401k
+      }
+      return next
+    })
+    setTimeout(() => setStep(s => s + 1), 260)
   }
 
   async function finish() {
@@ -297,7 +349,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
       first_name: user.user_metadata?.full_name?.split(' ')[0] ?? null,
       age: Number(answers.age) || null,
       employment_type:  answers.employment_type,
-      employer_401k:    answers.employer_401k,
+      employer_401k:    answers.employer_401k || 'na',
       investment_types: answers.investment_types,
       health_insurance: answers.health_insurance,
       primary_goal:     answers.primary_goal,
@@ -377,7 +429,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
 
   // Progress: exclude preview step from dot count when showing to new users
   const dotsSteps = STEPS.slice(1) // dots = everything after the preview
-  const dotsStep  = Math.max(0, step - 1)
+  const dotsStep  = Math.max(0, safeStep - 1)
 
   // Portal to <body> so the modal escapes the page's z-10 stacking context and
   // sits above the floating mobile nav (z-50), which otherwise overlaps the footer.
@@ -433,7 +485,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
         {/* Body */}
         <div className="px-6 py-6 overflow-y-auto" style={{ minHeight: 300, maxHeight: '60dvh' }}>
           <AnimatePresence mode="wait">
-            <motion.div key={step}
+            <motion.div key={current.id}
               initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.2 }}>
 
@@ -566,7 +618,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
         <div className="px-6 pb-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {!isFirst && (
-              <button onClick={() => setStep(s => s - 1)}
+              <button onClick={() => setStep(Math.max(0, safeStep - 1))}
                 className="flex items-center gap-1.5 text-sm text-white/40 hover:text-white/70 transition-colors">
                 <ArrowLeft className="w-4 h-4" /> Back
               </button>

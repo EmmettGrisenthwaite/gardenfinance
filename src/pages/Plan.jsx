@@ -187,10 +187,16 @@ export default function Plan() {
     if (data) setGoals(gs => [...gs, data])
   }
   const askAdvisor = (q) => navigate('/advisor', { state: { ask: q } })
-  // "Show me how" on a step → advisor builds a tailored, step-by-step guide
-  // (it already knows the user's numbers, so it can recommend amounts).
-  const howTo = (step) => askAdvisor(
-    `Walk me through exactly how to do this, step by step: "${step.text}". Give me the specific actions to take, and based on my situation tell me roughly how much I should aim to put in or contribute.`)
+
+  // Compact situation snapshot for the inline "Show me how" mini-guides — the
+  // AI writes amounts against the user's real numbers without leaving the card.
+  const howToCtx = [
+    `Monthly income $${money.income.toLocaleString()}, expenses $${money.expenses.toLocaleString()} (surplus $${(money.income - money.expenses).toLocaleString()}/mo).`,
+    `Net worth $${netWorth.toLocaleString()}.`,
+    profile?.age ? `Age ${profile.age}.` : '',
+    profile?.employment_type ? `Employment: ${profile.employment_type}.` : '',
+    debts.length ? `Debts: ${debts.map(d => `${d.name} $${Number(d.balance).toLocaleString()}${d.interest_rate ? ` @ ${d.interest_rate}%` : ''}`).join(', ')}.` : 'No debts.',
+  ].filter(Boolean).join(' ')
 
   const stepsLeft   = totalSteps - completedSteps
   const isComplete  = p => p.steps.length > 0 && p.steps.every(s => s.done)
@@ -272,7 +278,7 @@ export default function Plan() {
                   onApply={(step) => applyAndMark(plan.id, step)}
                   onAddStep={(text) => addStep(plan.id, text)}
                   onSetDue={(stepId, due) => setDue(plan.id, stepId, due)}
-                  onHowTo={howTo}
+                  howToContext={howToCtx}
                   onDelete={() => removePlan(plan.id)} />
               ))}
             </div>
@@ -318,7 +324,8 @@ export default function Plan() {
               {goals.map(g => (
                 <GoalItem key={g.id} goal={g} accounts={[]}
                   onEdit={setModal} onDelete={deleteGoal}
-                  onUpdateProgress={updateProgress} onContribute={contribute} />
+                  onUpdateProgress={updateProgress} onContribute={contribute}
+                  howToContext={howToCtx} />
               ))}
             </div>
           )}
