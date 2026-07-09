@@ -23,7 +23,7 @@ const GOAL_INTENT = /\b(sav(e|ing|ings)|buy|buying|afford|down\s?-?payment|house
 const GUIDE_INTENT = /\b(open|start|set\s?up|sign\s?up|create|switch|roll\s?over|move|transfer|enroll)\b[^.?!]*\b(roth|ira|401k|403b|hsa|brokerage|savings? account|hysa|high.?yield|index fund|etf|mutual fund|emergency fund|life insurance|will|credit|account|invest)\b|\bwalk me through\b|\bstep[-\s]?by[-\s]?step\b|\bhow (do|can) i (open|start|set\s?up|sign\s?up|get|invest)\b/i
 
 import {
-  Send, Bot, Sparkles, RefreshCw, ArrowDown, Settings,
+  Send, Bot, Sparkles, RefreshCw, ArrowDown, Settings, ChevronLeft,
   Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Lightbulb, Shield, Sprout,
   ClipboardList, Loader2, Brain, Plus, X,
 } from 'lucide-react'
@@ -607,7 +607,6 @@ export default function AIAdvisor() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) ?? [] } catch { return [] }
   })
   const [input, setInput]               = useState('')
-  const [inputFocused, setInputFocused] = useState(false)
   const [loading, setLoading]           = useState(false)
   const [analyzing, setAnalyzing]       = useState(false)
   const [historyLoading, setHistoryLoading] = useState(true)
@@ -926,6 +925,10 @@ export default function AIAdvisor() {
       <div className="flex-shrink-0 border-b border-white/10 bg-white/5 backdrop-blur-md px-4 md:px-6 py-3.5">
         <div className="flex items-center justify-between max-w-3xl mx-auto">
           <div className="flex items-center gap-3">
+            <Link to="/" aria-label="Back to Garden"
+              className="md:hidden -ml-1.5 p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition-colors">
+              <ChevronLeft className="w-5 h-5" />
+            </Link>
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-lg">
               <Bot className="w-5 h-5 text-white" />
             </div>
@@ -1004,7 +1007,7 @@ export default function AIAdvisor() {
               initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }} transition={{ duration: 0.15 }}
               onClick={() => { setAtBottom(true); bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }}
-              className="fixed bottom-36 md:bottom-24 right-4 z-10 w-9 h-9 bg-white/15 backdrop-blur-md border border-white/10 shadow-lg rounded-full flex items-center justify-center text-white/70 hover:text-emerald-300 hover:border-emerald-400/50 transition-colors"
+              className="fixed bottom-24 right-4 z-10 w-9 h-9 bg-white/15 backdrop-blur-md border border-white/10 shadow-lg rounded-full flex items-center justify-center text-white/70 hover:text-emerald-300 hover:border-emerald-400/50 transition-colors"
             >
               <ArrowDown className="w-4 h-4" />
             </motion.button>
@@ -1094,16 +1097,15 @@ export default function AIAdvisor() {
         </div>
       </div>
 
-      {/* Input */}
-      <div className={`flex-shrink-0 transition-[padding] duration-200 ${inputFocused ? 'pb-0' : 'pb-[76px]'} md:pb-0`}>
+      {/* Input — permanently flush to the bottom edge (the floating tab pill
+          is hidden on this screen, so there's no clearance to reserve). */}
+      <div className="flex-shrink-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="border-t border-white/10 bg-white/5 backdrop-blur-md">
           <form onSubmit={e => { e.preventDefault(); send(input) }} className="max-w-3xl mx-auto px-4 py-3 md:py-4">
             <div className="flex gap-2 items-end">
               <div className="flex-1 bg-white/10 border border-white/[0.11] rounded-2xl px-4 py-3 focus-within:border-emerald-400/50 focus-within:ring-1 focus-within:ring-emerald-400/20 transition-all">
                 <textarea ref={inputRef} value={input}
                   onChange={e => setInput(e.target.value)}
-                  onFocus={() => setInputFocused(true)}
-                  onBlur={() => setInputFocused(false)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}
                   placeholder={noKey ? 'Add your API key to start…' : 'Ask me anything…'}
                   disabled={noKey || loading || analyzing}

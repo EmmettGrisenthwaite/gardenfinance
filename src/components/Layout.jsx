@@ -25,18 +25,48 @@ export default function Layout({ children }) {
   // Secondary pages reached from the gear / links — back-button navigation, so
   // the floating tab bar is hidden (it would imply they're top-level tabs).
   const isSubPage   = pathname === '/settings' || pathname === '/money'
+  // The advisor chat is a full-screen composer (like a real chat app) — the
+  // pill would either overlap the send button or force a permanent dead gap
+  // above it, so it's hidden there too; the chat's own header carries a way back.
+  const hideNav     = isSubPage || pathname === '/advisor'
 
   // Hide the floating nav while a text field is focused (mobile keyboard up) so
-  // it never covers an input's save button.
+  // it never covers an input's save button. Focus events alone are fragile —
+  // tapping a button between two fields (e.g. an inline "add row") blurs the
+  // field for a tick before the next one focuses, which used to pop the nav
+  // back up mid-entry. Debounce the "show again" transition, and back it with
+  // window.visualViewport, which is the actual signal for "keyboard is open."
   const [typing, setTyping] = useState(false)
   useEffect(() => {
     const isField = el => el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' ||
       (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'range', 'file'].includes(el.type)))
-    const onIn  = e => { if (isField(e.target)) setTyping(true) }
-    const onOut = () => setTimeout(() => { if (!isField(document.activeElement)) setTyping(false) }, 0)
+
+    let showTimer = null
+    const hide = () => { clearTimeout(showTimer); setTyping(true) }
+    const scheduleShow = () => {
+      clearTimeout(showTimer)
+      showTimer = setTimeout(() => { if (!isField(document.activeElement)) setTyping(false) }, 250)
+    }
+
+    const onIn  = e => { if (isField(e.target)) hide() }
+    const onOut = () => scheduleShow()
     document.addEventListener('focusin', onIn)
     document.addEventListener('focusout', onOut)
-    return () => { document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut) }
+
+    const vv = window.visualViewport
+    const onViewportResize = () => {
+      if (!vv) return
+      const keyboardOpen = window.innerHeight - vv.height > 120
+      if (keyboardOpen) hide(); else scheduleShow()
+    }
+    vv?.addEventListener('resize', onViewportResize)
+
+    return () => {
+      document.removeEventListener('focusin', onIn)
+      document.removeEventListener('focusout', onOut)
+      vv?.removeEventListener('resize', onViewportResize)
+      clearTimeout(showTimer)
+    }
   }, [])
 
 
@@ -151,7 +181,7 @@ export default function Layout({ children }) {
       {/* ── Mobile HUD: floating pill nav (hidden on sub-pages + while typing) ── */}
       <nav
         className={`md:hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ${
-          (typing || isSubPage) ? 'opacity-0 translate-y-8 pointer-events-none' : 'translate-y-0'}`}
+          (typing || hideNav) ? 'opacity-0 translate-y-8 pointer-events-none' : 'translate-y-0'}`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="flex items-center gap-0.5 bg-black/40 backdrop-blur-2xl rounded-2xl border border-white/[0.11] px-1.5 py-1.5"
