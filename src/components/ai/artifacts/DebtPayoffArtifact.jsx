@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { debtFreedomWithExtra, formatDateLabel, formatMonths } from '@/lib/financeArtifacts'
 import Slider from '@/components/ui/slider'
-import { CreditCard, TrendingDown, Calendar, Zap, Target } from 'lucide-react'
+import { CreditCard, TrendingDown, Calendar, Target } from 'lucide-react'
 
 export default function DebtPayoffArtifact({ debts, onAddStep }) {
   const [extraPayment, setExtraPayment] = useState(50)
@@ -34,7 +34,7 @@ export default function DebtPayoffArtifact({ debts, onAddStep }) {
     )
   }
 
-  const totalDebt = debts.reduce((s, d) => s + (d.balance || 0), 0)
+  const totalDebt = debts.reduce((s, d) => s + (Number(d.balance) || 0), 0)
   const topDebt = [...debts].sort((a, b) => (b.interest_rate || 0) - (a.interest_rate || 0))[0]
 
   return (
@@ -60,7 +60,7 @@ export default function DebtPayoffArtifact({ debts, onAddStep }) {
         <div className="px-4 py-4 space-y-4">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-white/60">Extra monthly payment</span>
+              <span className="text-xs text-white/60">Total monthly payment</span>
               <span className="text-sm font-bold text-emerald-300">+${extraPayment}/mo</span>
             </div>
             <Slider
@@ -91,15 +91,6 @@ export default function DebtPayoffArtifact({ debts, onAddStep }) {
               <p className="text-[10px] text-white/40">Time to payoff</p>
             </div>
           </div>
-
-          {result.monthsSaved > 0 && (
-            <div className="flex items-center gap-2 bg-emerald-500/10 rounded-lg px-3 py-2">
-              <Zap className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              <p className="text-xs text-emerald-200">
-                <strong>{formatMonths(result.monthsSaved)}</strong> faster than minimum payments alone
-              </p>
-            </div>
-          )}
 
           {/* Payoff order */}
           <div className="space-y-2">

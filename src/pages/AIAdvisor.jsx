@@ -26,7 +26,7 @@ const GUIDE_INTENT = /\b(open|start|set\s?up|sign\s?up|create|switch|roll\s?over
 
 import {
   Send, Bot, Sparkles, RefreshCw, ArrowDown, Settings, ChevronLeft,
-  Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Lightbulb, Shield, Sprout,
+  Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Shield, Sprout,
   ClipboardList, Loader2, Brain, Plus, X,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -287,7 +287,7 @@ function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, p
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export default function AIAdvisor() {
-  const { user, profile } = useAuth()
+  const { user, profile, setProfile } = useAuth()
   const location = useLocation()
   const STORAGE_KEY = `advisor-chat-${user.id}`
   const LAST_VISIT_KEY = `advisor-last-visit-${user.id}`
@@ -323,25 +323,31 @@ export default function AIAdvisor() {
   const inputRef     = useRef(null)
   const scrollRef    = useRef(null)
   const isLoadingHistory = useRef(true)
-  // Cache for context to avoid rebuilding on every message
-  const contextCache = useRef({ hash: '', prompt: '' })
-
   // ── Load data ───────────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const [g, d, conv, pl, ac, mems, trend] = await Promise.all([
+      const [g, d, conv, pl, ac, mems] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
         supabase.from('conversations').select('messages').eq('user_id', user.id).single(),
         listPlans(user.id),
         supabase.from('accounts').select('*').eq('user_id', user.id),
         getMemories(),
-        netWorthTrend(user.id, (profile ? computeSnapshot({ profile, accounts: [], debts: [], goals: [] }).netWorth : 0)),
       ])
-      setGoals(g.data ?? [])
-      setDebts(d.data ?? [])
+      if (g.error) throw g.error
+      if (d.error) throw d.error
+      if (ac.error) throw ac.error
+      if (conv.error && conv.error.code !== 'PGRST116') throw conv.error
+      const loadedGoals = g.data ?? []
+      const loadedDebts = d.data ?? []
+      const loadedAccounts = ac.data ?? []
+      const trend = await netWorthTrend(user.id, computeSnapshot({
+        profile, accounts: loadedAccounts, debts: loadedDebts, goals: loadedGoals,
+      }).netWorth)
+      setGoals(loadedGoals)
+      setDebts(loadedDebts)
       setPlans(pl ?? [])
-      setAccounts(ac.data ?? [])
+      setAccounts(loadedAccounts)
       setMemories(mems ?? [])
 
       // Calculate progress delta since last visit
@@ -350,7 +356,10 @@ export default function AIAdvisor() {
       if (pl?.length) {
         stepsDone = pl.reduce((sum, p) => sum + p.steps.filter(s => s.done).length, 0)
       }
-      const lastSteps = lastVisit ? JSON.parse(localStorage.getItem(`advisor-steps-${user.id}`) || '0') : 0
+      let lastSteps = 0
+      try {
+        lastSteps = lastVisit ? Number(JSON.parse(localStorage.getItem(`advisor-steps-${user.id}`) || '0')) : 0
+      } catch { /* corrupted local progress should not block the advisor */ }
       const newSteps = stepsDone - lastSteps
 
       setProgressDelta({
@@ -371,8 +380,12 @@ export default function AIAdvisor() {
       isLoadingHistory.current = false
       setHistoryLoading(false)
     }
-    load()
-  }, [user.id, profile])
+    load().catch(err => {
+      setError(err.message ?? 'Could not load your advisor data.')
+      isLoadingHistory.current = false
+      setHistoryLoading(false)
+    })
+  }, [user.id, profile, LAST_VISIT_KEY, STORAGE_KEY])
 
   // A Plan "Smart next step" can route here with a pre-filled question
   useEffect(() => {
@@ -388,10 +401,19 @@ export default function AIAdvisor() {
     if (isLoadingHistory.current) return
     if (loading || analyzing) return
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)) } catch {}
-    supabase.from('conversations').upsert(
-      { user_id: user.id, messages, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' }
-    ).then(() => {})
+    async function saveConversation() {
+      const payload = { messages, updated_at: new Date().toISOString() }
+      const { data: existing, error: readError } = await supabase.from('conversations')
+        .select('id').eq('user_id', user.id).order('updated_at', { ascending: false }).limit(1)
+      if (readError) throw readError
+      const result = existing?.[0]
+        ? await supabase.from('conversations').update(payload).eq('id', existing[0].id).eq('user_id', user.id)
+        : await supabase.from('conversations').insert({ ...payload, user_id: user.id })
+      if (result.error) throw result.error
+    }
+    saveConversation().catch(saveError => {
+      console.warn('Could not save advisor conversation:', saveError.message)
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, loading, analyzing])
 
@@ -411,22 +433,14 @@ export default function AIAdvisor() {
   const money = useMemo(() => ({
     income:   Number(profile?.monthly_income)   || 0,
     expenses: Number(profile?.monthly_expenses) || 0,
-    netWorth: Number(profile?.net_worth)         || 0,
-  }), [profile])
+    netWorth: accounts.reduce((s, a) => s + (Number(a.balance) || 0), 0)
+      - debts.reduce((s, d) => s + (Number(d.balance) || 0), 0),
+  }), [profile, accounts, debts])
 
   const systemPrompt = useMemo(() => {
     const ctx = buildContext(money, goals, debts, profile, { plans, accounts })
     const memoriesText = formatMemoriesForContext(memories)
-    const hash = `${ctx.length}-${memoriesText.length}-${goals.length}-${debts.length}-${plans.length}-${accounts.length}`
-
-    // Only rebuild if data changed
-    if (contextCache.current.hash === hash) {
-      return contextCache.current.prompt
-    }
-
-    const prompt = buildSystemPrompt(ctx, memoriesText)
-    contextCache.current = { hash, prompt }
-    return prompt
+    return buildSystemPrompt(ctx, memoriesText)
   }, [money, goals, debts, profile, plans, accounts, memories])
 
   const noKey  = !chatConfigured
@@ -562,7 +576,7 @@ export default function AIAdvisor() {
   }
 
   // ── Start over: clear instantly, distill the old thread in the background ───
-  function handleClearChat() {
+  async function handleClearChat() {
     const snapshot = messages
     setMessages([])
     setError(null)
@@ -570,7 +584,8 @@ export default function AIAdvisor() {
     setPendingGoal(null)
     setPendingGuide(null)
     localStorage.removeItem(STORAGE_KEY)
-    supabase.from('conversations').delete().eq('user_id', user.id).then(() => {})
+    const { error: deleteError } = await supabase.from('conversations').delete().eq('user_id', user.id)
+    if (deleteError) setError(deleteError.message ?? 'Could not clear the saved conversation.')
     if (snapshot.length > 2) distillAndSave(snapshot)
   }
 
@@ -604,7 +619,12 @@ export default function AIAdvisor() {
     }
     if (action === 'budget') {
       try {
-        await applyStep(user.id, data)
+        const message = await applyStep(user.id, data)
+        const { data: refreshedProfile, error: profileError } = await supabase.from('profiles')
+          .select('*').eq('id', user.id).single()
+        if (profileError) throw profileError
+        if (refreshedProfile) setProfile(refreshedProfile)
+        flashToast(message)
         setError(null)
       } catch (err) {
         setError(err.message ?? 'Could not apply that step.')
@@ -613,13 +633,35 @@ export default function AIAdvisor() {
     }
     if (action === 'goal') {
       try {
-        await supabase.from('goals').update({ monthly_contribution: data.monthly_contribution }).eq('id', data.id)
+        const { error: updateError } = await supabase.from('goals')
+          .update({ monthly_contribution: data.monthly_contribution })
+          .eq('id', data.id).eq('user_id', user.id)
+        if (updateError) throw updateError
         // Refresh goals
-        const { data: refreshed } = await supabase.from('goals').select('*').eq('user_id', user.id)
+        const { data: refreshed, error: refreshError } = await supabase.from('goals')
+          .select('*').eq('user_id', user.id)
+        if (refreshError) throw refreshError
         setGoals(refreshed ?? [])
       } catch (err) {
         setError(err.message ?? 'Could not update goal.')
       }
+    }
+  }
+
+  async function handleSuggestedGoal(suggestion) {
+    try {
+      const created = await addGoal(user.id, suggestion)
+      setGoals(prev => [...prev, created])
+      const monthly = Number(suggestion.monthly_contribution) || 0
+      await appendSteps(user.id, [{
+        text: monthly > 0
+          ? `Save $${Math.round(monthly).toLocaleString()}/mo toward ${suggestion.name}`
+          : `Start saving toward ${suggestion.name}`,
+      }], { source: 'suggestion', group: suggestion.name })
+      setPlans(await listPlans(user.id))
+    } catch (err) {
+      setError(err.message ?? 'Could not add that goal to your plan.')
+      throw err
     }
   }
 
@@ -795,7 +837,7 @@ export default function AIAdvisor() {
           {pendingGoal && (
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
               <GoalSuggestionCard suggestion={pendingGoal}
-                onAdd={(g) => addGoal(user.id, g)}
+                onAdd={handleSuggestedGoal}
                 onDismiss={() => setPendingGoal(null)} />
             </motion.div>
           )}

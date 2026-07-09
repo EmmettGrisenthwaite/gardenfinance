@@ -202,7 +202,9 @@ function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
             </div>
           )}
           <p className="text-[11px] text-white/40">
-            {srcAcct ? `Moves money out of ${srcAcct.name} into this goal.` : 'No account selected — tracked here only.'}
+            {srcAcct
+              ? `Tracks this contribution against ${srcAcct.name}; account balances are not moved automatically.`
+              : 'This updates the goal tracker only; account balances are not changed.'}
           </p>
         </div>
       ) : mode === 'adjust' ? (

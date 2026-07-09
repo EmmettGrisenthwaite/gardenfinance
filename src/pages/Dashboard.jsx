@@ -84,6 +84,7 @@ export default function Dashboard() {
   const [debts,   setDebts]   = useState([])
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [growth,  setGrowth]  = useState(null)
   const [trend,   setTrend]   = useState(null)
@@ -93,26 +94,36 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function load() {
+      setError(null)
       const [g, d, pl, ac] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
         listPlans(user.id),
         supabase.from('accounts').select('balance').eq('user_id', user.id),
       ])
+      if (g.error) throw g.error
+      if (d.error) throw d.error
+      if (ac.error) throw ac.error
       setGoals(g.data ?? [])
       setDebts(d.data ?? [])
       setPlans(pl)
       setAccounts(ac.data ?? [])
       setLoading(false)
     }
-    load().catch(() => setLoading(false))
+    load().catch(err => {
+      setError(err.message ?? 'Could not load your dashboard.')
+      setLoading(false)
+    })
   }, [user.id])
 
   // After onboarding seeds account value, refetch so the stat isn't stale at $0.
   useEffect(() => {
     if (!profile?.onboarding_complete) return
     supabase.from('accounts').select('balance').eq('user_id', user.id)
-      .then(({ data }) => setAccounts(data ?? []))
+      .then(({ data, error: accountsError }) => {
+        if (accountsError) setError(accountsError.message ?? 'Could not refresh your balances.')
+        else setAccounts(data ?? [])
+      })
   }, [profile?.onboarding_complete, user.id])
 
   // ── Milestone counts ──────────────────────────────────────────────────────────
@@ -159,7 +170,9 @@ export default function Dashboard() {
       if (p.id !== planId) return p
       const steps = p.steps.map(s => s.id === stepId
         ? { ...s, done: true, completedAt: new Date().toISOString() } : s)
-      updatePlanSteps(planId, steps).catch(() => {})
+      updatePlanSteps(planId, steps, user.id).catch(err => {
+        setError(err.message ?? 'Could not save that step.')
+      })
       return { ...p, steps }
     }))
   }
@@ -177,6 +190,7 @@ export default function Dashboard() {
       {/* ── Top: greeting + a single focused nudge ── */}
       <div className="max-w-xl mx-auto w-full px-4 pt-1 pb-2 space-y-2.5 flex-shrink-0">
         <h1 className="font-display text-[22px] font-medium text-white drop-shadow-lg leading-tight">{greeting}, {name}</h1>
+        {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
 
         {/* Assets + net worth — tap to open Your Money */}
         {!loading && (

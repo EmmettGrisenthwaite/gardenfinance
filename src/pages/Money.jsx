@@ -52,6 +52,11 @@ function LineRow({ item, showRate, onUpdate, onDelete }) {
   const [name, setName] = useState(item.name ?? '')
   const [bal, setBal]   = useState(String(item.balance ?? 0))
   const [rate, setRate] = useState(item.interest_rate != null ? String(item.interest_rate) : '')
+  useEffect(() => {
+    setName(item.name ?? '')
+    setBal(String(item.balance ?? 0))
+    setRate(item.interest_rate != null ? String(item.interest_rate) : '')
+  }, [item.name, item.balance, item.interest_rate])
   return (
     <div className="flex items-center gap-1.5 py-1.5">
       <input value={name} onChange={e => setName(e.target.value)}
@@ -157,6 +162,7 @@ export default function Money() {
   const [income, setIncome]     = useState(0)
   const [expenses, setExpenses] = useState(0)
   const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState(null)
 
   useEffect(() => {
     async function load() {
@@ -164,13 +170,18 @@ export default function Money() {
         supabase.from('accounts').select('*').eq('user_id', user.id).order('created_at'),
         supabase.from('debts').select('*').eq('user_id', user.id).order('created_at'),
       ])
+      if (ac.error) throw ac.error
+      if (d.error) throw d.error
       setAccounts(ac.data ?? [])
       setDebts(d.data ?? [])
       setIncome(Number(profile?.monthly_income) || 0)
       setExpenses(Number(profile?.monthly_expenses) || 0)
       setLoading(false)
     }
-    load().catch(() => setLoading(false))
+    load().catch(err => {
+      setError(err.message ?? 'Could not load your money data.')
+      setLoading(false)
+    })
   }, [user.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived totals ──
@@ -194,14 +205,23 @@ export default function Money() {
     if (loading) return
     if (Number(profile?.net_worth) === netWorth) return
     setProfile(p => (p ? { ...p, net_worth: netWorth } : p))
-    supabase.from('profiles').update({ net_worth: netWorth }).eq('id', user.id).then(() => {}, () => {})
+    supabase.from('profiles').update({ net_worth: netWorth }).eq('id', user.id)
+      .then(({ error: profileError }) => {
+        if (profileError) setError(profileError.message ?? 'Could not sync net worth.')
+      })
   }, [netWorth, loading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Profile cash flow ──
   async function saveMoney(fields) {
+    setError(null)
+    const { data, error: saveError } = await supabase.from('profiles')
+      .update(fields).eq('id', user.id).select().single()
+    if (saveError) {
+      setError(saveError.message ?? 'Could not save that amount.')
+      return
+    }
     if ('monthly_income'   in fields) setIncome(fields.monthly_income)
     if ('monthly_expenses' in fields) setExpenses(fields.monthly_expenses)
-    const { data } = await supabase.from('profiles').update(fields).eq('id', user.id).select().single()
     if (data) setProfile(data)
   }
 
@@ -210,19 +230,33 @@ export default function Money() {
     const v = Math.max(0, Number(val) || 0)
     const existing = accounts.find(a => a.type === type)
     if (existing) {
+      const { error: updateError } = await supabase.from('accounts').update({ balance: v })
+        .eq('id', existing.id).eq('user_id', user.id)
+      if (updateError) {
+        setError(updateError.message ?? 'Could not save that account balance.')
+        return
+      }
       setAccounts(prev => prev.map(a => a.id === existing.id ? { ...a, balance: v } : a))
-      await supabase.from('accounts').update({ balance: v }).eq('id', existing.id)
     } else {
-      const { data } = await supabase.from('accounts').insert({ user_id: user.id, name, type, balance: v }).select().single()
+      const { data, error: insertError } = await supabase.from('accounts')
+        .insert({ user_id: user.id, name, type, balance: v }).select().single()
+      if (insertError) {
+        setError(insertError.message ?? 'Could not create that account.')
+        return
+      }
       if (data) setAccounts(prev => [...prev, data])
     }
   }
 
   // ── Itemized accounts (investments, property, vehicles, other) ──
   async function addAccount(type, { name, balance, interest_rate }) {
-    const { data } = await supabase.from('accounts')
+    const { data, error: insertError } = await supabase.from('accounts')
       .insert({ user_id: user.id, name, type, balance: Math.max(0, Number(balance) || 0), interest_rate: interest_rate ?? null })
       .select().single()
+    if (insertError) {
+      setError(insertError.message ?? 'Could not add that account.')
+      return
+    }
     if (data) setAccounts(prev => [...prev, data])
   }
   async function updateAccount(id, fields) {
@@ -230,19 +264,33 @@ export default function Money() {
     if ('name' in fields)          patch.name = fields.name.trim() || 'Account'
     if ('balance' in fields)       patch.balance = Math.max(0, Number(fields.balance) || 0)
     if ('interest_rate' in fields) patch.interest_rate = fields.interest_rate
+    const { error: updateError } = await supabase.from('accounts').update(patch)
+      .eq('id', id).eq('user_id', user.id)
+    if (updateError) {
+      setError(updateError.message ?? 'Could not update that account.')
+      return
+    }
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a))
-    await supabase.from('accounts').update(patch).eq('id', id)
   }
-  function deleteAccount(id) {
+  async function deleteAccount(id) {
+    const { error: deleteError } = await supabase.from('accounts').delete()
+      .eq('id', id).eq('user_id', user.id)
+    if (deleteError) {
+      setError(deleteError.message ?? 'Could not delete that account.')
+      return
+    }
     setAccounts(prev => prev.filter(a => a.id !== id))
-    supabase.from('accounts').delete().eq('id', id).then(() => {})
   }
 
   // ── Debts (with interest rate) ──
   async function addDebt({ name, balance, interest_rate }) {
-    const { data } = await supabase.from('debts')
+    const { data, error: insertError } = await supabase.from('debts')
       .insert({ user_id: user.id, name, balance: Math.max(0, Number(balance) || 0), interest_rate: interest_rate ?? null })
       .select().single()
+    if (insertError) {
+      setError(insertError.message ?? 'Could not add that debt.')
+      return
+    }
     if (data) setDebts(prev => [...prev, data])
   }
   async function updateDebt(id, fields) {
@@ -250,12 +298,22 @@ export default function Money() {
     if ('name' in fields)          patch.name = fields.name.trim() || 'Debt'
     if ('balance' in fields)       patch.balance = Math.max(0, Number(fields.balance) || 0)
     if ('interest_rate' in fields) patch.interest_rate = fields.interest_rate
+    const { error: updateError } = await supabase.from('debts').update(patch)
+      .eq('id', id).eq('user_id', user.id)
+    if (updateError) {
+      setError(updateError.message ?? 'Could not update that debt.')
+      return
+    }
     setDebts(prev => prev.map(d => d.id === id ? { ...d, ...patch } : d))
-    await supabase.from('debts').update(patch).eq('id', id)
   }
-  function deleteDebt(id) {
+  async function deleteDebt(id) {
+    const { error: deleteError } = await supabase.from('debts').delete()
+      .eq('id', id).eq('user_id', user.id)
+    if (deleteError) {
+      setError(deleteError.message ?? 'Could not delete that debt.')
+      return
+    }
     setDebts(prev => prev.filter(d => d.id !== id))
-    supabase.from('debts').delete().eq('id', id).then(() => {})
   }
 
   return (
@@ -271,6 +329,12 @@ export default function Money() {
         </button>
         <h1 className="font-display text-[22px] font-medium text-white">Your Money</h1>
       </div>
+
+      {error && (
+        <p className="mb-4 text-xs text-rose-200 bg-rose-500/15 border border-rose-400/25 px-3 py-2 rounded-lg">
+          {error}
+        </p>
+      )}
 
       {/* Net worth hero */}
       <div className="bg-gradient-to-br from-emerald-500/[0.12] to-emerald-700/[0.06] rounded-2xl border border-emerald-400/20 px-4 py-4 mb-4">

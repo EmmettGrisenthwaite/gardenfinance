@@ -91,7 +91,7 @@ const goalPct    = (g) => Math.min(Math.round((Number(g.current_amount) / (Numbe
 const plantStage = (p) => p >= 100 ? 5 : p >= 70 ? 4 : p >= 45 ? 3 : p >= 20 ? 2 : p > 0 ? 1 : 0
 
 // Contextual icon from a goal's name (falls back to type)
-function goalIcon(name = '', type = 'savings', done = false) {
+function goalIcon(name = '', type = 'savings') {
   const n = name.toLowerCase()
   const has = (...k) => k.some(w => n.includes(w))
   if (has('house', 'home', 'mortgage', 'down payment', 'apartment', 'condo')) return '🏡'
@@ -278,7 +278,7 @@ function GltfToon({ url, position = [0,0,0], rotation = [0,0,0], scale = 1,
         child.material    = new THREE.MeshToonMaterial({ color: new THREE.Color(col), gradientMap: getToonGrad() })
         child.castShadow  = true
         child.receiveShadow = true
-      } catch (_) {}
+    } catch {}
     })
     return c
   }, [scene, leafColor, trunkColor])
@@ -1382,7 +1382,7 @@ function Birds({ count = 3 }) {
     <group>
       {configs.map((c,i) => (
         <group key={i} ref={el=>{refs.current[i]=el}}>
-          {[[-0.32,0.32],[-0.32,-0.32]].map(([x,z],j) => (
+          {[[-0.32,0.32],[-0.32,-0.32]].map(([x],j) => (
             <mesh key={j} position={[x,0,0]} rotation={[0,0,j===0?0.32:-0.32]}>
               <boxGeometry args={[0.44,0.048,0.12]} />
               <meshToonMaterial color="#1c1c2e" gradientMap={getToonGrad()} />
@@ -1647,7 +1647,7 @@ function CelebrationBurst() {
 
 // ─── Island group ─────────────────────────────────────────────────────────────
 function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal }) {
-  const { darkClouds, windStrength, netWorthTier = 0,
+  const { windStrength, netWorthTier = 0,
           savingsTier = 0, investTier = 0 } = weather
   // Goals fill the quadrant slots in creation order (stable placement).
   const sortedGoals = [...goals].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
@@ -1721,7 +1721,7 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal }) {
 }
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
-function Scene({ goals, debts, stage, weather, onSelectGoal, onAddGoal }) {
+function Scene({ goals, stage, weather, onSelectGoal, onAddGoal }) {
   const { cloudCount, darkClouds, hasDeficit, deficitSeverity, pollenCount, butterflyCount, windStrength, netWorthTier = 0 } = weather
   return (
     <>
@@ -1831,14 +1831,14 @@ class GardenErrorBoundary extends Component {
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 const Garden3D = memo(function Garden3D({ onSelectGoal, onAddGoal }) {
-  const { stage, weather, goals, debts } = useGarden()
+  const { stage, weather, goals } = useGarden()
   const containerRef = useRef()
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    let active = false, sx = 0, sy = 0, st = 0, moved = false, pid = null
+    let active = false, sx = 0, moved = false, pid = null
     const down = (e) => {
-      active = true; moved = false; sx = e.clientX; sy = e.clientY; st = performance.now(); pid = e.pointerId
+      active = true; moved = false; sx = e.clientX; pid = e.pointerId
     }
     const move = (e) => {
       if (!active || e.pointerId !== pid) return
@@ -1855,7 +1855,7 @@ const Garden3D = memo(function Garden3D({ onSelectGoal, onAddGoal }) {
     const up = (e) => {
       if (!active || e.pointerId !== pid) return
       active = false; isCanvasDragging = false; pid = null
-      if (moved) { try { el.releasePointerCapture(e.pointerId) } catch (_) {} }
+      if (moved) { try { el.releasePointerCapture(e.pointerId) } catch {} }
     }
     el.addEventListener('pointerdown', down)
     el.addEventListener('pointermove', move)
@@ -1883,7 +1883,7 @@ const Garden3D = memo(function Garden3D({ onSelectGoal, onAddGoal }) {
           <AdaptiveDpr pixelated />
           <PerformanceMonitor>
             <Suspense fallback={null}>
-              <Scene goals={goals} debts={debts} stage={stage} weather={weather}
+              <Scene goals={goals} stage={stage} weather={weather}
                 onSelectGoal={onSelectGoal} onAddGoal={onAddGoal} />
             </Suspense>
           </PerformanceMonitor>

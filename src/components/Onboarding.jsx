@@ -291,6 +291,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
   const startStep = onClose ? 2 : 0
   const [step,    setStep]    = useState(startStep)
   const [saving,  setSaving]  = useState(false)
+  const [error,   setError]   = useState(null)
   const [answers, setAnswers] = useState({
     age:              profile?.age             ? String(profile.age) : '',
     employment_type:  profile?.employment_type ?? '',
@@ -353,6 +354,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
 
   async function finish() {
     setSaving(true)
+    setError(null)
 
     // Profile-only edit (from Settings): just save the quiz answers — money,
     // accounts, debts, and net worth are managed on the Plan and left untouched.
@@ -369,7 +371,12 @@ export default function Onboarding({ onClose, profileOnly = false }) {
     }
 
     if (profileOnly) {
-      const { data } = await supabase.from('profiles').upsert(profileFields, { onConflict: 'id' }).select().single()
+      const { data, error: profileError } = await supabase.from('profiles').upsert(profileFields, { onConflict: 'id' }).select().single()
+      if (profileError) {
+        setError(profileError.message ?? 'Could not save your profile.')
+        setSaving(false)
+        return
+      }
       if (data) setProfile(data)
       setSaving(false)
       onClose?.()
@@ -395,25 +402,45 @@ export default function Onboarding({ onClose, profileOnly = false }) {
       { type: 'checking',  name: 'Checking',    balance: checking },
       { type: 'savings',   name: 'Savings',     balance: savings },
       { type: 'brokerage', name: 'Investments', balance: brokerage },
-    ].filter(a => a.balance > 0)
+    ]
     if (accountRows.length) {
       try {
-        const { data: existing } = await supabase.from('accounts').select('id, type').eq('user_id', user.id)
+        const { data: existing, error: readError } = await supabase.from('accounts').select('id, type').eq('user_id', user.id)
+        if (readError) throw readError
         for (const a of accountRows) {
           const match = existing?.find(e => e.type === a.type)
-          if (match) await supabase.from('accounts').update({ balance: a.balance, name: a.name }).eq('id', match.id)
-          else       await supabase.from('accounts').insert({ ...a, user_id: user.id })
+          const result = match
+            ? await supabase.from('accounts').update({ balance: a.balance, name: a.name }).eq('id', match.id).eq('user_id', user.id)
+            : await supabase.from('accounts').insert({ ...a, user_id: user.id })
+          if (result.error) throw result.error
         }
-      } catch { /* non-blocking */ }
+      } catch (err) {
+        setError(err.message ?? 'Could not save your account balances.')
+        setSaving(false)
+        return
+      }
     }
     // Seed debts so the advisor can plan payoff from day one.
     if (validDebts.length) {
-      await supabase.from('debts')
-        .insert(validDebts.map(d => ({
-          user_id: user.id, name: d.name.trim(), balance: Number(d.balance),
-          interest_rate: d.interest_rate ?? null,
-        })))
-        .then(() => {}, () => {})
+      const { data: existingDebts, error: debtReadError } = await supabase.from('debts')
+        .select('id, name').eq('user_id', user.id)
+      if (debtReadError) {
+        setError(debtReadError.message ?? 'Could not read your debts.')
+        setSaving(false)
+        return
+      }
+      for (const debt of validDebts) {
+        const name = debt.name.trim()
+        const match = existingDebts?.find(d => d.name?.trim().toLowerCase() === name.toLowerCase())
+        const result = match
+          ? await supabase.from('debts').update({ name, balance: Number(debt.balance), interest_rate: debt.interest_rate ?? null }).eq('id', match.id).eq('user_id', user.id)
+          : await supabase.from('debts').insert({ user_id: user.id, name, balance: Number(debt.balance), interest_rate: debt.interest_rate ?? null })
+        if (result.error) {
+          setError(result.error.message ?? 'Could not save your debts.')
+          setSaving(false)
+          return
+        }
+      }
     }
 
     const payload = {
@@ -422,22 +449,32 @@ export default function Onboarding({ onClose, profileOnly = false }) {
       monthly_expenses: Number(answers.monthly_expenses) || 0,
       net_worth:        netWorth,
     }
-    const { data } = await supabase
+    const { data, error: profileError } = await supabase
       .from('profiles')
       .upsert(payload, { onConflict: 'id' })
       .select()
       .single()
+    if (profileError) {
+      setError(profileError.message ?? 'Could not finish setup.')
+      setSaving(false)
+      return
+    }
     setProfile(data)
     setSaving(false)
     onClose?.()
   }
 
   async function skip() {
-    const { data } = await supabase
+    setError(null)
+    const { data, error: profileError } = await supabase
       .from('profiles')
       .upsert({ id: user.id, onboarding_complete: true }, { onConflict: 'id' })
       .select()
       .single()
+    if (profileError) {
+      setError(profileError.message ?? 'Could not skip setup.')
+      return
+    }
     setProfile(data)
     onClose?.()
   }
@@ -628,6 +665,10 @@ export default function Onboarding({ onClose, profileOnly = false }) {
             </motion.div>
           </AnimatePresence>
         </div>
+
+        {error && (
+          <p role="alert" className="px-6 pb-3 text-xs text-rose-300">{error}</p>
+        )}
 
         {/* Footer */}
         <div className="px-6 pb-5 flex items-center justify-between">

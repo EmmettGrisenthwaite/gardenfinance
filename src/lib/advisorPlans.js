@@ -150,13 +150,15 @@ export async function savePlan(userId, plan, { source = 'advisor' } = {}) {
 
 // Create a goal directly (used by the advisor's inline goal suggestions).
 export async function addGoal(userId, g) {
+  const targetAmount = Math.max(0, Math.round(Number(g.target_amount) || 0))
+  const monthlyContribution = Math.max(0, Math.round(Number(g.monthly_contribution) || 0))
   const { data, error } = await supabase.from('goals').insert({
     user_id:              userId,
     name:                 g.name || 'New goal',
     goal_type:            g.goal_type === 'investment' ? 'investment' : 'savings',
-    target_amount:        Math.round(g.target_amount) || 0,
+    target_amount:        targetAmount,
     current_amount:       0,
-    monthly_contribution: Math.round(g.monthly_contribution) || 0,
+    monthly_contribution: monthlyContribution,
     deadline:             null,
   }).select().single()
   if (error) throw error
@@ -176,13 +178,15 @@ export function applyLabel(apply) {
 // into the retired `budgets` table, which nothing displays.)
 export async function applyStep(userId, apply) {
   if (apply?.type === 'goal') {
+    const targetAmount = Math.max(0, Number(apply.target_amount) || 0)
+    const monthlyContribution = Math.max(0, Number(apply.monthly_contribution) || 0)
     const { error } = await supabase.from('goals').insert({
       user_id:              userId,
       name:                 apply.name || 'New goal',
       goal_type:            apply.goal_type === 'investment' ? 'investment' : 'savings',
-      target_amount:        Number(apply.target_amount) || 0,
+      target_amount:        targetAmount,
       current_amount:       0,
-      monthly_contribution: Number(apply.monthly_contribution) || 0,
+      monthly_contribution: monthlyContribution,
       deadline:             null,
     })
     if (error) throw error
@@ -194,7 +198,8 @@ export async function applyStep(userId, apply) {
     const { data: prof, error: readErr } = await supabase.from('profiles')
       .select(col).eq('id', userId).single()
     if (readErr) throw readErr
-    const next = Math.max(0, Number(prof?.[col] || 0) + Number(apply.amount || 0))
+    const amount = Math.max(0, Number(apply.amount) || 0)
+    const next = Math.max(0, Number(prof?.[col] || 0) + amount)
     const { error } = await supabase.from('profiles').update({ [col]: next }).eq('id', userId)
     if (error) throw error
     return `${isIncome ? 'Income' : 'Expenses'} updated → $${next.toLocaleString()}/mo`
@@ -203,13 +208,17 @@ export async function applyStep(userId, apply) {
 }
 
 // ── Persistence ───────────────────────────────────────────────────────────────
-export async function updatePlanSteps(planId, steps) {
-  const { error } = await supabase.from('advisor_plans')
+export async function updatePlanSteps(planId, steps, userId = null) {
+  let query = supabase.from('advisor_plans')
     .update({ steps, updated_at: new Date().toISOString() }).eq('id', planId)
+  if (userId) query = query.eq('user_id', userId)
+  const { error } = await query
   if (error) throw error
 }
 
-export async function deletePlan(planId) {
-  const { error } = await supabase.from('advisor_plans').delete().eq('id', planId)
+export async function deletePlan(planId, userId = null) {
+  let query = supabase.from('advisor_plans').delete().eq('id', planId)
+  if (userId) query = query.eq('user_id', userId)
+  const { error } = await query
   if (error) throw error
 }

@@ -32,7 +32,8 @@ export default function Plan() {
   const [error,   setError]   = useState(null)
 
   async function loadGoals() {
-    const { data: g } = await supabase.from('goals').select('*').eq('user_id', user.id).order('created_at')
+    const { data: g, error: goalError } = await supabase.from('goals').select('*').eq('user_id', user.id).order('created_at')
+    if (goalError) throw goalError
     setGoals(g ?? [])
   }
 
@@ -44,6 +45,9 @@ export default function Plan() {
         getPlan(user.id),
         supabase.from('accounts').select('*').eq('user_id', user.id),
       ])
+      if (g.error) throw g.error
+      if (d.error) throw d.error
+      if (ac.error) throw ac.error
       setGoals(g.data ?? [])
       setDebts(d.data ?? [])
       setPlan(pl)
@@ -55,7 +59,10 @@ export default function Plan() {
       })
       setLoading(false)
     }
-    load().catch(() => setLoading(false))
+    load().catch(err => {
+      setError(err.message ?? 'Could not load your plan.')
+      setLoading(false)
+    })
   }, [user.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Steps and Goals are different animals (a checklist you do vs money targets
@@ -104,7 +111,10 @@ export default function Plan() {
     if (loading) return
     if (Number(profile?.net_worth) === netWorth) return
     setProfile(p => (p ? { ...p, net_worth: netWorth } : p))
-    supabase.from('profiles').update({ net_worth: netWorth }).eq('id', user.id).then(() => {}, () => {})
+    supabase.from('profiles').update({ net_worth: netWorth }).eq('id', user.id)
+      .then(({ error: profileError }) => {
+        if (profileError) setError(profileError.message ?? 'Could not sync net worth.')
+      })
   }, [netWorth, loading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fire the celebration synchronously when an action crosses a stage boundary.
@@ -121,7 +131,9 @@ export default function Plan() {
     setPlan(prev => {
       if (!prev) return prev
       const next = mutate(prev.steps)
-      updatePlanSteps(prev.id, next).catch(() => {})
+      updatePlanSteps(prev.id, next, user.id).catch(err => {
+        setError(err.message ?? 'Could not save that plan change.')
+      })
       return { ...prev, steps: next }
     })
   }
@@ -142,12 +154,16 @@ export default function Plan() {
 
   // The user's own step — their intent wins, no dedupe second-guessing.
   async function addOwnStep(text) {
-    const step = normalizeSteps([{ text, source: 'user', addedAt: new Date().toISOString() }])[0]
-    if (plan) {
-      editSteps(list => [...list, step])
-    } else {
-      const { plan: created } = await appendSteps(user.id, [step], { source: 'user' })
-      setPlan(created)
+    try {
+      const step = normalizeSteps([{ text, source: 'user', addedAt: new Date().toISOString() }])[0]
+      if (plan) {
+        editSteps(list => [...list, step])
+      } else {
+        const { plan: created } = await appendSteps(user.id, [step], { source: 'user' })
+        setPlan(created)
+      }
+    } catch (err) {
+      setError(err.message ?? 'Could not add that step.')
     }
   }
 
@@ -158,26 +174,35 @@ export default function Plan() {
     const t = setTimeout(() => setClearArmed(false), 2500)
     return () => clearTimeout(t)
   }, [clearArmed])
-  function clearPlan() {
+  async function clearPlan() {
     if (!plan) return
-    deletePlan(plan.id).catch(() => {})
-    setPlan(null)
-    setClearArmed(false)
+    try {
+      await deletePlan(plan.id, user.id)
+      setPlan(null)
+      setClearArmed(false)
+    } catch (err) {
+      setError(err.message ?? 'Could not clear your plan.')
+    }
   }
 
   async function applyAndMark(step) {
-    await applyStep(user.id, step.apply)
-    editSteps(list => list.map(s => s.id === step.id ? { ...s, applied: true } : s))
-    if (step.apply?.type === 'budget') {
-      // The apply changed profile income/expenses — refresh so the page and the
-      // advisor read the new truth immediately.
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (data) {
-        setProfile(data)
-        setMoney(m => ({ ...m, income: Number(data.monthly_income) || 0, expenses: Number(data.monthly_expenses) || 0 }))
+    try {
+      await applyStep(user.id, step.apply)
+      editSteps(list => list.map(s => s.id === step.id ? { ...s, applied: true } : s))
+      if (step.apply?.type === 'budget') {
+        // The apply changed profile income/expenses — refresh so the page and the
+        // advisor read the new truth immediately.
+        const { data, error: profileError } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+        if (profileError) throw profileError
+        if (data) {
+          setProfile(data)
+          setMoney(m => ({ ...m, income: Number(data.monthly_income) || 0, expenses: Number(data.monthly_expenses) || 0 }))
+        }
       }
+      if (step.apply?.type === 'goal') await loadGoals()
+    } catch (err) {
+      setError(err.message ?? 'Could not apply that step.')
     }
-    if (step.apply?.type === 'goal') loadGoals()
   }
 
   // ── One-tap starter plan (the advisor's brain, right here) ───────────────────
@@ -205,23 +230,44 @@ export default function Plan() {
 
   // ── Goal handlers ────────────────────────────────────────────────────────────
   async function saveGoal(payload) {
-    if (modal && modal !== 'new') await supabase.from('goals').update(payload).eq('id', modal.id)
-    else await supabase.from('goals').insert({ ...payload, user_id: user.id })
-    setModal(null)
-    loadGoals()
+    try {
+      const result = modal && modal !== 'new'
+        ? await supabase.from('goals').update(payload).eq('id', modal.id).eq('user_id', user.id).select().single()
+        : await supabase.from('goals').insert({ ...payload, user_id: user.id }).select().single()
+      if (result.error) throw result.error
+      if (result.data) {
+        setGoals(prev => modal && modal !== 'new'
+          ? prev.map(g => g.id === result.data.id ? result.data : g)
+          : [...prev, result.data])
+      }
+      setModal(null)
+    } catch (err) {
+      setError(err.message ?? 'Could not save that goal.')
+    }
   }
-  function deleteGoal(id) {
+  async function deleteGoal(id) {
+    const previous = goals
     setGoals(gs => gs.filter(g => g.id !== id))
-    supabase.from('goals').delete().eq('id', id).then(() => {})
+    const { error } = await supabase.from('goals').delete().eq('id', id).eq('user_id', user.id)
+    if (error) {
+      setGoals(previous)
+      setError(error.message ?? 'Could not delete that goal.')
+    }
   }
-  function updateProgress(id, amount) {
+  async function updateProgress(id, amount) {
     const goal = goals.find(g => g.id === id)
     if (goal && Number(goal.target_amount) > 0) {
       const wasReached = Number(goal.current_amount) >= Number(goal.target_amount)
       if (!wasReached && amount >= Number(goal.target_amount)) celebrate(1, `Reached ${goal.name}`)
     }
+    const previous = goals
     setGoals(gs => gs.map(g => g.id === id ? { ...g, current_amount: amount } : g))
-    supabase.from('goals').update({ current_amount: amount }).eq('id', id).then(() => {})
+    const { error } = await supabase.from('goals').update({ current_amount: amount })
+      .eq('id', id).eq('user_id', user.id)
+    if (error) {
+      setGoals(previous)
+      setError(error.message ?? 'Could not update that goal.')
+    }
   }
   function contribute(goalId, amount) {
     const goal = goals.find(g => g.id === goalId)
@@ -262,11 +308,15 @@ export default function Plan() {
     // engine passes it as a hint) instead of pretending they're at $0.
     const target = Math.round(preset.target_amount) || 0
     const startAt = Math.min(Math.max(0, Math.round(preset.current_amount_hint || 0)), target)
-    const { data } = await supabase.from('goals').insert({
+    const { data, error } = await supabase.from('goals').insert({
       user_id: user.id, name: preset.name, goal_type: preset.goal_type || 'savings',
       target_amount: target, current_amount: startAt,
       monthly_contribution: Math.round(preset.monthly_contribution) || 0, deadline: null,
     }).select().single()
+    if (error) {
+      setError(error.message ?? 'Could not add that goal.')
+      return
+    }
     if (data) setGoals(gs => [...gs, data])
   }
 

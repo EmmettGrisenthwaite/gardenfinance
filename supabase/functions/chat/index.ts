@@ -17,6 +17,11 @@ const SUPABASE_URL       = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_ANON_KEY  = Deno.env.get('SUPABASE_ANON_KEY')!
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
+const ALLOWED_MODELS = new Set([DEFAULT_MODEL])
+const MAX_REQUEST_BYTES = 256_000
+const MAX_MESSAGES = 80
+const MAX_MESSAGE_CHARS = 12_000
+const MAX_SYSTEM_CHARS = 60_000
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,6 +39,11 @@ function json(body: unknown, status = 200) {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (req.method !== 'POST')    return json({ error: 'Method not allowed' }, 405)
+
+  const contentLength = Number(req.headers.get('content-length') ?? 0)
+  if (contentLength > MAX_REQUEST_BYTES) {
+    return json({ error: 'Request is too large' }, 413)
+  }
 
   if (!ANTHROPIC_API_KEY) {
     return json({ error: 'Server is missing ANTHROPIC_API_KEY. Run: supabase secrets set ANTHROPIC_API_KEY=...' }, 500)
@@ -60,10 +70,23 @@ Deno.serve(async (req) => {
   } catch {
     return json({ error: 'Invalid JSON body' }, 400)
   }
-  const { messages, system, maxTokens = 1024, model = DEFAULT_MODEL, stream = false, tool } = payload
+  const { messages, system, maxTokens = 1024, model: requestedModel = DEFAULT_MODEL, stream = false, tool } = payload
   if (!Array.isArray(messages) || messages.length === 0) {
     return json({ error: 'messages[] is required' }, 400)
   }
+  if (messages.length > MAX_MESSAGES || messages.some((message) => {
+    if (!message || typeof message !== 'object') return true
+    const item = message as { role?: unknown; content?: unknown }
+    return !['user', 'assistant'].includes(String(item.role))
+      || typeof item.content !== 'string'
+      || item.content.length > MAX_MESSAGE_CHARS
+  })) {
+    return json({ error: 'messages[] contains an invalid or oversized message' }, 400)
+  }
+  if (system !== undefined && (typeof system !== 'string' || system.length > MAX_SYSTEM_CHARS)) {
+    return json({ error: 'system prompt is invalid or too large' }, 400)
+  }
+  const model = ALLOWED_MODELS.has(String(requestedModel)) ? String(requestedModel) : DEFAULT_MODEL
   // Clamp to keep costs/abuse bounded
   const max_tokens = Math.min(Math.max(Number(maxTokens) || 1024, 1), 2048)
 

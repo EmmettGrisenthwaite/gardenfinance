@@ -2,46 +2,36 @@
 // Additional artifact calculations that build on the core finance engine.
 // Import core exports directly from './finance' when needed.
 
-import { debtFreedom as baseDebtFreedom } from './finance'
+import { debtFreedom as baseDebtFreedom, THRESHOLDS } from './finance.js'
 
 /**
- * Enhanced debt freedom calculation with extra monthly payment slider.
- * Returns full breakdown for the interactive artifact.
+ * Debt freedom calculation for a chosen total monthly payment.
+ * Minimum payments are not stored by the app, so this deliberately avoids
+ * claiming a comparison against "minimum payments" that cannot be calculated.
  */
-export function debtFreedomWithExtra(debts, extraPayment = 0) {
-  const base = baseDebtFreedom(debts, extraPayment)
+export function debtFreedomWithExtra(debts, monthlyPayment = 0) {
+  const base = baseDebtFreedom(debts, monthlyPayment)
   if (!base || base.stuck) {
     return {
       monthsToFreedom: 0,
-      totalInterestSaved: 0,
+      totalInterest: 0,
       payoffOrder: [],
-      monthlyBreakdown: [],
       debtFreeDate: null,
-      baselineMonths: 0,
-      monthsSaved: 0,
       stuck: true,
     }
   }
-
-  // Calculate baseline (minimum payments only, no extra)
-  const baseline = baseDebtFreedom(debts, 0)
-  const baselineMonths = baseline?.months ?? 0
-  const monthsSaved = baselineMonths > 0 ? baselineMonths - base.months : 0
 
   const debtFreeDate = new Date()
   debtFreeDate.setMonth(debtFreeDate.getMonth() + base.months)
 
   return {
     monthsToFreedom: base.months,
-    totalInterestSaved: 0, // Would need baseline interest calc
+    totalInterest: base.totalInterest,
     payoffOrder: debts
-      .filter((d) => (d.balance || 0) > 0)
-      .sort((a, b) => (b.interest_rate || 0) - (a.interest_rate || 0))
+      .filter((d) => Number(d.balance || 0) > 0)
+      .sort((a, b) => Number(b.interest_rate || 0) - Number(a.interest_rate || 0))
       .map((d) => d.name),
-    monthlyBreakdown: [], // Simplified — could add month-by-month if needed
     debtFreeDate,
-    baselineMonths,
-    monthsSaved,
     stuck: false,
   }
 }
@@ -50,7 +40,7 @@ export function debtFreedomWithExtra(debts, extraPayment = 0) {
  * Calculate goal projection based on monthly contribution.
  */
 export function getProjection(goal, monthlyContribution) {
-  if (!goal || !goal.target_amount || monthlyContribution <= 0) {
+  if (!goal || !goal.target_amount) {
     return {
       reachedByDate: null,
       monthsToGoal: Infinity,
@@ -60,7 +50,10 @@ export function getProjection(goal, monthlyContribution) {
     }
   }
 
-  const remaining = (goal.target_amount || 0) - (goal.current_amount || 0)
+  const target = Number(goal.target_amount) || 0
+  const current = Number(goal.current_amount) || 0
+  const monthly = Number(monthlyContribution) || 0
+  const remaining = target - current
   if (remaining <= 0) {
     return {
       reachedByDate: new Date(),
@@ -70,8 +63,28 @@ export function getProjection(goal, monthlyContribution) {
       remaining: 0,
     }
   }
+  if (monthly <= 0) {
+    return {
+      reachedByDate: null,
+      monthsToGoal: Infinity,
+      onTrack: false,
+      percentComplete: Math.min(100, Math.max(0, (current / target) * 100)),
+      remaining,
+    }
+  }
 
-  const monthsToGoal = Math.ceil(remaining / monthlyContribution)
+  let monthsToGoal
+  if (goal.goal_type === 'investment') {
+    const monthlyRate = THRESHOLDS.investReturn / 12
+    let balance = current
+    monthsToGoal = 0
+    while (balance < target && monthsToGoal < 1200) {
+      balance = balance * (1 + monthlyRate) + monthly
+      monthsToGoal++
+    }
+  } else {
+    monthsToGoal = Math.ceil(remaining / monthly)
+  }
   const reachedByDate = new Date()
   reachedByDate.setMonth(reachedByDate.getMonth() + monthsToGoal)
 
@@ -80,7 +93,7 @@ export function getProjection(goal, monthlyContribution) {
   const onTrack = targetDate ? reachedByDate <= targetDate : true
   const percentComplete = Math.min(
     100,
-    ((goal.current_amount || 0) / goal.target_amount) * 100
+    (current / target) * 100
   )
 
   return {
@@ -96,17 +109,17 @@ export function getProjection(goal, monthlyContribution) {
  * Net worth trajectory projection with compounding.
  */
 export function netWorthTrajectory(assets, debts, monthlySurplus, years = 10, annualReturn = 0.07) {
-  const currentNetWorth = (assets || 0) - (debts || 0)
+  const currentNetWorth = (Number(assets) || 0) - (Number(debts) || 0)
   const monthlyRate = annualReturn / 12
   const months = years * 12
 
-  let balance = Math.max(0, currentNetWorth)
+  let balance = currentNetWorth
   let totalContributed = balance
   const trajectory = []
 
   for (let m = 1; m <= months; m++) {
-    balance = balance * (1 + monthlyRate) + monthlySurplus
-    totalContributed += monthlySurplus
+    balance = balance * (1 + monthlyRate) + (Number(monthlySurplus) || 0)
+    totalContributed += Number(monthlySurplus) || 0
 
     if (m % 12 === 0) {
       const year = m / 12

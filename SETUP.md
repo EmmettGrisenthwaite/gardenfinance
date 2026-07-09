@@ -1,54 +1,45 @@
-# Garden Financial — Setup Guide
+# Garden Financial setup
 
-## AI Advisor (Supabase Edge Function)
+## 1. Configure Supabase
 
-The AI Advisor uses a Supabase Edge Function to talk to Claude. Follow these steps to activate it.
+Create a Supabase project and copy its URL and publishable anon key into `.env`:
 
-### 1. Install the Supabase CLI
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key
+```
+
+Apply [`supabase/migrations.sql`](supabase/migrations.sql) in the Supabase SQL Editor. It creates the app tables, indexes, and per-user Row Level Security policies. Run it before creating test users or entering financial data.
+
+## 2. Run the app
+
+```bash
+npm install
+npm run dev
+```
+
+Useful checks:
+
+```bash
+npm run test
+npm run lint
+npm run build
+```
+
+## 3. Enable the AI advisor (optional)
+
+Install the Supabase CLI, link the project, set the Anthropic secret, and deploy the `chat` function:
 
 ```bash
 npm install -g supabase
-```
-
-### 2. Log in and link to your project
-
-```bash
 supabase login
 supabase link --project-ref chvdpbnmpeuifymloqqb
-```
-
-### 3. Add your Anthropic API key as a secret
-
-Go to: https://console.anthropic.com/settings/keys → Create a new key.
-
-Then run:
-```bash
 supabase secrets set ANTHROPIC_API_KEY=your_key_here
+supabase functions deploy chat
 ```
 
-Or add it in the Supabase dashboard:
-**Project Settings → Edge Functions → Secrets → Add secret**
-- Name: `ANTHROPIC_API_KEY`
-- Value: your key from console.anthropic.com
+The browser only calls the Edge Function; the Anthropic key is never placed in Vite environment variables or shipped to users. If the function is not deployed, the rest of the app remains usable and the advisor shows an unavailable state.
 
-### 4. Deploy the function
+## Existing projects
 
-From the project root:
-```bash
-supabase functions deploy ai-advisor
-```
-
-### 5. Done!
-
-Refresh the app and go to **AI Advisor**. You'll be able to chat with your financial advisor.
-
----
-
-## Supabase Database
-
-Run this in the **Supabase SQL Editor** if you haven't already:
-
-```sql
--- Add recurring column to budgets (for one-time vs recurring tracking)
-alter table public.budgets add column if not exists recurring boolean default true;
-```
+The migration is additive and safe to re-run. Back up an existing database first. If older rows do not have a `user_id`, assign their ownership before enabling RLS; those rows will intentionally be hidden from authenticated users until ownership is set.

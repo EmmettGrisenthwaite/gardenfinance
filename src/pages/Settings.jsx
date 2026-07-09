@@ -7,7 +7,7 @@ import { getMemories, deleteMemory, createMemory } from '@/lib/memory'
 import Onboarding from '@/components/Onboarding'
 import {
   ChevronLeft, UserCircle, Pencil, Wallet, ArrowRight, Download, ShieldCheck,
-  LogOut, Trash2, Loader2, Check, Brain, X, Plus, Tag, Clock,
+  LogOut, Trash2, Loader2, Brain, X, Plus,
 } from 'lucide-react'
 
 const APP_VERSION = '1.0'
@@ -82,6 +82,7 @@ export default function Settings() {
   const [newCategory, setNewCategory] = useState('other')
   const [addingMemory, setAddingMemory] = useState(false)
   const [deletingMemory, setDeletingMemory] = useState(null)
+  const [operationError, setOperationError] = useState(null)
 
   const name = user.user_metadata?.full_name || profile?.first_name || 'there'
   const bits = [
@@ -120,15 +121,20 @@ export default function Settings() {
   }
 
   async function signOut() {
-    await supabase.auth.signOut()
+    const { error: signOutError } = await supabase.auth.signOut()
+    if (signOutError) {
+      setOperationError(signOutError.message ?? 'Could not sign out.')
+      return
+    }
     navigate('/login')
   }
 
   async function exportData() {
     setExporting(true)
+    setOperationError(null)
     try {
       const uid = user.id
-      const [g, d, a, p, c, s, m] = await Promise.all([
+      const [g, d, a, p, c, s, m, bl] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', uid),
         supabase.from('debts').select('*').eq('user_id', uid),
         supabase.from('accounts').select('*').eq('user_id', uid),
@@ -136,13 +142,16 @@ export default function Settings() {
         supabase.from('conversations').select('*').eq('user_id', uid),
         supabase.from('net_worth_snapshots').select('*').eq('user_id', uid),
         supabase.from('advisor_memories').select('*').eq('user_id', uid),
+        supabase.from('budget_limits').select('*').eq('user_id', uid),
       ])
+      const failed = [g, d, a, p, c, s, m, bl].find(result => result.error)
+      if (failed) throw failed.error
       const payload = {
         exported_at: new Date().toISOString(),
         account: { email: user.email, name },
         profile, goals: g.data ?? [], debts: d.data ?? [], accounts: a.data ?? [],
         plans: p.data ?? [], conversations: c.data ?? [], net_worth_snapshots: s.data ?? [],
-        memories: m.data ?? [],
+        memories: m.data ?? [], budget_limits: bl.data ?? [],
       }
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
@@ -151,14 +160,17 @@ export default function Settings() {
       link.download = `garden-financial-${new Date().toISOString().slice(0, 10)}.json`
       link.click()
       URL.revokeObjectURL(url)
+    } catch (err) {
+      setOperationError(err.message ?? 'Could not export your data.')
     } finally { setExporting(false) }
   }
 
   async function deleteEverything() {
     setDeleting(true)
+    setOperationError(null)
     const uid = user.id
     try {
-      await Promise.all([
+      const results = await Promise.all([
         supabase.from('goals').delete().eq('user_id', uid),
         supabase.from('debts').delete().eq('user_id', uid),
         supabase.from('accounts').delete().eq('user_id', uid),
@@ -166,11 +178,19 @@ export default function Settings() {
         supabase.from('conversations').delete().eq('user_id', uid),
         supabase.from('net_worth_snapshots').delete().eq('user_id', uid),
         supabase.from('advisor_memories').delete().eq('user_id', uid),
+        supabase.from('budget_limits').delete().eq('user_id', uid),
         supabase.from('profiles').delete().eq('id', uid),
       ])
-    } catch { /* best-effort */ }
-    await supabase.auth.signOut()
-    navigate('/login')
+      const failed = results.find(result => result.error)
+      if (failed) throw failed.error
+      const { error: signOutError } = await supabase.auth.signOut()
+      if (signOutError) throw signOutError
+      navigate('/login')
+    } catch (err) {
+      setOperationError(err.message ?? 'Some data could not be deleted. Nothing was hidden; please retry.')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -186,6 +206,12 @@ export default function Settings() {
         </button>
         <h1 className="font-display text-[22px] font-medium text-white">Settings</h1>
       </div>
+
+      {operationError && (
+        <p className="mb-4 text-xs text-rose-200 bg-rose-500/15 border border-rose-400/25 px-3 py-2 rounded-lg">
+          {operationError}
+        </p>
+      )}
 
       <div className="space-y-5">
         {/* Account */}
@@ -337,14 +363,15 @@ export default function Settings() {
         {/* Danger zone */}
         <Card label="Danger zone">
           {!confirmDelete ? (
-            <Row icon={Trash2} title="Delete account" sub="Permanently erase all your data" danger
+            <Row icon={Trash2} title="Delete app data" sub="Permanently erase your Garden data" danger
               onClick={() => setConfirmDelete(true)} />
           ) : (
             <div className="px-4 py-4 space-y-3">
-              <p className="text-sm text-rose-100 font-medium">Delete everything?</p>
+              <p className="text-sm text-rose-100 font-medium">Delete all Garden data?</p>
               <p className="text-xs text-white/55 leading-relaxed">
                 This permanently deletes your profile, money, goals, debts, plans, advisor
-                history, and memories, then signs you out. This can't be undone.
+                history, and memories from this app, then signs you out. Your Supabase login
+                remains available. This can't be undone.
               </p>
               <div className="flex gap-2">
                 <button onClick={() => setConfirmDelete(false)} disabled={deleting}
@@ -354,7 +381,7 @@ export default function Settings() {
                 <button onClick={deleteEverything} disabled={deleting}
                   className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white text-sm font-semibold transition-colors">
                   {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                  {deleting ? 'Deleting…' : 'Delete forever'}
+                  {deleting ? 'Deleting…' : 'Delete app data'}
                 </button>
               </div>
             </div>

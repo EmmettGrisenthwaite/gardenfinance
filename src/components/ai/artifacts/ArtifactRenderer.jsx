@@ -39,7 +39,7 @@ export default function ArtifactRenderer({ artifact, debts, goals, accounts, pro
         <NetWorthTrajectoryArtifact
           assets={assets}
           debts={totalDebt}
-          monthlySurplus={Math.max(0, monthlySurplus)}
+          monthlySurplus={monthlySurplus}
         />
       )
     }
