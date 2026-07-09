@@ -25,7 +25,7 @@ function normalizeForDedup(text) {
 }
 
 /**
- * Create a new memory fact. Returns the created row or null.
+ * Create a new memory fact. Returns the created row or throws on failure.
  */
 export async function createMemory(fact, category = 'other') {
   if (!fact || typeof fact !== 'string') return null
@@ -33,7 +33,7 @@ export async function createMemory(fact, category = 'other') {
   if (!trimmed) return null
 
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session?.user) return null
+  if (!session?.user) throw new Error('Please sign in to save a memory.')
 
   try {
     const { data, error } = await supabase
@@ -49,12 +49,13 @@ export async function createMemory(fact, category = 'other') {
     return data
   } catch (err) {
     console.error('Error creating memory:', err)
-    return null
+    throw err
   }
 }
 
 /**
- * Fetch all memories for the current user, newest first.
+ * Fetch all memories for the current user, newest first. Throws on a
+ * connection or permission failure so the UI never shows a false empty state.
  */
 export async function getMemories() {
   const { data: { session } } = await supabase.auth.getSession()
@@ -70,12 +71,12 @@ export async function getMemories() {
     return data ?? []
   } catch (err) {
     console.error('Error fetching memories:', err)
-    return []
+    throw err
   }
 }
 
 /**
- * Delete a specific memory by its row id.
+ * Delete a specific memory by its row id. Throws on failure.
  */
 export async function deleteMemory(memoryId) {
   try {
@@ -87,7 +88,7 @@ export async function deleteMemory(memoryId) {
     return true
   } catch (err) {
     console.error('Error deleting memory:', err)
-    return false
+    throw err
   }
 }
 

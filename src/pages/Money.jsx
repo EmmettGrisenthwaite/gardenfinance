@@ -76,7 +76,7 @@ function LineRow({ item, showRate, onUpdate, onDelete }) {
           <span className="text-white/35 text-xs">%</span>
         </div>
       )}
-      <button onClick={() => onDelete(item.id)} aria-label="Remove"
+      <button onClick={() => onDelete(item.id)} aria-label={`Remove ${item.name || 'item'}`}
         className="p-1 text-white/25 hover:text-rose-400 transition-colors flex-shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
     </div>
   )
@@ -143,7 +143,7 @@ function LineItemList({ icon: Icon, title, accent = 'emerald', items, presets = 
               <span className="text-white/35 text-xs">%</span>
             </div>
           )}
-          <button onClick={add} disabled={!name.trim() || bal === '' || !(parseFloat(bal) >= 0)}
+          <button onClick={add} aria-label={`Add ${title}`} disabled={!name.trim() || bal === '' || !(parseFloat(bal) >= 0)}
             className={`p-1.5 rounded-lg text-white transition-colors flex-shrink-0 disabled:bg-white/10 disabled:text-white/30 ${c.btn}`}>
             <Plus className="w-3.5 h-3.5" />
           </button>

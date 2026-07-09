@@ -1,16 +1,19 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Sprout } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 export default function Login() {
-  const [mode,     setMode]     = useState('login')
+  const [mode,     setMode]     = useState(() => new URLSearchParams(window.location.search).get('reset') === '1' ? 'reset' : 'login')
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [name,     setName]     = useState('')
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
   const [message,  setMessage]  = useState('')
+  const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -18,7 +21,17 @@ export default function Login() {
     setMessage('')
     setLoading(true)
 
-    if (mode === 'signup') {
+    if (mode === 'reset') {
+      if (password.length < 6) {
+        setError('Your new password must be at least 6 characters.')
+      } else if (password !== confirmPassword) {
+        setError('Your passwords do not match.')
+      } else {
+        const { error } = await supabase.auth.updateUser({ password })
+        if (error) setError(error.message)
+        else navigate('/')
+      }
+    } else if (mode === 'signup') {
       const { error } = await supabase.auth.signUp({
         email,
         password,
@@ -31,6 +44,22 @@ export default function Login() {
       if (error) setError(error.message)
     }
 
+    setLoading(false)
+  }
+
+  async function sendResetEmail() {
+    setError('')
+    setMessage('')
+    if (!email.trim()) {
+      setError('Enter your email first.')
+      return
+    }
+    setLoading(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/login?reset=1`,
+    })
+    if (error) setError(error.message)
+    else setMessage('Check your email for a password reset link.')
     setLoading(false)
   }
 
@@ -74,23 +103,29 @@ export default function Login() {
             borderColor: 'rgba(255,255,255,0.10)',
           }}
         >
-          {/* Tab switcher */}
-          <div className="flex rounded-xl p-0.5 mb-6" style={{ background: 'rgba(255,255,255,0.06)' }}>
-            {['login', 'signup'].map(m => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => { setMode(m); setError(''); setMessage('') }}
-                className={`flex-1 py-2 text-sm font-semibold rounded-[10px] transition-all duration-200 ${
-                  mode === m
-                    ? 'bg-white/15 text-white shadow-sm'
-                    : 'text-white/40 hover:text-white/70'
-                }`}
-              >
-                {m === 'login' ? 'Sign in' : 'Sign up'}
-              </button>
-            ))}
-          </div>
+          {mode === 'reset' ? (
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold text-white">Reset your password</h2>
+              <p className="text-xs text-white/50 mt-1">Choose a new password for your Garden account.</p>
+            </div>
+          ) : (
+            <div className="flex rounded-xl p-0.5 mb-6" style={{ background: 'rgba(255,255,255,0.06)' }}>
+              {['login', 'signup'].map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { setMode(m); setError(''); setMessage('') }}
+                  className={`flex-1 py-2 text-sm font-semibold rounded-[10px] transition-all duration-200 ${
+                    mode === m
+                      ? 'bg-white/15 text-white shadow-sm'
+                      : 'text-white/40 hover:text-white/70'
+                  }`}
+                >
+                  {m === 'login' ? 'Sign in' : 'Sign up'}
+                </button>
+              ))}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'signup' && (
@@ -111,7 +146,7 @@ export default function Login() {
               </div>
             )}
 
-            <div>
+            {mode !== 'reset' && <div>
               <label className="block text-xs font-semibold text-white/50 mb-1.5 uppercase tracking-wider">Email</label>
               <input
                 type="email"
@@ -125,10 +160,23 @@ export default function Login() {
                   border: '1px solid rgba(255,255,255,0.10)',
                 }}
               />
-            </div>
+            </div>}
+
+            {mode === 'reset' && <div>
+              <label className="block text-xs font-semibold text-white/50 mb-1.5 uppercase tracking-wider">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+                className="w-full px-4 py-3 rounded-xl text-base md:text-sm text-white placeholder-white/25 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/60 transition-all"
+                style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)' }}
+              />
+            </div>}
 
             <div>
-              <label className="block text-xs font-semibold text-white/50 mb-1.5 uppercase tracking-wider">Password</label>
+              <label className="block text-xs font-semibold text-white/50 mb-1.5 uppercase tracking-wider">{mode === 'reset' ? 'New password' : 'Password'}</label>
               <input
                 type="password"
                 value={password}
@@ -143,6 +191,20 @@ export default function Login() {
                 }}
               />
             </div>
+
+            {mode === 'reset' && <div>
+              <label className="block text-xs font-semibold text-white/50 mb-1.5 uppercase tracking-wider">Confirm new password</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                minLength={6}
+                className="w-full px-4 py-3 rounded-xl text-base md:text-sm text-white placeholder-white/25 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/60 transition-all"
+                style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.10)' }}
+              />
+            </div>}
 
             {error && (
               <p className="text-sm text-rose-300 bg-rose-500/15 border border-rose-500/20 rounded-xl px-4 py-2.5">
@@ -163,9 +225,28 @@ export default function Login() {
             >
               {loading
                 ? 'Loading…'
-                : mode === 'login' ? 'Sign in' : 'Create account'}
+                : mode === 'reset' ? 'Update password' : mode === 'login' ? 'Sign in' : 'Create account'}
             </button>
           </form>
+
+          {mode === 'login' && (
+            <button type="button" onClick={() => { setMode('reset'); setError(''); setMessage('') }}
+              className="w-full mt-4 text-xs font-semibold text-emerald-300/80 hover:text-emerald-200 transition-colors">
+              Forgot your password?
+            </button>
+          )}
+          {mode === 'reset' && (
+            <div className="mt-4 space-y-2 text-center">
+              <button type="button" onClick={sendResetEmail} disabled={loading}
+                className="text-xs font-semibold text-emerald-300/80 hover:text-emerald-200 disabled:opacity-50 transition-colors">
+                Email me a reset link instead
+              </button>
+              <button type="button" onClick={() => { setMode('login'); setError(''); setMessage('') }}
+                className="block w-full text-xs text-white/40 hover:text-white/70 transition-colors">
+                Back to sign in
+              </button>
+            </div>
+          )}
         </div>
 
         <p className="text-center text-xs text-white/25 mt-6 font-medium">

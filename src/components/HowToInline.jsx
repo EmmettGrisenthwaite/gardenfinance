@@ -11,9 +11,7 @@ export default function HowToInline({ subject, context }) {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(false)
 
-  async function toggle() {
-    if (open) { setOpen(false); return }
-    setOpen(true)
+  async function loadGuide() {
     if (text || loading) return
     setLoading(true)
     setError(false)
@@ -26,6 +24,12 @@ export default function HowToInline({ subject, context }) {
     } finally {
       setLoading(false)
     }
+  }
+
+  function toggle() {
+    if (open) { setOpen(false); return }
+    setOpen(true)
+    loadGuide()
   }
 
   return (
@@ -46,7 +50,7 @@ export default function HowToInline({ subject, context }) {
           ) : error ? (
             <div className="text-xs text-white/55 py-1">
               Couldn't load this right now.{' '}
-              <button onClick={() => { setText(null); setError(false); toggle() }}
+              <button onClick={() => { setText(null); setError(false); loadGuide() }}
                 className="font-semibold text-emerald-300 hover:text-emerald-200">Try again</button>
             </div>
           ) : (

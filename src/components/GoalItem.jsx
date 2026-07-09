@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout, Plus, Wallet } from 'lucide-react'
+import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout, Plus } from 'lucide-react'
 import HowToInline from '@/components/HowToInline'
-import { THRESHOLDS, LIQUID_TYPES } from '@/lib/finance'
+import { THRESHOLDS } from '@/lib/finance'
 
 // ─── Timeline projection ───────────────────────────────────────────────────────
 // Investment goals compound (~6%/yr) so long horizons stay realistic.
@@ -23,11 +23,20 @@ export function getProjection(goal) {
     monthsLeft = Math.ceil((target - current) / monthly)
   }
 
-  if (monthsLeft >= 1200) return { longTerm: true }
+  const longTerm = monthsLeft >= 1200
   const date = new Date()
-  date.setMonth(date.getMonth() + monthsLeft)
+  date.setMonth(date.getMonth() + Math.min(monthsLeft, 1200))
   const label = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-  return { monthsLeft, label }
+  const deadline = goal.deadline ? new Date(`${goal.deadline}T00:00:00`) : null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const deadlineValid = deadline && !Number.isNaN(deadline.getTime())
+  const deadlineLabel = deadlineValid
+    ? deadline.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : null
+  const deadlinePassed = Boolean(deadlineValid && deadline < today)
+  const onTime = deadlineValid ? !deadlinePassed && date <= deadline : null
+  return { monthsLeft, label, deadlineLabel, deadlinePassed, onTime, longTerm }
 }
 
 // ─── Goal create/edit modal ─────────────────────────────────────────────────────
@@ -137,29 +146,19 @@ export function GoalModal({ goal, onSave, onClose }) {
   )
 }
 
-// ─── Inline progress updater (contribute from an account, or adjust manually) ───
-function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
+// ─── Inline progress updater (log progress or adjust manually) ────────────────
+function ProgressInput({ goal, onContribute, onUpdate }) {
   const [mode,   setMode]   = useState(null)   // null | 'add' | 'adjust'
   const [amount, setAmount] = useState('')
   const [absVal, setAbsVal] = useState(goal.current_amount)
   const isInv = goal.goal_type === 'investment'
 
-  // Default the source to the largest liquid account, else the largest of any.
-  const defaultAcct = useMemo(() => {
-    if (!accounts.length) return ''
-    const liquid = accounts.filter(a => LIQUID_TYPES.includes(a.type))
-    const pool = liquid.length ? liquid : accounts
-    return [...pool].sort((a, b) => Number(b.balance) - Number(a.balance))[0].id
-  }, [accounts])
-  const [account, setAccount] = useState(defaultAcct)
-
   const pct  = Math.min(Math.round((Number(goal.current_amount) / Number(goal.target_amount)) * 100), 100)
-  const srcAcct = accounts.find(a => a.id === account)
 
   function addMoney() {
     const amt = parseFloat(amount)
     if (isNaN(amt) || amt <= 0) return
-    onContribute(goal.id, amt, account || null)
+    onContribute(goal.id, amt)
     setAmount(''); setMode(null)
   }
   function saveAbs() { onUpdate(goal.id, parseFloat(absVal) || 0); setMode(null) }
@@ -187,41 +186,26 @@ function ProgressInput({ goal, accounts = [], onContribute, onUpdate }) {
                 onKeyDown={e => e.key === 'Enter' && addMoney()}
                 className="w-full pl-6 pr-2.5 py-2 rounded-lg border border-white/[0.11] bg-white/[0.085] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
             </div>
-            <button onClick={addMoney} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
-            <button onClick={() => setMode(null)} className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
+            <button onClick={addMoney} aria-label="Save contribution" className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
+            <button onClick={() => setMode(null)} aria-label="Cancel contribution" className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
           </div>
-          {accounts.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Wallet className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
-              <select value={account} onChange={e => setAccount(e.target.value)}
-                className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-white/[0.11] bg-[#0e1812] text-white text-sm focus:outline-none focus:ring-1 focus:ring-emerald-400/30">
-                {accounts.map(a => (
-                  <option key={a.id} value={a.id}>{a.name} — ${Number(a.balance).toLocaleString()}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          <p className="text-[11px] text-white/40">
-            {srcAcct
-              ? `Tracks this contribution against ${srcAcct.name}; account balances are not moved automatically.`
-              : 'This updates the goal tracker only; account balances are not changed.'}
-          </p>
+          <p className="text-[11px] text-white/40">This logs progress toward the goal; account balances are not changed.</p>
         </div>
       ) : mode === 'adjust' ? (
         <div className="flex gap-2 items-center">
           <input autoFocus type="number" inputMode="decimal" value={absVal} onChange={e => setAbsVal(e.target.value)}
             min="0" step="0.01"
             className="flex-1 px-2.5 py-2 rounded-lg border border-white/[0.11] bg-white/[0.085] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
-          <button onClick={saveAbs} className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
-          <button onClick={() => setMode(null)} className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
+          <button onClick={saveAbs} aria-label="Save progress" className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
+          <button onClick={() => setMode(null)} aria-label="Cancel progress edit" className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
         </div>
       ) : (
         <div className="flex items-center gap-3">
           {/* A reached goal doesn't need more money — just the option to adjust. */}
           {pct < 100 && (
-            <button onClick={() => { setAccount(defaultAcct); setMode('add') }}
+            <button onClick={() => setMode('add')}
               className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/20 border border-emerald-400/30 px-2.5 py-1.5 rounded-lg transition-colors">
-              <Plus className="w-3 h-3" /> Add money
+              <Plus className="w-3 h-3" /> Log progress
             </button>
           )}
           <button onClick={() => { setAbsVal(goal.current_amount); setMode('adjust') }}
@@ -253,6 +237,24 @@ function TimelineBadge({ goal }) {
       </div>
     )
   }
+  if (proj.deadlinePassed || proj.onTime === false) {
+    return (
+      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/15 rounded-lg border border-amber-400/30">
+        <CalendarClock className="w-3 h-3 text-amber-300" />
+        <span className="text-xs font-medium text-amber-200">
+          {proj.deadlinePassed ? `Past target date (${proj.deadlineLabel})` : `Behind target date (${proj.deadlineLabel})`}
+        </span>
+      </div>
+    )
+  }
+  if (proj.onTime === true) {
+    return (
+      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/15 rounded-lg border border-emerald-400/30">
+        <CalendarClock className="w-3 h-3 text-emerald-300" />
+        <span className="text-xs font-medium text-emerald-200">On pace for {proj.deadlineLabel}</span>
+      </div>
+    )
+  }
   if (proj.longTerm) {
     return (
       <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-sky-500/15 rounded-lg border border-sky-400/30">
@@ -276,7 +278,7 @@ function TimelineBadge({ goal }) {
 }
 
 // ─── Editable goal card ─────────────────────────────────────────────────────────
-export function GoalItem({ goal, accounts, onEdit, onDelete, onUpdateProgress, onContribute, howToContext }) {
+export function GoalItem({ goal, onEdit, onDelete, onUpdateProgress, onContribute, howToContext }) {
   const isInv = goal.goal_type === 'investment'
   // Deleting a goal is destructive — require a second tap to confirm (the armed
   // state disarms itself after a moment).
@@ -325,7 +327,7 @@ export function GoalItem({ goal, accounts, onEdit, onDelete, onUpdateProgress, o
           </button>
         </div>
       </div>
-      <ProgressInput goal={goal} accounts={accounts} onContribute={onContribute} onUpdate={onUpdateProgress} />
+      <ProgressInput goal={goal} onContribute={onContribute} onUpdate={onUpdateProgress} />
       <TimelineBadge goal={goal} />
       {/* AI path to the goal, generated in place — how much, where, and how */}
       {howToContext !== undefined && Number(goal.current_amount) < Number(goal.target_amount) && (

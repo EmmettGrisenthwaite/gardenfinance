@@ -38,7 +38,10 @@ function ProtectedRoute({ children }) {
 function PublicRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <AppLoader />
-  if (user) return <Navigate to="/" replace />
+  // Supabase recovery links create a temporary authenticated session while
+  // the user is still on the password-reset form.
+  const isPasswordRecovery = new URLSearchParams(window.location.search).get('reset') === '1'
+  if (user && !isPasswordRecovery) return <Navigate to="/" replace />
   return children
 }
 

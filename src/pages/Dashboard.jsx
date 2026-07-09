@@ -324,7 +324,7 @@ export default function Dashboard() {
               className="btn-primary w-full justify-center"
               onClick={() => setGoalSheet(null)}
             >
-              Add money
+              Update progress
             </Link>
           </div>
         </div>

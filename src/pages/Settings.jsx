@@ -97,27 +97,45 @@ export default function Settings() {
 
   async function loadMemories() {
     setMemoriesLoading(true)
-    const m = await getMemories()
-    setMemories(m)
-    setMemoriesLoading(false)
+    try {
+      const m = await getMemories()
+      setMemories(m)
+    } catch (err) {
+      setOperationError(err.message ?? 'Could not load advisor memories.')
+    } finally {
+      setMemoriesLoading(false)
+    }
   }
 
   async function handleAddMemory() {
     if (!newFact.trim()) return
     setAddingMemory(true)
-    await createMemory(newFact.trim(), newCategory)
-    setNewFact('')
-    setNewCategory('other')
-    setShowAddMemory(false)
-    await loadMemories()
-    setAddingMemory(false)
+    setOperationError(null)
+    try {
+      const created = await createMemory(newFact.trim(), newCategory)
+      if (!created) throw new Error('Could not save that memory.')
+      setNewFact('')
+      setNewCategory('other')
+      setShowAddMemory(false)
+      await loadMemories()
+    } catch (err) {
+      setOperationError(err.message ?? 'Could not save that memory.')
+    } finally {
+      setAddingMemory(false)
+    }
   }
 
   async function handleDeleteMemory(id) {
     setDeletingMemory(id)
-    await deleteMemory(id)
-    await loadMemories()
-    setDeletingMemory(null)
+    setOperationError(null)
+    try {
+      await deleteMemory(id)
+      await loadMemories()
+    } catch (err) {
+      setOperationError(err.message ?? 'Could not forget that memory.')
+    } finally {
+      setDeletingMemory(null)
+    }
   }
 
   async function signOut() {
@@ -270,8 +288,9 @@ export default function Settings() {
                     <button
                       onClick={() => handleDeleteMemory(mem.id)}
                       disabled={deletingMemory === mem.id}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/10 text-white/30 hover:text-rose-300 flex-shrink-0"
-                      title="Forget this"
+                      aria-label={`Forget memory: ${mem.fact}`}
+                      className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/10 text-white/40 hover:text-rose-300 flex-shrink-0"
+                      title="Forget this memory"
                     >
                       {deletingMemory === mem.id ? (
                         <Loader2 className="w-3 h-3 animate-spin" />

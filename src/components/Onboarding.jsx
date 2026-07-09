@@ -628,7 +628,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                       </label>
                     ))}
                   </div>
-                  <p className="text-[11px] text-white/35">Estimates are fine — you can fine-tune these in your Plan later.</p>
+                  <p className="text-[11px] text-white/35">Estimates are fine — you can fine-tune these on the Money tab later.</p>
                 </div>
               )}
 

@@ -246,7 +246,11 @@ function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, p
           : ''}
         {hasData
           ? "I've looked at your numbers. Want me to tell you exactly where you stand and build you a plan?"
-          : "Ask me anything — and I'll build you a plan you can check off to grow your garden. Add your money & goals on the Plan tab for advice that's about you."}
+          : <>Ask me anything — and I'll build you a plan you can check off to grow your garden. Add your{' '}
+            <Link to="/money" className="text-emerald-300 hover:text-emerald-200">money</Link>{' '}
+            and{' '}
+            <Link to="/plan#goals" className="text-emerald-300 hover:text-emerald-200">goals</Link>{' '}
+            for advice that's about you.</>}
       </p>
 
       {hasData && (

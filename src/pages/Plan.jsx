@@ -292,13 +292,17 @@ export default function Plan() {
     : null
 
   async function runSuggestion(action) {
-    if (action.kind === 'task') {
-      const { plan: next } = await appendSteps(user.id, [{ text: action.text }], { source: 'suggestion' })
-      setPlan(next)
-    } else if (action.kind === 'goal') {
-      addSuggestedGoal(action.preset)
-    } else if (action.kind === 'ask') {
-      navigate('/advisor', { state: { ask: action.q } })
+    try {
+      if (action.kind === 'task') {
+        const { plan: next } = await appendSteps(user.id, [{ text: action.text }], { source: 'suggestion' })
+        setPlan(next)
+      } else if (action.kind === 'goal') {
+        await addSuggestedGoal(action.preset)
+      } else if (action.kind === 'ask') {
+        navigate('/advisor', { state: { ask: action.q } })
+      }
+    } catch (err) {
+      setError(err.message ?? 'Could not apply that suggestion.')
     }
   }
   // One-tap goal from a preset, else open the modal to fill in details.
@@ -497,7 +501,7 @@ export default function Plan() {
           ) : (
             <div className="grid sm:grid-cols-2 gap-3">
               {goals.map(g => (
-                <GoalItem key={g.id} goal={g} accounts={[]}
+                <GoalItem key={g.id} goal={g}
                   onEdit={setModal} onDelete={deleteGoal}
                   onUpdateProgress={updateProgress} onContribute={contribute}
                   howToContext={howToCtx} />

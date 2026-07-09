@@ -256,16 +256,24 @@ export function AddStepRow({ onAdd }) {
 
 // ── One suggestion, whispered — shown only when the plan is running low ─────────
 export function SuggestionRow({ suggestion, onRun, onDismiss }) {
+  const [busy, setBusy] = useState(false)
   if (!suggestion) return null
+
+  async function run() {
+    if (busy) return
+    setBusy(true)
+    try { await onRun(suggestion.action) } finally { setBusy(false) }
+  }
+
   return (
     <div className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border ${
       suggestion.urgent ? 'bg-amber-400/[0.07] border-amber-400/20' : 'bg-white/[0.045] border-white/[0.08]'}`}>
       <Sparkles className={`w-3.5 h-3.5 flex-shrink-0 ${suggestion.urgent ? 'text-amber-300' : 'text-emerald-300/80'}`} />
       <span className="flex-1 min-w-0 text-xs text-white/70 leading-snug">{suggestion.q}</span>
-      <button onClick={() => onRun(suggestion.action)}
+      <button onClick={run} disabled={busy}
         className={`text-xs font-semibold whitespace-nowrap flex-shrink-0 ${
-          suggestion.urgent ? 'text-amber-300 hover:text-amber-200' : 'text-emerald-300 hover:text-emerald-200'}`}>
-        {suggestion.cta}
+          suggestion.urgent ? 'text-amber-300 hover:text-amber-200' : 'text-emerald-300 hover:text-emerald-200'} disabled:opacity-50`}>
+        {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : suggestion.cta}
       </button>
       <button onClick={() => onDismiss(suggestion.id)} aria-label="Dismiss suggestion"
         className="p-1 -m-1 text-white/25 hover:text-white/55 flex-shrink-0"><X className="w-3.5 h-3.5" /></button>

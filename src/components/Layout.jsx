@@ -1,30 +1,30 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { Sprout, LayoutDashboard, Target, Bot, Settings } from 'lucide-react'
+import { Sprout, LayoutDashboard, Target, Bot, Settings, Wallet } from 'lucide-react'
 import Onboarding from '@/components/Onboarding'
 
-// Three focused tabs. The Plan holds steps + the ingrained money card + goals;
-// budget lives there, not as its own tab. Advisor builds the plan; the garden
-// grows as you check steps off.
+// Four focused tabs. Money is a first-class part of setup because the Plan and
+// Advisor both become more useful once the user's real numbers are entered.
 const NAV_ITEMS = [
   { to: '/',        label: 'Garden',  icon: LayoutDashboard },
+  { to: '/money',   label: 'Money',   icon: Wallet },
   { to: '/advisor', label: 'Advisor', icon: Bot },
   { to: '/plan',    label: 'Plan',    icon: Target },
 ]
 const HUD_ITEMS = NAV_ITEMS
 
 export default function Layout({ children }) {
-  const { user, profile, loading } = useAuth()
+  const { user, profile, loading, profileError, refreshProfile } = useAuth()
   const { pathname } = useLocation()
-  const needsOnboarding = profile === null && !loading
+  const needsOnboarding = profile === null && !loading && !profileError
   // Immersive, full-height pages manage their own scroll and run edge-to-edge
   // (no main padding): the garden dashboard and the advisor chat.
   const isGarden    = pathname === '/'
   const isImmersive = isGarden || pathname === '/advisor'
   // Secondary pages reached from the gear / links — back-button navigation, so
   // the floating tab bar is hidden (it would imply they're top-level tabs).
-  const isSubPage   = pathname === '/settings' || pathname === '/money'
+  const isSubPage   = pathname === '/settings'
   // The advisor chat is a full-screen composer (like a real chat app) — the
   // pill would either overlap the send button or force a permanent dead gap
   // above it, so it's hidden there too; the chat's own header carries a way back.
@@ -173,6 +173,14 @@ export default function Layout({ children }) {
           {/* Page content — immersive pages (garden, advisor) are full-bleed and
               own their scroll; other pages keep clearance for the floating nav */}
           <main className={`flex-1 min-h-0 ${isImmersive ? 'overflow-hidden' : `overflow-auto ${isSubPage ? 'pb-6' : 'pb-28 md:pb-6'}`}`}>
+            {profileError && (
+              <div role="alert" className="mx-auto mt-3 max-w-xl px-4">
+                <div className="flex items-center gap-3 rounded-xl border border-rose-400/25 bg-rose-500/10 px-3 py-2.5">
+                  <p className="flex-1 text-xs text-rose-100">We couldn't load your profile. Your data is safe; try again.</p>
+                  <button onClick={refreshProfile} className="shrink-0 text-xs font-semibold text-rose-200 hover:text-white">Try again</button>
+                </div>
+              </div>
+            )}
             {children}
           </main>
         </div>
