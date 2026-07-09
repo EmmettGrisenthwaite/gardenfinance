@@ -1,10 +1,12 @@
-import { Shield, CreditCard, Building2, TrendingUp, PiggyBank, HeartPulse, Target, Sparkles, AlertTriangle, ArrowRight, Plus } from 'lucide-react'
+import { Shield, CreditCard, Building2, TrendingUp, PiggyBank, HeartPulse, Target, AlertTriangle } from 'lucide-react'
 import { computeSnapshot, THRESHOLDS } from '@/lib/finance'
 
-// A smart, situation-aware engine driven by the shared finance engine — the
-// same computed snapshot the advisor reads, so suggestions and advice always
-// agree. Each card is one tap from becoming a task, a goal, or a conversation.
-function buildSuggestions({ profile, goals, debts, accounts = [], plans = [] }) {
+// The situation-aware suggestion ENGINE, driven by the shared finance snapshot —
+// the same numbers the advisor reads, so suggestions and advice always agree.
+// The engine can know many things; the Plan page whispers exactly ONE of them
+// (see SuggestionRow in PlanSteps.jsx) — ranked list returned here, presentation
+// decided by the caller.
+export function buildSuggestions({ profile, goals, debts, accounts = [], plans = [] }) {
   const s = computeSnapshot({ profile, accounts, debts, goals })
   const { income, expenses, surplus } = s
   const p = profile || {}
@@ -96,52 +98,5 @@ function buildSuggestions({ profile, goals, debts, accounts = [], plans = [] }) 
 
   // The engine's next-dollar priority floats to the front; urgent first overall.
   const rank = (x) => (x.urgent ? 2 : 0) + (s.next.key.startsWith(x.id) || x.id.startsWith(s.next.key.split('_')[0]) ? 1 : 0)
-  return all.sort((a, b) => rank(b) - rank(a)).slice(0, 3)
-}
-
-export default function SmartSuggestions({ profile, goals, debts, accounts = [], plans = [], onAddTask, onAddGoal, onAsk }) {
-  const suggestions = buildSuggestions({ profile, goals, debts, accounts, plans })
-  if (suggestions.length === 0) return null
-
-  const run = (action) => {
-    if (action.kind === 'task') onAddTask(action.text)
-    else if (action.kind === 'goal') onAddGoal(action.preset)
-    else if (action.kind === 'ask') onAsk(action.q)
-  }
-
-  return (
-    <section className="space-y-2.5">
-      <h2 className="text-sm font-semibold text-white flex items-center gap-1.5">
-        <Sparkles className="w-4 h-4 text-emerald-300" /> Smart next steps
-      </h2>
-      <div className="space-y-2">
-        {suggestions.map(s => {
-          const Icon = s.icon
-          return (
-            <div key={s.id}
-              className={`rounded-xl border p-3 ${s.urgent
-                ? 'bg-amber-400/[0.08] border-amber-400/25'
-                : 'bg-white/[0.075] border-white/[0.11]'}`}>
-              <div className="flex items-start gap-3">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${s.urgent ? 'bg-amber-400/15 text-amber-300' : 'bg-emerald-500/15 text-emerald-300'}`}>
-                  <Icon className="w-4 h-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-white leading-snug">{s.q}</p>
-                  {s.sub && <p className="text-xs text-white/50 mt-0.5 leading-snug">{s.sub}</p>}
-                  <button onClick={() => run(s.action)}
-                    className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${s.urgent
-                      ? 'bg-amber-500/90 hover:bg-amber-500 text-white'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}>
-                    {s.action.kind === 'task' ? <Plus className="w-3.5 h-3.5" /> : s.action.kind === 'ask' ? <ArrowRight className="w-3.5 h-3.5" /> : <Target className="w-3.5 h-3.5" />}
-                    {s.cta}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </section>
-  )
+  return all.sort((a, b) => rank(b) - rank(a))
 }

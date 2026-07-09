@@ -1,21 +1,25 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ClipboardList, Bot, Target, Plus, Sprout } from 'lucide-react'
+import { ClipboardList, Bot, Target, Plus, Sprout, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden, milestonesToStage } from '@/context/GardenContext'
-import { listPlans, updatePlanSteps, deletePlan, applyStep, savePlan } from '@/lib/advisorPlans'
+import { getPlan, updatePlanSteps, deletePlan, applyStep, appendSteps, normalizeSteps } from '@/lib/advisorPlans'
+import { orderSteps } from '@/lib/planOrder'
+import { requestPlan } from '@/lib/claude'
+import { buildContext, buildSystemPrompt } from '@/lib/advisorContext'
+import { buildSuggestions } from '@/components/SmartSuggestions'
 import { GoalItem, GoalModal, getProjection } from '@/components/GoalItem'
-import PlanCard from '@/components/PlanCard'
-import SmartSuggestions from '@/components/SmartSuggestions'
+import { UpNextCard, StepList, DoneAccordion, AddStepRow, SuggestionRow } from '@/components/PlanSteps'
+import GardenMeter from '@/components/GardenMeter'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
 
 export default function Plan() {
   const { user, profile, setProfile } = useAuth()
   const { updateGarden, triggerBurst } = useGarden()
   const navigate = useNavigate()
-  const [plans,   setPlans]   = useState([])
+  const [plan,    setPlan]    = useState(null)   // THE plan (one per user) | null
   const [goals,   setGoals]   = useState([])
   const [debts,   setDebts]   = useState([])
   const [money,   setMoney]   = useState({ income: 0, expenses: 0, netWorth: 0 })
@@ -23,6 +27,9 @@ export default function Plan() {
   const [loading, setLoading] = useState(true)
   const [modal,   setModal]   = useState(null)   // null | 'new' | goal
   const [growth,  setGrowth]  = useState(null)   // garden-grew celebration
+  const [expandedId, setExpandedId] = useState(null)  // the one expanded row
+  const [building, setBuilding] = useState(false)     // starter-plan generation
+  const [error,   setError]   = useState(null)
 
   async function loadGoals() {
     const { data: g } = await supabase.from('goals').select('*').eq('user_id', user.id).order('created_at')
@@ -34,12 +41,12 @@ export default function Plan() {
       const [g, d, pl, ac] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id).order('created_at'),
         supabase.from('debts').select('*').eq('user_id', user.id),
-        listPlans(user.id),
+        getPlan(user.id),
         supabase.from('accounts').select('*').eq('user_id', user.id),
       ])
       setGoals(g.data ?? [])
       setDebts(d.data ?? [])
-      setPlans(pl)
+      setPlan(pl)
       setAccounts(ac.data ?? [])
       setMoney({
         income:   Number(profile?.monthly_income)   || 0,
@@ -65,11 +72,19 @@ export default function Plan() {
   }, [])
 
   // ── Derived milestone counts ─────────────────────────────────────────────────
-  const completedSteps = plans.reduce((n, p) => n + p.steps.filter(s => s.done).length, 0)
-  const totalSteps     = plans.reduce((n, p) => n + p.steps.length, 0)
+  const steps          = plan?.steps ?? []
+  const completedSteps = steps.filter(s => s.done).length
+  const totalSteps     = steps.length
   const goalsReached   = goals.filter(g => Number(g.target_amount) > 0 && Number(g.current_amount) >= Number(g.target_amount)).length
   const surplusRatio   = money.income > 0 ? (money.income - money.expenses) / money.income : 0
   const stage          = milestonesToStage(completedSteps + goalsReached)
+
+  // The one shared ordering — the Up-next card, this list, and the Dashboard
+  // peek all agree on what's next.
+  const activeSteps = orderSteps(steps.filter(s => !s.done))
+  const upNext      = activeSteps[0] ?? null
+  const restSteps   = activeSteps.slice(1)
+  const doneSteps   = steps.filter(s => s.done)
 
   // Net worth auto-derives from what you own (accounts) minus what you owe
   // (debts) — one source of truth, always in sync as those change.
@@ -101,33 +116,91 @@ export default function Plan() {
     }
   }
 
-  // ── Plan-step handlers (functional updaters → burst-safe) ────────────────────
-  function editPlan(planId, mutate) {
-    setPlans(prev => prev.map(p => {
-      if (p.id !== planId) return p
-      const steps = mutate(p.steps)
-      updatePlanSteps(planId, steps).catch(() => {})
-      return { ...p, steps }
-    }))
+  // ── Step handlers (functional updaters → burst-safe) ────────────────────────
+  function editSteps(mutate) {
+    setPlan(prev => {
+      if (!prev) return prev
+      const next = mutate(prev.steps)
+      updatePlanSteps(prev.id, next).catch(() => {})
+      return { ...prev, steps: next }
+    })
   }
-  function toggleStep(planId, stepId) {
-    const plan = plans.find(p => p.id === planId)
-    const step = plan?.steps.find(s => s.id === stepId)
+  function toggleStep(stepId) {
+    const step = steps.find(s => s.id === stepId)
     if (step && !step.done) celebrate(1, step.text)   // crossing into a new stage?
-    editPlan(planId, steps => steps.map(s => s.id === stepId ? { ...s, done: !s.done } : s))
+    editSteps(list => list.map(s => s.id === stepId
+      ? { ...s, done: !s.done, completedAt: s.done ? null : new Date().toISOString() }
+      : s))
+    setExpandedId(null)
   }
-  async function applyAndMark(planId, step) {
+  function deleteStep(stepId) {
+    editSteps(list => list.filter(s => s.id !== stepId))
+    setExpandedId(null)
+  }
+  const setDue = (stepId, due) =>
+    editSteps(list => list.map(s => s.id === stepId ? { ...s, due } : s))
+
+  // The user's own step — their intent wins, no dedupe second-guessing.
+  async function addOwnStep(text) {
+    const step = normalizeSteps([{ text, source: 'user', addedAt: new Date().toISOString() }])[0]
+    if (plan) {
+      editSteps(list => [...list, step])
+    } else {
+      const { plan: created } = await appendSteps(user.id, [step], { source: 'user' })
+      setPlan(created)
+    }
+  }
+
+  // Clearing everything is destructive — two-tap arm, tucked at the bottom.
+  const [clearArmed, setClearArmed] = useState(false)
+  useEffect(() => {
+    if (!clearArmed) return
+    const t = setTimeout(() => setClearArmed(false), 2500)
+    return () => clearTimeout(t)
+  }, [clearArmed])
+  function clearPlan() {
+    if (!plan) return
+    deletePlan(plan.id).catch(() => {})
+    setPlan(null)
+    setClearArmed(false)
+  }
+
+  async function applyAndMark(step) {
     await applyStep(user.id, step.apply)
-    editPlan(planId, steps => steps.map(s => s.id === step.id ? { ...s, applied: true } : s))
+    editSteps(list => list.map(s => s.id === step.id ? { ...s, applied: true } : s))
+    if (step.apply?.type === 'budget') {
+      // The apply changed profile income/expenses — refresh so the page and the
+      // advisor read the new truth immediately.
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      if (data) {
+        setProfile(data)
+        setMoney(m => ({ ...m, income: Number(data.monthly_income) || 0, expenses: Number(data.monthly_expenses) || 0 }))
+      }
+    }
+    if (step.apply?.type === 'goal') loadGoals()
   }
-  const addStep = (planId, text) => editPlan(planId, steps => [...steps, {
-    id: `u_${Math.random().toString(36).slice(2, 8)}`, text, detail: null, apply: null, due: null, done: false, applied: false,
-  }])
-  const setDue = (planId, stepId, due) =>
-    editPlan(planId, steps => steps.map(s => s.id === stepId ? { ...s, due } : s))
-  function removePlan(planId) {
-    setPlans(prev => prev.filter(p => p.id !== planId))
-    deletePlan(planId).catch(() => {})
+
+  // ── One-tap starter plan (the advisor's brain, right here) ───────────────────
+  async function buildStarterPlan() {
+    if (building) return
+    setBuilding(true)
+    setError(null)
+    try {
+      const ctx = buildContext(money, goals, debts, profile, { plans: [], accounts })
+      const system = buildSystemPrompt(ctx)
+      const p = await requestPlan([{
+        role: 'user',
+        content: 'Based on my actual numbers, build me a short, concrete starter financial action plan — 3 to 5 ordered steps. Where a step means starting a savings/investment goal or adjusting my monthly income/expense numbers, include its apply action so I can act in one tap.',
+      }], system)
+      // These are the plan's founding steps, not an import from elsewhere — no
+      // "from:" origin tag.
+      const { plan: created } = await appendSteps(user.id, p.steps, { source: 'advisor' })
+      setPlan(created)
+    } catch (err) {
+      setError(err.message ?? 'Could not build your plan. Try again.')
+    } finally {
+      setBuilding(false)
+    }
   }
 
   // ── Goal handlers ────────────────────────────────────────────────────────────
@@ -150,7 +223,6 @@ export default function Plan() {
     setGoals(gs => gs.map(g => g.id === id ? { ...g, current_amount: amount } : g))
     supabase.from('goals').update({ current_amount: amount }).eq('id', id).then(() => {})
   }
-  // No accounts anymore — "add money" just credits the goal.
   function contribute(goalId, amount) {
     const goal = goals.find(g => g.id === goalId)
     if (!goal) return
@@ -158,18 +230,29 @@ export default function Plan() {
     updateProgress(goalId, next)
   }
 
-  // ── Smart-suggestion handlers ────────────────────────────────────────────────
-  // Add a suggested task to the user's plan (the first one, or create one).
-  async function addSuggestedTask(text) {
-    const step = { id: `u_${Math.random().toString(36).slice(2, 8)}`, text, detail: null, apply: null, done: false, applied: false }
-    if (plans.length) {
-      const target = plans[0]
-      const steps = [...target.steps, step]
-      setPlans(prev => prev.map(p => p.id === target.id ? { ...p, steps } : p))
-      updatePlanSteps(target.id, steps).catch(() => {})
-    } else {
-      const saved = await savePlan(user.id, { title: 'Your plan', steps: [step] })
-      setPlans([saved])
+  // ── The one suggestion (whispered, dismissable, only when the plan runs low) ──
+  const DISMISS_KEY = `plan-sugg-dismissed-${user.id}`
+  const [dismissed, setDismissed] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(DISMISS_KEY)) ?? [] } catch { return [] }
+  })
+  function dismissSuggestion(id) {
+    const next = [...dismissed, id]
+    setDismissed(next)
+    try { localStorage.setItem(DISMISS_KEY, JSON.stringify(next)) } catch {}
+  }
+  const suggestion = (!loading && activeSteps.length < 3)
+    ? buildSuggestions({ profile, goals, debts, accounts, plans: plan ? [plan] : [] })
+        .filter(s => !dismissed.includes(s.id))[0] ?? null
+    : null
+
+  async function runSuggestion(action) {
+    if (action.kind === 'task') {
+      const { plan: next } = await appendSteps(user.id, [{ text: action.text }], { source: 'suggestion' })
+      setPlan(next)
+    } else if (action.kind === 'goal') {
+      addSuggestedGoal(action.preset)
+    } else if (action.kind === 'ask') {
+      navigate('/advisor', { state: { ask: action.q } })
     }
   }
   // One-tap goal from a preset, else open the modal to fill in details.
@@ -186,7 +269,6 @@ export default function Plan() {
     }).select().single()
     if (data) setGoals(gs => [...gs, data])
   }
-  const askAdvisor = (q) => navigate('/advisor', { state: { ask: q } })
 
   // Compact situation snapshot for the inline "Show me how" mini-guides — the
   // AI writes amounts against the user's real numbers without leaving the card.
@@ -198,10 +280,6 @@ export default function Plan() {
     debts.length ? `Debts: ${debts.map(d => `${d.name} $${Number(d.balance).toLocaleString()}${d.interest_rate ? ` @ ${d.interest_rate}%` : ''}`).join(', ')}.` : 'No debts.',
   ].filter(Boolean).join(' ')
 
-  const stepsLeft   = totalSteps - completedSteps
-  const isComplete  = p => p.steps.length > 0 && p.steps.every(s => s.done)
-  const sortedPlans = [...plans].sort((a, b) => (isComplete(a) === isComplete(b) ? 0 : isComplete(a) ? 1 : -1))
-
   // Living headline — the nearest goal you'll reach.
   const nearest = goals
     .map(g => ({ g, p: getProjection(g) }))
@@ -211,7 +289,7 @@ export default function Plan() {
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
-      className="p-4 md:p-6 lg:p-8 max-w-2xl mx-auto space-y-5 pb-24 md:pb-8"
+      className="p-4 md:p-6 lg:p-8 max-w-2xl mx-auto space-y-4 pb-24 md:pb-8"
     >
       <div>
         <h1 className="font-display text-[26px] font-medium text-white drop-shadow-lg">Your Plan</h1>
@@ -226,7 +304,7 @@ export default function Plan() {
       <div className="flex p-1 rounded-xl bg-white/[0.06] border border-white/[0.10]">
         {[
           { id: 'steps', icon: ClipboardList, label: 'Steps',
-            badge: totalSteps === 0 ? null : (totalSteps - completedSteps === 0 ? 'all done' : `${totalSteps - completedSteps} left`) },
+            badge: totalSteps === 0 ? null : (activeSteps.length === 0 ? 'all done' : `${activeSteps.length} left`) },
           { id: 'goals', icon: Target, label: 'Goals',
             badge: goals.length === 0 ? null : `${goalsReached}/${goals.length} reached` },
         ].map(t => (
@@ -246,42 +324,89 @@ export default function Plan() {
       </div>
 
       {loading ? (
-        <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-28 bg-white/[0.075] rounded-2xl animate-pulse" />)}</div>
+        <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-24 bg-white/[0.075] rounded-2xl animate-pulse" />)}</div>
       ) : tab === 'steps' ? (
         <motion.div key="steps" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.18 }} className="space-y-5">
+          transition={{ duration: 0.18 }} className="space-y-3">
 
-          {/* ── Smart, situation-aware prompts ── */}
-          <SmartSuggestions profile={profile} goals={goals} debts={debts} accounts={accounts} plans={plans}
-            onAddTask={addSuggestedTask} onAddGoal={addSuggestedGoal} onAsk={askAdvisor} />
+          {/* One thin line of garden progress — the reward, always visible */}
+          <GardenMeter done={completedSteps + goalsReached} />
 
-          {/* ── Action steps (the hero — checking grows the garden) ── */}
-          {plans.length === 0 ? (
+          {building ? (
+            /* Starter plan generating — skeleton steps, not a spinner */
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm text-emerald-200/80 px-1">
+                <Loader2 className="w-4 h-4 animate-spin" /> Building your plan from your real numbers…
+              </div>
+              {[1, 2, 3, 4].map(i => <div key={i} className="h-12 bg-white/[0.06] rounded-xl animate-pulse" />)}
+            </div>
+          ) : upNext ? (
+            <>
+              {/* THE emphasized element — the one thing to do next */}
+              <UpNextCard step={upNext} onToggle={toggleStep} onApply={applyAndMark} howToContext={howToCtx} />
+
+              {/* Everything else stays quiet */}
+              <StepList steps={restSteps}
+                expandedId={expandedId} onExpand={setExpandedId}
+                onToggle={toggleStep} onApply={applyAndMark}
+                onSetDue={setDue} onDelete={deleteStep}
+                howToContext={howToCtx} />
+
+              {suggestion && <SuggestionRow suggestion={suggestion} onRun={runSuggestion} onDismiss={dismissSuggestion} />}
+
+              <DoneAccordion steps={doneSteps} onToggle={toggleStep} />
+
+              <div className="flex items-center justify-between">
+                <AddStepRow onAdd={addOwnStep} />
+                <button onClick={() => { if (clearArmed) clearPlan(); else setClearArmed(true) }}
+                  className={`text-[11px] font-medium transition-colors ${
+                    clearArmed ? 'text-rose-300 font-semibold' : 'text-white/25 hover:text-white/50'}`}>
+                  {clearArmed ? 'Tap again to clear everything' : 'Clear my plan'}
+                </button>
+              </div>
+            </>
+          ) : totalSteps > 0 ? (
+            /* Every step done — celebrate + point forward */
+            <>
+              <div className="bg-emerald-500/[0.08] rounded-2xl border border-emerald-400/25 p-6 text-center">
+                <div className="w-11 h-11 mx-auto mb-3 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                  <Sprout className="w-5 h-5 text-emerald-300" />
+                </div>
+                <p className="text-white font-semibold text-sm mb-1">Every step done — your garden thanks you.</p>
+                <p className="text-white/50 text-xs mb-4">Ask your advisor what's next, or add your own.</p>
+                <Link to="/advisor"
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors">
+                  <Bot className="w-4 h-4" /> What's next?
+                </Link>
+              </div>
+              {suggestion && <SuggestionRow suggestion={suggestion} onRun={runSuggestion} onDismiss={dismissSuggestion} />}
+              <DoneAccordion steps={doneSteps} onToggle={toggleStep} />
+              <AddStepRow onAdd={addOwnStep} />
+            </>
+          ) : (
+            /* First run — one tap from empty to a real, personalized plan */
             <div className="bg-white/[0.075] rounded-2xl border border-white/[0.11] p-8 text-center">
               <div className="w-11 h-11 mx-auto mb-3 rounded-full bg-emerald-500/15 flex items-center justify-center">
                 <Sprout className="w-5 h-5 text-emerald-400" />
               </div>
               <p className="text-white font-semibold text-sm mb-1">Your garden is waiting</p>
               <p className="text-white/45 text-xs max-w-xs mx-auto mb-4">
-                Ask your advisor what to do next, then add the steps here. Each one you check off grows your garden.
+                I'll turn your numbers into a short checklist. Each step you check off grows your garden.
               </p>
-              <Link to="/advisor"
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors">
-                <Bot className="w-4 h-4" /> Talk to your advisor
-              </Link>
+              <button onClick={buildStarterPlan}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold shadow-lg shadow-emerald-900/30 transition-colors">
+                <ClipboardList className="w-4 h-4" /> Build my starter plan
+              </button>
+              <div className="mt-3">
+                <Link to="/advisor" className="text-xs text-white/40 hover:text-emerald-300 transition-colors">
+                  or ask your advisor →
+                </Link>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {sortedPlans.map(plan => (
-                <PlanCard key={plan.id} plan={plan} variant="page"
-                  onToggle={(stepId) => toggleStep(plan.id, stepId)}
-                  onApply={(step) => applyAndMark(plan.id, step)}
-                  onAddStep={(text) => addStep(plan.id, text)}
-                  onSetDue={(stepId, due) => setDue(plan.id, stepId, due)}
-                  howToContext={howToCtx}
-                  onDelete={() => removePlan(plan.id)} />
-              ))}
-            </div>
+          )}
+
+          {error && (
+            <p className="text-xs text-rose-200 bg-rose-500/15 border border-rose-400/25 px-3 py-2 rounded-lg text-center">{error}</p>
           )}
         </motion.div>
       ) : (

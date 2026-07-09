@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden, milestonesToStage, STAGE_NAMES, STAGE_THRESHOLDS } from '@/context/GardenContext'
 import { listPlans, updatePlanSteps } from '@/lib/advisorPlans'
+import { orderSteps } from '@/lib/planOrder'
 import { netWorthTrend } from '@/lib/netWorth'
 import Onboarding from '@/components/Onboarding'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
@@ -141,16 +142,11 @@ export default function Dashboard() {
     netWorthTrend(user.id, netWorth).then(setTrend).catch(() => {})
   }, [loading, netWorth, user.id])
 
-  // Next 1–2 uncompleted steps (across plans) — checkable right from the garden.
-  // Steps with due dates surface first (overdue/soonest at the top), then the
-  // rest in plan order.
-  const nextSteps = plans
-    .flatMap(p => p.steps.filter(s => !s.done).map(s => ({ planId: p.id, step: s })))
-    .sort((a, b) => {
-      if (a.step.due && b.step.due) return a.step.due.localeCompare(b.step.due)
-      return (a.step.due ? -1 : 0) - (b.step.due ? -1 : 0)
-    })
-    .slice(0, 2)
+  // Next 1–2 uncompleted steps — the SAME ordering the Plan page's "Up next"
+  // card uses (src/lib/planOrder.js), so the peek and the page always agree.
+  const nextSteps = orderSteps(
+    plans.flatMap(p => p.steps.filter(s => !s.done).map(s => ({ ...s, planId: p.id }))),
+  ).slice(0, 2)
 
   function toggleStep(planId, stepId, text) {
     // Celebrate synchronously if this check crosses a stage boundary.
@@ -161,7 +157,8 @@ export default function Dashboard() {
     }
     setPlans(prev => prev.map(p => {
       if (p.id !== planId) return p
-      const steps = p.steps.map(s => s.id === stepId ? { ...s, done: true } : s)
+      const steps = p.steps.map(s => s.id === stepId
+        ? { ...s, done: true, completedAt: new Date().toISOString() } : s)
       updatePlanSteps(planId, steps).catch(() => {})
       return { ...p, steps }
     }))
@@ -223,8 +220,8 @@ export default function Dashboard() {
                   </span>
                   <Link to="/plan" className="text-[11px] font-semibold text-emerald-300 hover:text-emerald-200">All steps →</Link>
                 </div>
-                {nextSteps.map(({ planId, step }) => (
-                  <button key={step.id} onClick={() => toggleStep(planId, step.id, step.text)}
+                {nextSteps.map(step => (
+                  <button key={step.id} onClick={() => toggleStep(step.planId, step.id, step.text)}
                     className="w-full flex items-start gap-2.5 px-1 py-1 text-left group">
                     <span className="mt-0.5 w-[18px] h-[18px] rounded-md border border-white/30 group-hover:border-emerald-400 flex items-center justify-center flex-shrink-0 transition-colors">
                       <Check className="w-3 h-3 text-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={3} />
