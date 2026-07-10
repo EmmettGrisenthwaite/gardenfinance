@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Check, Plus, Loader2, Calendar, X, ChevronDown, ChevronRight, Sparkles, Trash2 } from 'lucide-react'
 import { applyLabel } from '@/lib/advisorPlans'
+import { fetchHowTo } from '@/lib/claude'
 import ResourceLinks from '@/components/ResourceLinks'
-import HowToInline from '@/components/HowToInline'
 
 // ── Due-date helpers ────────────────────────────────────────────────────────────
 function dueMeta(due) {
@@ -56,6 +56,66 @@ function CheckBox({ done, onToggle, label }) {
   )
 }
 
+// ── The step's how-to, loaded the moment you click into it ─────────────────────
+// Decisive marching orders for THIS step (see fetchHowTo — one provider, one
+// sequence, their numbers). Fetches automatically on first open, then lives on
+// the step itself (`step.guide`, persisted by the parent via onSave) so
+// reopening — this session or next — is instant and free.
+const guideCache = new Map()   // stepId → text, survives collapse/expand within a session
+
+function StepGuide({ step, context, onSave }) {
+  const cached = step.guide ?? guideCache.get(step.id) ?? null
+  const [text, setText]       = useState(cached)
+  const [loading, setLoading] = useState(!cached)
+  const [error, setError]     = useState(false)
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    if (text) return
+    let alive = true
+    setLoading(true)
+    setError(false)
+    fetchHowTo(step.text, context)
+      .then(t => {
+        if (!alive) return
+        const clean = t?.trim()
+        if (!clean) { setError(true); return }
+        guideCache.set(step.id, clean)
+        setText(clean)
+        onSave?.(step.id, clean)
+      })
+      .catch(() => { if (alive) setError(true) })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step.id, attempt])
+
+  return (
+    <div className="rounded-xl bg-emerald-500/[0.07] border border-emerald-400/20 px-3 py-2.5">
+      <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300/80 mb-1.5">
+        <Sparkles className="w-3 h-3" /> How to do this
+      </div>
+      {loading ? (
+        <div className="flex items-center gap-2 text-xs text-emerald-200/80 py-1">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Working out your best move…
+        </div>
+      ) : error ? (
+        <div className="text-xs text-white/55 py-1">
+          Couldn't load this right now.{' '}
+          <button onClick={() => setAttempt(a => a + 1)}
+            className="font-semibold text-emerald-300 hover:text-emerald-200">Try again</button>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {text.split('\n').filter(l => l.trim()).map((line, i) => (
+            <p key={i} className="text-xs text-white/80 leading-relaxed">{line.trim()}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // One-tap apply button + its applied state (goal applies link back to the goal).
 function ApplyAction({ step, onApply }) {
   const [busy, setBusy] = useState(false)
@@ -84,24 +144,43 @@ function ApplyAction({ step, onApply }) {
 }
 
 // ── The one emphasized element on the page ──────────────────────────────────────
-export function UpNextCard({ step, onToggle, onApply, howToContext }) {
+// Tapping the card body opens the step's how-to right here (auto-loaded), same
+// as every other row — the hero is just the top step, bigger.
+export function UpNextCard({ step, onToggle, onApply, howToContext, onGuide }) {
   const meta = dueMeta(step.due)
+  const [showHow, setShowHow] = useState(false)
+  // A new step sliding up into the card starts closed.
+  useEffect(() => { setShowHow(false) }, [step.id])
+
   return (
     <AnimatePresence mode="popLayout">
       <motion.div key={step.id}
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }}
         transition={{ duration: 0.25 }}
         className="rounded-2xl bg-emerald-500/[0.08] border border-emerald-400/25 p-4">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300/90 mb-1.5">Up next</div>
-        <div className="text-[15px] font-semibold text-white leading-snug">{step.text}</div>
-        {(step.detail || step.impact || meta) && (
-          <div className="mt-1 text-xs text-white/60 leading-relaxed">
-            {step.detail}
-            {step.impact && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded bg-emerald-500/[0.14] text-emerald-200 text-[10px] font-semibold align-middle">{step.impact}</span>}
-            {meta && <span className={`ml-1.5 text-[10px] font-semibold ${meta.color}`}>{meta.label}</span>}
+        <div onClick={() => setShowHow(s => !s)} className="cursor-pointer select-none">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300/90">Up next</span>
+            <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-300/70">
+              {showHow ? 'hide how' : 'tap for how'}
+              <ChevronRight className={`w-3 h-3 transition-transform ${showHow ? 'rotate-90' : ''}`} />
+            </span>
+          </div>
+          <div className="text-[15px] font-semibold text-white leading-snug">{step.text}</div>
+          {(step.detail || step.impact || meta) && (
+            <div className="mt-1 text-xs text-white/60 leading-relaxed">
+              {step.detail}
+              {step.impact && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded bg-emerald-500/[0.14] text-emerald-200 text-[10px] font-semibold align-middle">{step.impact}</span>}
+              {meta && <span className={`ml-1.5 text-[10px] font-semibold ${meta.color}`}>{meta.label}</span>}
+            </div>
+          )}
+        </div>
+        <ResourceLinks resources={step.resources} />
+        {showHow && (
+          <div className="mt-3">
+            <StepGuide step={step} context={howToContext} onSave={onGuide} />
           </div>
         )}
-        <ResourceLinks resources={step.resources} />
         <div className="mt-3 flex items-center gap-3 flex-wrap">
           <button onClick={() => onToggle(step.id)}
             className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-lg shadow-emerald-900/30 transition-colors">
@@ -109,14 +188,14 @@ export function UpNextCard({ step, onToggle, onApply, howToContext }) {
           </button>
           {step.apply && onApply && <ApplyAction step={step} onApply={onApply} />}
         </div>
-        {howToContext !== undefined && <HowToInline subject={step.text} context={howToContext} />}
       </motion.div>
     </AnimatePresence>
   )
 }
 
-// ── Quiet rows: checkbox + text (+ one tiny hint). Tap to expand. ───────────────
-function QuietRow({ step, expanded, onExpand, onToggle, onApply, onSetDue, onDelete, howToContext }) {
+// ── Quiet rows: checkbox + text (+ one tiny hint). Tap to expand — the step's
+// how-to loads right there, automatically. ──────────────────────────────────────
+function QuietRow({ step, expanded, onExpand, onToggle, onApply, onSetDue, onDelete, howToContext, onGuide }) {
   const meta = dueMeta(step.due)
   const hint = meta
     ? <span className={`text-[10px] font-semibold whitespace-nowrap ${meta.color}`}>{meta.label}</span>
@@ -151,6 +230,8 @@ function QuietRow({ step, expanded, onExpand, onToggle, onApply, onSetDue, onDel
               <span className="inline-block px-1.5 py-0.5 rounded bg-emerald-500/[0.14] text-emerald-200 text-[10px] font-semibold">{step.impact}</span>
             )}
             <ResourceLinks resources={step.resources} />
+            {/* The whole point of clicking in: how to actually do it, decided for them */}
+            {howToContext !== undefined && <StepGuide step={step} context={howToContext} onSave={onGuide} />}
             <div className="flex items-center gap-3 flex-wrap">
               {step.apply && onApply && <ApplyAction step={step} onApply={onApply} />}
               {onSetDue && <DueChip due={step.due} onSet={d => onSetDue(step.id, d)} />}
@@ -166,7 +247,6 @@ function QuietRow({ step, expanded, onExpand, onToggle, onApply, onSetDue, onDel
                 </button>
               )}
             </div>
-            {howToContext !== undefined && <HowToInline subject={step.text} context={howToContext} />}
             {step.group && <p className="text-[10px] text-white/30">from: {step.group}</p>}
           </div>
         </motion.div>
@@ -175,7 +255,7 @@ function QuietRow({ step, expanded, onExpand, onToggle, onApply, onSetDue, onDel
   )
 }
 
-export function StepList({ steps, expandedId, onExpand, onToggle, onApply, onSetDue, onDelete, howToContext }) {
+export function StepList({ steps, expandedId, onExpand, onToggle, onApply, onSetDue, onDelete, howToContext, onGuide }) {
   if (steps.length === 0) return null
   return (
     <div className="bg-white/[0.05] rounded-2xl border border-white/[0.09] px-3.5">
@@ -183,7 +263,7 @@ export function StepList({ steps, expandedId, onExpand, onToggle, onApply, onSet
         <QuietRow key={step.id} step={step}
           expanded={expandedId === step.id} onExpand={onExpand}
           onToggle={onToggle} onApply={onApply} onSetDue={onSetDue} onDelete={onDelete}
-          howToContext={howToContext} />
+          howToContext={howToContext} onGuide={onGuide} />
       ))}
     </div>
   )

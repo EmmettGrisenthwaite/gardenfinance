@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { LIMITS } from '@/lib/finance'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const CHAT_ENDPOINT = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/chat` : null
@@ -83,15 +84,18 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 1024, onD
   return full
 }
 
-// Generates a short, concrete "how to get there" mini-guide for one goal or
-// plan step, rendered INLINE in its card (no trip to the advisor chat).
-// Returns plain text: 3–5 numbered steps.
+// Generates THE way to do one plan step, rendered INLINE in its card when the
+// user taps into it (no trip to the advisor chat). Deliberately DECISIVE: it
+// commits to one provider, one account type, one sequence — a user who tapped
+// "how do I do this" wants marching orders, not a menu.
+// Returns plain text: 3–6 numbered steps.
 export async function fetchHowTo(subject, context = '') {
-  const system = `You are a financial advisor inside Garden Financial. Produce a tiny, ultra-concrete how-to for ONE task. Rules:
-- Exactly 3–5 numbered steps, each a single short sentence (imperative voice).
-- Use the user's real numbers when given — specific dollar amounts beat generalities.
-- Name reputable providers where relevant (Fidelity, Schwab, Vanguard, Ally, Marcus, SoFi).
-- No preamble, no closing remarks, no headings — just the numbered steps.`
+  const system = `You are the financial advisor inside Garden Financial. The user tapped a step in their plan and wants to know EXACTLY how to do it. Produce the definitive way — decide for them. Rules:
+- BE DECISIVE. Pick exactly ONE provider, ONE account type, ONE sequence — the best fit for their situation below. Never offer alternatives, never say "consider", "you could", "or", "such as". If a choice depends on something unknown, make the sensible default call for a young adult and just state it.
+- 3–6 numbered steps, each a single short imperative sentence. Step 1 must be startable today, on their phone.
+- Use their real numbers from the situation below for every dollar amount — computed, not generic.
+- Ground picks in current reality: Roth IRA limit $${LIMITS.rothIra.toLocaleString()} and 401(k) limit $${LIMITS.k401.toLocaleString()} for ${LIMITS.year}; top HYSAs (Ally, Marcus, SoFi) pay ~4–5% APY. Default brokerage pick: Fidelity (no minimums, no fees, best app for beginners).
+- No preamble, no closing remarks, no headings, no hedging — just the numbered steps.`
   const messages = [{
     role: 'user',
     content: `${context ? `My situation:\n${context}\n\n` : ''}Show me exactly how to: ${subject}`,

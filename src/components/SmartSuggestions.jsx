@@ -71,13 +71,14 @@ export function buildSuggestions({ profile, goals, debts, accounts = [], plans =
     cta: 'Add task', action: { kind: 'task', text: 'Contribute enough to my 401(k) to capture the full employer match' },
   })
 
-  // 6) Roth IRA / start investing.
+  // 6) Roth IRA / start investing — lands as a plan step; tapping into it
+  // reveals the decisive in-place how-to (no advisor detour for a known move).
   const investingNothing = Array.isArray(p.investment_types) && (p.investment_types.includes('none') || p.investment_types.length === 0)
   if ((investingNothing || !Array.isArray(p.investment_types)) && !has('roth', 'ira')) all.push({
     id: 'roth', icon: TrendingUp,
     q: 'Investing for retirement yet?',
-    sub: 'A Roth IRA is the best tool for most young adults. I can walk you through it.',
-    cta: 'Show me how', action: { kind: 'ask', q: 'Walk me through opening a Roth IRA, step by step.' },
+    sub: 'A Roth IRA is the best tool for most young adults.',
+    cta: 'Add the step', action: { kind: 'task', text: `Open a Roth IRA and set up an automatic monthly contribution${surplus > 50 ? ` of $${Math.min(625, Math.max(50, Math.round(surplus * 0.25 / 25) * 25)).toLocaleString()}` : ''}` },
   })
 
   // 7) Automate the surplus.

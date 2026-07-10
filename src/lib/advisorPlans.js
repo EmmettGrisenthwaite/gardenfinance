@@ -56,6 +56,7 @@ export function normalizeSteps(steps = []) {
           .map(r => ({ label: r.label || r.url, url: r.url, note: r.note || null }))
       : null,
     due:     s.due ?? null,          // optional YYYY-MM-DD target date
+    guide:   s.guide ?? null,        // the fetched "how to do this" text — cached on the step
     source:  s.source ?? null,       // 'advisor' | 'guide' | 'suggestion' | 'user'
     group:   s.group ?? null,        // where it came from, e.g. a guide's title
     addedAt: s.addedAt ?? null,

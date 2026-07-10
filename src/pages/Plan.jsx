@@ -151,6 +151,10 @@ export default function Plan() {
   }
   const setDue = (stepId, due) =>
     editSteps(list => list.map(s => s.id === stepId ? { ...s, due } : s))
+  // Cache a fetched how-to on its step so reopening it — any session, any
+  // device — is instant and costs nothing.
+  const saveGuide = (stepId, guide) =>
+    editSteps(list => list.map(s => s.id === stepId ? { ...s, guide } : s))
 
   // The user's own step — their intent wins, no dedupe second-guessing.
   async function addOwnStep(text) {
@@ -397,14 +401,15 @@ export default function Plan() {
           ) : upNext ? (
             <>
               {/* THE emphasized element — the one thing to do next */}
-              <UpNextCard step={upNext} onToggle={toggleStep} onApply={applyAndMark} howToContext={howToCtx} />
+              <UpNextCard step={upNext} onToggle={toggleStep} onApply={applyAndMark}
+                howToContext={howToCtx} onGuide={saveGuide} />
 
               {/* Everything else stays quiet */}
               <StepList steps={restSteps}
                 expandedId={expandedId} onExpand={setExpandedId}
                 onToggle={toggleStep} onApply={applyAndMark}
                 onSetDue={setDue} onDelete={deleteStep}
-                howToContext={howToCtx} />
+                howToContext={howToCtx} onGuide={saveGuide} />
 
               {suggestion && <SuggestionRow suggestion={suggestion} onRun={runSuggestion} onDismiss={dismissSuggestion} />}
 
