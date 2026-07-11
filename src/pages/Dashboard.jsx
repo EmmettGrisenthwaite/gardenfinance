@@ -116,13 +116,19 @@ export default function Dashboard() {
     })
   }, [user.id])
 
-  // After onboarding seeds account value, refetch so the stat isn't stale at $0.
+  // After onboarding seeds accounts AND debts, refetch both — refreshing only
+  // accounts left net worth wrong (e.g. +$2,300 instead of -$1,100 with a
+  // $3,400 card) at the exact moment the user first sees their dashboard.
   useEffect(() => {
     if (!profile?.onboarding_complete) return
     supabase.from('accounts').select('balance').eq('user_id', user.id)
       .then(({ data, error: accountsError }) => {
         if (accountsError) setError(accountsError.message ?? 'Could not refresh your balances.')
         else setAccounts(data ?? [])
+      })
+    supabase.from('debts').select('*').eq('user_id', user.id)
+      .then(({ data, error: debtsError }) => {
+        if (!debtsError) setDebts(data ?? [])
       })
   }, [profile?.onboarding_complete, user.id])
 

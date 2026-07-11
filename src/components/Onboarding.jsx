@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Sprout, ArrowRight, ArrowLeft, Check, X } from 'lucide-react'
@@ -536,10 +536,13 @@ export default function Onboarding({ onClose, profileOnly = false }) {
 
         {/* Body */}
         <div className="px-6 py-6 overflow-y-auto" style={{ minHeight: 300, maxHeight: '60dvh' }}>
-          <AnimatePresence mode="wait">
+          {/* No AnimatePresence mode="wait" here: it gates the NEXT question
+              behind the previous step's exit animation, so a throttled rAF
+              (backgrounded tab, low-power mode) freezes the whole wizard on
+              stale content. A keyed enter-only animation can't get stuck. */}
             <motion.div key={current.id}
               initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.2 }}>
+              transition={{ duration: 0.2 }}>
 
               {current.type !== 'preview' && (
                 <>
@@ -663,7 +666,6 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                 </div>
               )}
             </motion.div>
-          </AnimatePresence>
         </div>
 
         {error && (

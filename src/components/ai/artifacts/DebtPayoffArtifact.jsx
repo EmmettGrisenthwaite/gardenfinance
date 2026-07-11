@@ -4,8 +4,11 @@ import { debtFreedomWithExtra, formatDateLabel, formatMonths } from '@/lib/finan
 import Slider from '@/components/ui/slider'
 import { CreditCard, TrendingDown, Calendar, Target } from 'lucide-react'
 
-export default function DebtPayoffArtifact({ debts, onAddStep }) {
-  const [extraPayment, setExtraPayment] = useState(50)
+export default function DebtPayoffArtifact({ debts, monthlySurplus = 0, onAddStep }) {
+  // Start the calculator at the user's REAL monthly surplus (what the advisor's
+  // advice assumes), not an arbitrary $50 that may not even outrun interest.
+  const [extraPayment, setExtraPayment] = useState(() =>
+    Math.min(1000, Math.max(50, Math.round((Number(monthlySurplus) || 0) / 25) * 25 || 50)))
 
   const result = useMemo(() => {
     if (!debts || debts.length === 0) return null
@@ -23,17 +26,9 @@ export default function DebtPayoffArtifact({ debts, onAddStep }) {
     )
   }
 
-  if (!result || result.stuck) {
-    return (
-      <div className="bg-white/[0.05] border border-white/[0.10] rounded-xl p-4 mt-3">
-        <div className="text-center py-4">
-          <TrendingDown className="w-8 h-8 text-rose-400/50 mx-auto mb-2" />
-          <p className="text-sm text-white/50">Your minimum payments don't cover interest. Increase your payments to see a payoff date.</p>
-        </div>
-      </div>
-    )
-  }
-
+  // NOTE: a "stuck" result (payment loses to interest) must NOT hide the card —
+  // the slider is the only way out of that state. It renders inline below.
+  const stuck = !result || result.stuck
   const totalDebt = debts.reduce((s, d) => s + (Number(d.balance) || 0), 0)
   const topDebt = [...debts].sort((a, b) => (b.interest_rate || 0) - (a.interest_rate || 0))[0]
 
@@ -60,8 +55,8 @@ export default function DebtPayoffArtifact({ debts, onAddStep }) {
         <div className="px-4 py-4 space-y-4">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-white/60">Total monthly payment</span>
-              <span className="text-sm font-bold text-emerald-300">+${extraPayment}/mo</span>
+              <span className="text-xs text-white/60">Monthly payment</span>
+              <span className="text-sm font-bold text-emerald-300">${extraPayment}/mo</span>
             </div>
             <Slider
               value={[extraPayment]}
@@ -78,6 +73,16 @@ export default function DebtPayoffArtifact({ debts, onAddStep }) {
             </div>
           </div>
 
+          {stuck ? (
+            /* Payment loses to interest at this level — say so, keep the slider */
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-rose-500/[0.08] border border-rose-400/20">
+              <TrendingDown className="w-4 h-4 text-rose-300 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-white/70 leading-snug">
+                At ${extraPayment}/mo, interest grows faster than you're paying it down — drag the slider up to see your payoff date.
+              </p>
+            </div>
+          ) : (
+          <>
           {/* Results grid */}
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-white/[0.04] rounded-xl p-3 text-center">
@@ -128,6 +133,8 @@ export default function DebtPayoffArtifact({ debts, onAddStep }) {
               <Target className="w-4 h-4" />
               Add ${extraPayment}/mo toward {topDebt.name}
             </button>
+          )}
+          </>
           )}
         </div>
       </div>

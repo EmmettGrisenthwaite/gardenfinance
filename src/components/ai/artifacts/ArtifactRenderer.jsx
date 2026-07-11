@@ -16,6 +16,7 @@ export default function ArtifactRenderer({ artifact, debts, goals, accounts, pro
       return (
         <DebtPayoffArtifact
           debts={debts}
+          monthlySurplus={(Number(profile?.monthly_income) || 0) - (Number(profile?.monthly_expenses) || 0)}
           onAddStep={onAddStep}
         />
       )
