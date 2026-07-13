@@ -24,7 +24,8 @@ export default function Layout({ children }) {
   const isImmersive = isGarden || pathname === '/advisor'
   // Secondary pages reached from the gear / links — back-button navigation, so
   // the floating tab bar is hidden (it would imply they're top-level tabs).
-  const isSubPage   = pathname === '/settings'
+  // A step's detail page is one of these: its back button returns to the Plan.
+  const isSubPage   = pathname === '/settings' || pathname.startsWith('/plan/step/')
   // The advisor chat is a full-screen composer (like a real chat app) — the
   // pill would either overlap the send button or force a permanent dead gap
   // above it, so it's hidden there too; the chat's own header carries a way back.

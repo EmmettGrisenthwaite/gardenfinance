@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ClipboardList, Bot, Target, Plus, Sprout, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -9,6 +9,7 @@ import { getPlan, updatePlanSteps, deletePlan, applyStep, appendSteps, normalize
 import { orderSteps } from '@/lib/planOrder'
 import { requestPlan } from '@/lib/claude'
 import { buildContext, buildSystemPrompt } from '@/lib/advisorContext'
+import { buildHowToContext } from '@/lib/howToContext'
 import { buildSuggestions } from '@/components/SmartSuggestions'
 import { GoalItem, GoalModal, getProjection } from '@/components/GoalItem'
 import { UpNextCard, StepList, DoneAccordion, AddStepRow, SuggestionRow } from '@/components/PlanSteps'
@@ -19,6 +20,7 @@ export default function Plan() {
   const { user, profile, setProfile } = useAuth()
   const { updateGarden, triggerBurst } = useGarden()
   const navigate = useNavigate()
+  const location = useLocation()
   const [plan,    setPlan]    = useState(null)   // THE plan (one per user) | null
   const [goals,   setGoals]   = useState([])
   const [debts,   setDebts]   = useState([])
@@ -27,9 +29,19 @@ export default function Plan() {
   const [loading, setLoading] = useState(true)
   const [modal,   setModal]   = useState(null)   // null | 'new' | goal
   const [growth,  setGrowth]  = useState(null)   // garden-grew celebration
-  const [expandedId, setExpandedId] = useState(null)  // the one expanded row
   const [building, setBuilding] = useState(false)     // starter-plan generation
   const [error,   setError]   = useState(null)
+
+  // A step completed on its detail page may have crossed a garden stage — the
+  // detail page passes the crossing back so the celebration fires right here.
+  useEffect(() => {
+    const grew = location.state?.grew
+    if (!grew) return
+    window.history.replaceState({}, '')
+    setGrowth(grew)
+    triggerBurst()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function loadGoals() {
     const { data: g, error: goalError } = await supabase.from('goals').select('*').eq('user_id', user.id).order('created_at')
@@ -143,18 +155,10 @@ export default function Plan() {
     editSteps(list => list.map(s => s.id === stepId
       ? { ...s, done: !s.done, completedAt: s.done ? null : new Date().toISOString() }
       : s))
-    setExpandedId(null)
   }
-  function deleteStep(stepId) {
-    editSteps(list => list.filter(s => s.id !== stepId))
-    setExpandedId(null)
-  }
-  const setDue = (stepId, due) =>
-    editSteps(list => list.map(s => s.id === stepId ? { ...s, due } : s))
-  // Cache a fetched how-to on its step so reopening it — any session, any
-  // device — is instant and costs nothing.
-  const saveGuide = (stepId, guide) =>
-    editSteps(list => list.map(s => s.id === stepId ? { ...s, guide } : s))
+  // Tapping a step opens its own page: the why + the full how-to, with a back
+  // button. The step rides along in nav state for an instant paint.
+  const openStep = (step) => navigate(`/plan/step/${step.id}`, { state: { step } })
 
   // The user's own step — their intent wins, no dedupe second-guessing.
   async function addOwnStep(text) {
@@ -328,32 +332,9 @@ export default function Plan() {
     if (data) setGoals(gs => [...gs, data])
   }
 
-  // Compact situation snapshot for the inline "Show me how" mini-guides — the
-  // AI writes amounts against the user's real numbers without leaving the card.
-  // Existing accounts and insurance status matter as much as the numbers: a
-  // guide must never tell someone to OPEN an account they already have.
-  const investTypes = Array.isArray(profile?.investment_types) ? profile.investment_types.filter(t => t !== 'none') : []
-  const investLabels = { roth_ira: 'Roth IRA', trad_ira: 'Traditional IRA', '401k': '401(k)', brokerage: 'brokerage account', hsa: 'HSA' }
-  const insuranceCtx = profile?.health_insurance === 'none' ? 'No health insurance.'
-    : profile?.health_insurance ? 'Has health insurance.' : ''
-  // Variable income (freelance/gig) needs a bigger cushion — same rule as the
-  // finance engine's efTargetMonths.
-  const efMonths = ['freelance', 'other'].includes(profile?.employment_type) ? 6 : 3
-  const howToCtx = [
-    `Monthly income $${money.income.toLocaleString()}, expenses $${money.expenses.toLocaleString()} (surplus $${(money.income - money.expenses).toLocaleString()}/mo).`,
-    `Net worth $${netWorth.toLocaleString()}.`,
-    profile?.age ? `Age ${profile.age}.` : '',
-    profile?.employment_type ? `Employment: ${profile.employment_type}.` : '',
-    money.expenses > 0
-      ? `Emergency fund target: ${efMonths} months of expenses ($${(money.expenses * efMonths).toLocaleString()})${efMonths === 6 ? ' because income varies' : ''}.`
-      : '',
-    investTypes.length
-      ? `ALREADY HAS these accounts (do not suggest opening them again): ${investTypes.map(t => investLabels[t] ?? t).join(', ')}.`
-      : 'No investment accounts yet.',
-    insuranceCtx,
-    profile?.employer_401k === 'match' ? 'Employer 401(k) match available.' : '',
-    debts.length ? `Debts: ${debts.map(d => `${d.name} $${Number(d.balance).toLocaleString()}${d.interest_rate ? ` @ ${d.interest_rate}%` : ''}`).join(', ')}.` : 'No debts.',
-  ].filter(Boolean).join(' ')
+  // Situation snapshot for the goal cards' inline "Show me how" guides (steps
+  // build theirs on the step detail page from the same shared builder).
+  const howToCtx = buildHowToContext({ profile, debts, income: money.income, expenses: money.expenses, netWorth })
 
   // Living headline — the nearest goal you'll reach.
   const nearest = goals
@@ -418,15 +399,10 @@ export default function Plan() {
           ) : upNext ? (
             <>
               {/* THE emphasized element — the one thing to do next */}
-              <UpNextCard step={upNext} onToggle={toggleStep} onApply={applyAndMark}
-                howToContext={howToCtx} onGuide={saveGuide} />
+              <UpNextCard step={upNext} onToggle={toggleStep} onApply={applyAndMark} onOpen={openStep} />
 
-              {/* Everything else stays quiet */}
-              <StepList steps={restSteps}
-                expandedId={expandedId} onExpand={setExpandedId}
-                onToggle={toggleStep} onApply={applyAndMark}
-                onSetDue={setDue} onDelete={deleteStep}
-                howToContext={howToCtx} onGuide={saveGuide} />
+              {/* Everything else stays quiet — tap a row for its own page */}
+              <StepList steps={restSteps} onToggle={toggleStep} onOpen={openStep} />
 
               {suggestion && <SuggestionRow suggestion={suggestion} onRun={runSuggestion} onDismiss={dismissSuggestion} />}
 

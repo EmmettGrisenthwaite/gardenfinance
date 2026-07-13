@@ -7,6 +7,7 @@ import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import AIAdvisor from '@/pages/AIAdvisor'
 import Plan from '@/pages/Plan'
+import StepDetail from '@/pages/StepDetail'
 import Money from '@/pages/Money'
 import Settings from '@/pages/Settings'
 import { Sprout, Compass } from 'lucide-react'
@@ -85,6 +86,7 @@ export default function App() {
               <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/advisor" element={<ProtectedRoute><AIAdvisor /></ProtectedRoute>} />
               <Route path="/plan" element={<ProtectedRoute><Plan /></ProtectedRoute>} />
+              <Route path="/plan/step/:stepId" element={<ProtectedRoute><StepDetail /></ProtectedRoute>} />
               <Route path="/money" element={<ProtectedRoute><Money /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               {/* Money lives on its own page; goals on the Plan */}
