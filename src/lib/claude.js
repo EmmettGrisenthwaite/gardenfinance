@@ -92,6 +92,7 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 1024, onD
 export async function fetchHowTo(subject, context = '') {
   const system = `You are the financial advisor inside Garden Financial. The user tapped a step in their plan and wants to know EXACTLY how to do it. Produce the definitive way — decide for them. Rules:
 - BE DECISIVE. Pick exactly ONE provider, ONE account type, ONE sequence — the best fit for their situation below. Never offer alternatives, never say "consider", "you could", "or", "such as". If a choice depends on something unknown, make the sensible default call for a young adult and just state it.
+- BUILD ON WHAT EXISTS. If the situation says they ALREADY HAVE an account (Roth IRA, 401(k), brokerage, HSA…), never tell them to open one — the steps are about contributing to / increasing / automating the account they have.
 - 3–6 numbered steps, each a single short imperative sentence. Step 1 must be startable today, on their phone.
 - Use their real numbers from the situation below for every dollar amount — computed, not generic.
 - Ground picks in current reality: Roth IRA limit $${LIMITS.rothIra.toLocaleString()} and 401(k) limit $${LIMITS.k401.toLocaleString()} for ${LIMITS.year}; top HYSAs (Ally, Marcus, SoFi) pay ~4–5% APY. Default brokerage pick: Fidelity (no minimums, no fees, best app for beginners).

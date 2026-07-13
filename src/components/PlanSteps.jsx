@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Check, Plus, Loader2, Calendar, X, ChevronDown, ChevronRight, Sparkles, Trash2 } from 'lucide-react'
+import { Check, Plus, Loader2, Calendar, X, ChevronDown, ChevronRight, Sparkles, Trash2, RefreshCw } from 'lucide-react'
 import { applyLabel } from '@/lib/advisorPlans'
 import { fetchHowTo } from '@/lib/claude'
 import ResourceLinks from '@/components/ResourceLinks'
@@ -90,26 +90,44 @@ function StepGuide({ step, context, onSave }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step.id, attempt])
 
+  // Regenerate: situations change (raise, debt gone, account opened) — let the
+  // user pull a fresh guide against their current numbers. Loading must flip
+  // in the same update as the text clears — effects run after render, and a
+  // frame of { text: null, loading: false } would crash the steps render.
+  function regenerate() {
+    guideCache.delete(step.id)
+    setText(null)
+    setLoading(true)
+    setAttempt(a => a + 1)
+  }
+
   return (
     <div className="rounded-xl bg-emerald-500/[0.07] border border-emerald-400/20 px-3 py-2.5">
       <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300/80 mb-1.5">
         <Sparkles className="w-3 h-3" /> How to do this
+        {text && !loading && (
+          <button onClick={e => { e.stopPropagation(); regenerate() }} aria-label="Refresh this guide"
+            title="Rewrite with my current numbers"
+            className="ml-auto p-1 -m-1 text-emerald-300/40 hover:text-emerald-300 transition-colors">
+            <RefreshCw className="w-3 h-3" />
+          </button>
+        )}
       </div>
-      {loading ? (
-        <div className="flex items-center gap-2 text-xs text-emerald-200/80 py-1">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Working out your best move…
-        </div>
-      ) : error ? (
-        <div className="text-xs text-white/55 py-1">
-          Couldn't load this right now.{' '}
-          <button onClick={() => setAttempt(a => a + 1)}
-            className="font-semibold text-emerald-300 hover:text-emerald-200">Try again</button>
-        </div>
-      ) : (
+      {text ? (
         <div className="space-y-1">
           {text.split('\n').filter(l => l.trim()).map((line, i) => (
             <p key={i} className="text-xs text-white/80 leading-relaxed">{line.trim()}</p>
           ))}
+        </div>
+      ) : error ? (
+        <div className="text-xs text-white/55 py-1">
+          Couldn't load this right now.{' '}
+          <button onClick={() => { setLoading(true); setAttempt(a => a + 1) }}
+            className="font-semibold text-emerald-300 hover:text-emerald-200">Try again</button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-xs text-emerald-200/80 py-1">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Working out your best move…
         </div>
       )}
     </div>

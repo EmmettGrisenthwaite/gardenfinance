@@ -330,11 +330,28 @@ export default function Plan() {
 
   // Compact situation snapshot for the inline "Show me how" mini-guides — the
   // AI writes amounts against the user's real numbers without leaving the card.
+  // Existing accounts and insurance status matter as much as the numbers: a
+  // guide must never tell someone to OPEN an account they already have.
+  const investTypes = Array.isArray(profile?.investment_types) ? profile.investment_types.filter(t => t !== 'none') : []
+  const investLabels = { roth_ira: 'Roth IRA', trad_ira: 'Traditional IRA', '401k': '401(k)', brokerage: 'brokerage account', hsa: 'HSA' }
+  const insuranceCtx = profile?.health_insurance === 'none' ? 'No health insurance.'
+    : profile?.health_insurance ? 'Has health insurance.' : ''
+  // Variable income (freelance/gig) needs a bigger cushion — same rule as the
+  // finance engine's efTargetMonths.
+  const efMonths = ['freelance', 'other'].includes(profile?.employment_type) ? 6 : 3
   const howToCtx = [
     `Monthly income $${money.income.toLocaleString()}, expenses $${money.expenses.toLocaleString()} (surplus $${(money.income - money.expenses).toLocaleString()}/mo).`,
     `Net worth $${netWorth.toLocaleString()}.`,
     profile?.age ? `Age ${profile.age}.` : '',
     profile?.employment_type ? `Employment: ${profile.employment_type}.` : '',
+    money.expenses > 0
+      ? `Emergency fund target: ${efMonths} months of expenses ($${(money.expenses * efMonths).toLocaleString()})${efMonths === 6 ? ' because income varies' : ''}.`
+      : '',
+    investTypes.length
+      ? `ALREADY HAS these accounts (do not suggest opening them again): ${investTypes.map(t => investLabels[t] ?? t).join(', ')}.`
+      : 'No investment accounts yet.',
+    insuranceCtx,
+    profile?.employer_401k === 'match' ? 'Employer 401(k) match available.' : '',
     debts.length ? `Debts: ${debts.map(d => `${d.name} $${Number(d.balance).toLocaleString()}${d.interest_rate ? ` @ ${d.interest_rate}%` : ''}`).join(', ')}.` : 'No debts.',
   ].filter(Boolean).join(' ')
 
