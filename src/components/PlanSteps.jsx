@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Check, Plus, Loader2, Calendar, X, ChevronDown, ChevronRight, Sparkles, RefreshCw } from 'lucide-react'
 import { applyLabel } from '@/lib/advisorPlans'
 import { fetchHowTo } from '@/lib/claude'
-import ResourceLinks from '@/components/ResourceLinks'
 
 // ── Due-date helpers ────────────────────────────────────────────────────────────
 export function dueMeta(due) {

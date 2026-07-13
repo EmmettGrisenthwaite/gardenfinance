@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { profilePatchForCompletedSteps } from '@/lib/stepEffects'
 
 const AuthContext = createContext(null)
 
@@ -24,15 +25,51 @@ export function AuthProvider({ children }) {
       return null
     }
 
+    let nextProfile = data ?? null
+
+    // Repair facts for steps completed before step-to-profile memory existed.
+    // This keeps direct visits to any page from seeing stale onboarding answers.
+    if (nextProfile) {
+      const { data: plans, error: plansError } = await supabase
+        .from('advisor_plans')
+        .select('steps')
+        .eq('user_id', userId)
+      if (!plansError) {
+        const completed = (plans ?? []).flatMap(plan =>
+          Array.isArray(plan.steps)
+            ? plan.steps.filter(step => step?.done).map(step => step.text || '')
+            : [],
+        )
+        const patch = profilePatchForCompletedSteps(completed, nextProfile)
+        if (patch) {
+          const { error: memoryError } = await supabase.from('profiles').update(patch).eq('id', userId)
+          if (!memoryError) nextProfile = { ...nextProfile, ...patch }
+        }
+      }
+    }
+
     setProfileError(null)
-    setProfile(data ?? null)
-    return data ?? null
+    setProfile(nextProfile)
+    return nextProfile
   }
 
   async function refreshProfile() {
     if (!user) return null
     setProfileError(null)
     return fetchProfile(user.id)
+  }
+
+  // Persist facts proved by a completed plan step so suggestions, the advisor,
+  // and the finance engine all read the same updated memory.
+  async function rememberCompletedStep(stepText) {
+    if (!user) return null
+    const patch = profilePatchForCompletedSteps([stepText], profile)
+    if (!patch) return null
+
+    const { error } = await supabase.from('profiles').update(patch).eq('id', user.id)
+    if (error) throw error
+    setProfile(current => current ? { ...current, ...patch } : current)
+    return patch
   }
 
   useEffect(() => {
@@ -62,7 +99,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, profile, setProfile, loading, profileError, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, setProfile, loading, profileError, refreshProfile, rememberCompletedStep }}>
       {children}
     </AuthContext.Provider>
   )

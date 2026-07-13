@@ -15,7 +15,7 @@ export default function StepDetail() {
   const { stepId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, profile, setProfile } = useAuth()
+  const { user, profile, setProfile, rememberCompletedStep } = useAuth()
 
   // The Plan passes the step in nav state for instant paint; the plan itself
   // (needed to save changes) hydrates in the background.
@@ -67,15 +67,25 @@ export default function StepDetail() {
 
   async function markDone() {
     if (!plan || !step) return
-    // Does this check-off cross a garden stage? Compute here so the Plan page
-    // can fire the celebration the moment we land back on it.
-    const completedSteps = plan.steps.filter(s => s.done).length
-    const goalsReached = goals.filter(g => Number(g.target_amount) > 0 && Number(g.current_amount) >= Number(g.target_amount)).length
-    const oldStage = milestonesToStage(completedSteps + goalsReached)
-    const newStage = milestonesToStage(completedSteps + goalsReached + 1)
-    saveSteps(list => list.map(s => s.id === step.id
-      ? { ...s, done: true, completedAt: new Date().toISOString() } : s))
-    navigate('/plan', { state: newStage > oldStage ? { grew: { stage: newStage, stepText: step.text } } : undefined })
+    try {
+      // Save the durable fact before leaving so the Plan lands with every
+      // suggestion and finance surface already reading the updated profile.
+      await rememberCompletedStep(step.text)
+
+      // Does this check-off cross a garden stage? Compute here so the Plan page
+      // can fire the celebration the moment we land back on it.
+      const completedSteps = plan.steps.filter(s => s.done).length
+      const goalsReached = goals.filter(g => Number(g.target_amount) > 0 && Number(g.current_amount) >= Number(g.target_amount)).length
+      const oldStage = milestonesToStage(completedSteps + goalsReached)
+      const newStage = milestonesToStage(completedSteps + goalsReached + 1)
+      const next = plan.steps.map(s => s.id === step.id
+        ? { ...s, done: true, completedAt: new Date().toISOString() } : s)
+      await updatePlanSteps(plan.id, next, user.id)
+      setPlan(p => ({ ...p, steps: next }))
+      navigate('/plan', { state: newStage > oldStage ? { grew: { stage: newStage, stepText: step.text } } : undefined })
+    } catch (err) {
+      setError(err.message ?? 'Could not complete that step.')
+    }
   }
 
   // Removing is destructive — two-tap arm, auto-disarms.

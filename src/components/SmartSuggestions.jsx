@@ -1,5 +1,6 @@
 import { Shield, CreditCard, Building2, TrendingUp, PiggyBank, HeartPulse, Target, AlertTriangle } from 'lucide-react'
 import { computeSnapshot, THRESHOLDS } from '@/lib/finance'
+import { suggestionAlreadyInPlan } from '@/lib/stepEffects'
 
 // The situation-aware suggestion ENGINE, driven by the shared finance snapshot —
 // the same numbers the advisor reads, so suggestions and advice always agree.
@@ -99,5 +100,7 @@ export function buildSuggestions({ profile, goals, debts, accounts = [], plans =
 
   // The engine's next-dollar priority floats to the front; urgent first overall.
   const rank = (x) => (x.urgent ? 2 : 0) + (s.next.key.startsWith(x.id) || x.id.startsWith(s.next.key.split('_')[0]) ? 1 : 0)
-  return all.sort((a, b) => rank(b) - rank(a))
+  return all
+    .filter(suggestion => !suggestionAlreadyInPlan(suggestion, plans))
+    .sort((a, b) => rank(b) - rank(a))
 }

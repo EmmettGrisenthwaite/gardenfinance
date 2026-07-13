@@ -75,7 +75,7 @@ function GardenHud({ stage, done }) {
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const { user, profile } = useAuth()
+  const { user, profile, rememberCompletedStep } = useAuth()
   const { updateGarden, triggerBurst } = useGarden()
   const navigate = useNavigate()
 
@@ -165,7 +165,13 @@ export default function Dashboard() {
     plans.flatMap(p => p.steps.filter(s => !s.done).map(s => ({ ...s, planId: p.id }))),
   ).slice(0, 2)
 
-  function toggleStep(planId, stepId, text) {
+  async function toggleStep(planId, stepId, text) {
+    try {
+      await rememberCompletedStep(text)
+    } catch (err) {
+      setError(err.message ?? 'Could not update what your profile knows about this step.')
+      return
+    }
     // Celebrate synchronously if this check crosses a stage boundary.
     const newStage = milestonesToStage(completedSteps + goalsReached + 1)
     if (newStage > stage) {

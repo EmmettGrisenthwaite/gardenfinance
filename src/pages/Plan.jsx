@@ -17,7 +17,7 @@ import GardenMeter from '@/components/GardenMeter'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
 
 export default function Plan() {
-  const { user, profile, setProfile } = useAuth()
+  const { user, profile, setProfile, rememberCompletedStep } = useAuth()
   const { updateGarden, triggerBurst } = useGarden()
   const navigate = useNavigate()
   const location = useLocation()
@@ -149,11 +149,21 @@ export default function Plan() {
       return { ...prev, steps: next }
     })
   }
-  function toggleStep(stepId) {
+  async function toggleStep(stepId) {
     const step = steps.find(s => s.id === stepId)
-    if (step && !step.done) celebrate(1, step.text)   // crossing into a new stage?
+    if (!step) return
+    const completing = !step.done
+    if (completing) {
+      try {
+        await rememberCompletedStep(step.text)
+      } catch (err) {
+        setError(err.message ?? 'Could not update what your profile knows about this step.')
+        return
+      }
+      celebrate(1, step.text)   // crossing into a new stage?
+    }
     editSteps(list => list.map(s => s.id === stepId
-      ? { ...s, done: !s.done, completedAt: s.done ? null : new Date().toISOString() }
+      ? { ...s, done: completing, completedAt: completing ? new Date().toISOString() : null }
       : s))
   }
   // Tapping a step opens its own page: the why + the full how-to, with a back
