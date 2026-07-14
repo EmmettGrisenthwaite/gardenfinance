@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ChevronLeft, Check, Trash2 } from 'lucide-react'
+import { Check, Trash2, ClipboardList, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { milestonesToStage } from '@/context/GardenContext'
 import { getPlan, updatePlanSteps, applyStep } from '@/lib/advisorPlans'
 import { buildHowToContext } from '@/lib/howToContext'
 import { StepGuide, DueChip, ApplyAction, dueMeta } from '@/components/PlanSteps'
+import PageHeader from '@/components/ui/PageHeader'
 
 // One step, one page: the title, why it matters, and the full "how to do this"
 // guide — reached by tapping the step in the Plan, exited by the back button.
@@ -25,6 +26,7 @@ export default function StepDetail() {
   const [debts, setDebts] = useState([])
   const [missing, setMissing] = useState(false)
   const [error, setError] = useState(null)
+  const [completing, setCompleting] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -66,7 +68,8 @@ export default function StepDetail() {
   }
 
   async function markDone() {
-    if (!plan || !step) return
+    if (!plan || !step || completing) return
+    setCompleting(true)
     try {
       // Save the durable fact before leaving so the Plan lands with every
       // suggestion and finance surface already reading the updated profile.
@@ -85,6 +88,7 @@ export default function StepDetail() {
       navigate('/plan', { state: newStage > oldStage ? { grew: { stage: newStage, stepText: step.text } } : undefined })
     } catch (err) {
       setError(err.message ?? 'Could not complete that step.')
+      setCompleting(false)
     }
   }
 
@@ -129,17 +133,21 @@ export default function StepDetail() {
 
   return (
     <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }}
-      className="max-w-xl mx-auto w-full px-4 pb-10"
+      className="max-w-2xl mx-auto w-full px-4 pb-32 md:px-6 md:pb-10"
       style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
 
       {/* Back to the plan */}
-      <button onClick={() => navigate('/plan')}
-        className="flex items-center gap-1 -ml-1.5 mb-3 px-1.5 py-1.5 rounded-lg text-sm font-medium text-white/55 hover:text-white hover:bg-white/10 transition-colors">
-        <ChevronLeft className="w-5 h-5" /> Plan
-      </button>
+      <PageHeader
+        icon={ClipboardList}
+        eyebrow="Plan"
+        title="Step guide"
+        subtitle="Everything you need to finish this move."
+        onBack={() => navigate('/plan')}
+        backLabel="Back to Plan"
+      />
 
       {/* The step */}
-      <h1 className="font-display text-[22px] font-medium text-white leading-snug">{step.text}</h1>
+      <h1 className="mt-6 font-display text-[24px] font-medium text-white leading-snug sm:text-[28px]">{step.text}</h1>
       {(step.detail || step.impact) && (
         <p className="mt-2 text-sm text-white/60 leading-relaxed">
           {step.detail}
@@ -164,9 +172,10 @@ export default function StepDetail() {
       {/* Actions */}
       {!step.done && (
         <div className="mt-5 space-y-4">
-          <button onClick={markDone} disabled={!plan}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold shadow-lg shadow-emerald-900/30 transition-colors">
-            <Check className="w-4 h-4" strokeWidth={3} /> Mark done — grow my garden
+          <button onClick={markDone} disabled={!plan || completing}
+            className="fixed inset-x-4 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 mx-auto flex min-h-12 max-w-2xl items-center justify-center gap-2 rounded-xl border border-emerald-300/15 bg-emerald-600 px-4 text-sm font-semibold text-white shadow-2xl shadow-black/40 transition-colors hover:bg-emerald-500 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 md:static md:w-full md:shadow-lg md:shadow-emerald-950/25">
+            {completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="w-4 h-4" strokeWidth={3} />}
+            {completing ? 'Saving…' : 'Mark done — grow my garden'}
           </button>
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 flex-wrap">

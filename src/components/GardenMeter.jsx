@@ -8,7 +8,7 @@ const STAGE_COLORS = ['#8a6a44', '#a3b35a', '#6cc24a', '#3fa53b', '#2f9e44', '#3
 // One thin line of garden progress on the Plan page — the reward meter, living
 // where the checking happens. Fills toward the next stage and pulses on every
 // completed step (not just stage crossings). Tap → go admire the garden.
-export default function GardenMeter({ done }) {
+export default function GardenMeter({ done, embedded = false }) {
   const navigate = useNavigate()
   const stage = milestonesToStage(done)
   const cur   = STAGE_THRESHOLDS[stage]
@@ -29,8 +29,8 @@ export default function GardenMeter({ done }) {
 
   return (
     <button onClick={() => navigate('/')} aria-label="See your garden"
-      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all ${
-        pulse ? 'bg-emerald-500/[0.14] border-emerald-400/40' : 'bg-white/[0.05] border-white/[0.09] hover:bg-white/[0.08]'}`}>
+      className={`w-full flex min-h-11 items-center gap-2.5 rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 ${embedded ? 'px-0 py-1' : 'border px-3 py-2'} ${
+        pulse ? embedded ? 'bg-emerald-500/[0.08]' : 'bg-emerald-500/[0.14] border-emerald-400/40' : embedded ? 'hover:bg-white/[0.025]' : 'bg-white/[0.05] border-white/[0.09] hover:bg-white/[0.08]'}`}>
       <span className="w-2.5 h-2.5 rounded-full ring-2 ring-white/15 flex-shrink-0"
         style={{ background: STAGE_COLORS[stage] }} />
       <span className="text-xs font-bold text-white whitespace-nowrap">{STAGE_NAMES[stage]}</span>

@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout, Plus } from 'lucide-react'
+import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout, Plus, Loader2 } from 'lucide-react'
 import HowToInline from '@/components/HowToInline'
+import BottomSheet from '@/components/ui/BottomSheet'
 import { THRESHOLDS } from '@/lib/finance'
 
 // ─── Timeline projection ───────────────────────────────────────────────────────
@@ -47,35 +48,64 @@ export function GoalModal({ goal, onSave, onClose }) {
   const [deadline,     setDeadline]     = useState(goal?.deadline ?? '')
   const [contribution, setContribution] = useState(goal?.monthly_contribution ?? '')
   const [goalType,     setGoalType]     = useState(goal?.goal_type ?? 'savings')
+  const [dirty,        setDirty]        = useState(false)
+  const [saving,       setSaving]       = useState(false)
+  const [saveError,    setSaveError]    = useState(null)
+  const nameRef = useRef(null)
 
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    onSave({
-      name,
-      goal_type:            goalType,
-      target_amount:        parseFloat(target),
-      current_amount:       parseFloat(current),
-      deadline:             deadline || null,
-      monthly_contribution: contribution !== '' ? parseFloat(contribution) : 0,
-    })
+  const change = (setter) => (eventOrValue) => {
+    setDirty(true)
+    setter(eventOrValue?.target ? eventOrValue.target.value : eventOrValue)
   }
 
-  const inputCls = 'w-full px-3.5 py-2.5 rounded-lg border border-white/[0.11] text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30'
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onSave({
+        name,
+        goal_type:            goalType,
+        target_amount:        parseFloat(target),
+        current_amount:       parseFloat(current),
+        deadline:             deadline || null,
+        monthly_contribution: contribution !== '' ? parseFloat(contribution) : 0,
+      })
+      setDirty(false)
+    } catch (err) {
+      setSaveError(err.message ?? 'Could not save that goal.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputCls = 'w-full rounded-xl border border-white/[0.11] bg-white/[0.055] px-3.5 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-emerald-400/45'
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-[60]">
-      <div className="bg-[#0e1812] w-full sm:rounded-2xl sm:shadow-xl sm:w-full sm:max-w-md sm:mx-4 rounded-t-2xl shadow-2xl">
-        <div className="flex items-center justify-between p-5 border-b border-white/10">
-          <h3 className="font-semibold text-white">{goal ? 'Edit Goal' : 'New Goal'}</h3>
-          <button onClick={onClose} className="p-1.5 text-white/40 hover:text-white/60 rounded-lg hover:bg-white/5">
-            <X className="w-5 h-5" />
+    <BottomSheet
+      open
+      title={goal ? 'Edit goal' : 'New goal'}
+      subtitle="Set the target and pace. Your garden updates as progress grows."
+      onClose={onClose}
+      dirty={dirty && !saving}
+      initialFocusRef={nameRef}
+      footer={({ requestClose }) => (
+        <div className="flex gap-3">
+          <button type="button" onClick={requestClose} disabled={saving}
+            className="min-h-11 flex-1 rounded-xl border border-white/[0.11] text-sm font-semibold text-white/60 transition-colors hover:bg-white/[0.05] disabled:opacity-50">
+            Cancel
+          </button>
+          <button type="submit" form="goal-editor-form" disabled={saving}
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-60">
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save goal
           </button>
         </div>
-        <div className="overflow-y-auto max-h-[75vh] sm:max-h-none">
-          <form onSubmit={handleSubmit} className="p-5 space-y-4">
+      )}
+    >
+          <form id="goal-editor-form" onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-white/80 mb-1.5">Goal type</label>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setGoalType('savings')}
+                <button type="button" onClick={() => change(setGoalType)('savings')}
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${
                     goalType === 'savings'
                       ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
@@ -83,7 +113,7 @@ export function GoalModal({ goal, onSave, onClose }) {
                   }`}>
                   <Sprout className="w-4 h-4" /><span>Savings / Purchase</span>
                 </button>
-                <button type="button" onClick={() => setGoalType('investment')}
+                <button type="button" onClick={() => change(setGoalType)('investment')}
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${
                     goalType === 'investment'
                       ? 'border-amber-500 bg-amber-500/15 text-amber-300'
@@ -101,17 +131,17 @@ export function GoalModal({ goal, onSave, onClose }) {
 
             <div>
               <label className="block text-sm font-medium text-white/80 mb-1.5">Goal name</label>
-              <input value={name} onChange={e => setName(e.target.value)} required placeholder="e.g. Emergency fund" className={inputCls} />
+              <input ref={nameRef} value={name} onChange={change(setName)} required placeholder="e.g. Emergency fund" className={inputCls} />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-1.5">Target ($)</label>
-                <input type="number" inputMode="decimal" value={target} onChange={e => setTarget(e.target.value)} required min="1" step="0.01" className={inputCls} />
+                <input type="number" inputMode="decimal" value={target} onChange={change(setTarget)} required min="1" step="0.01" className={inputCls} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-1.5">Saved so far ($)</label>
-                <input type="number" inputMode="decimal" value={current} onChange={e => setCurrent(e.target.value)} min="0" step="0.01" className={inputCls} />
+                <input type="number" inputMode="decimal" value={current} onChange={change(setCurrent)} min="0" step="0.01" className={inputCls} />
               </div>
             </div>
 
@@ -120,29 +150,18 @@ export function GoalModal({ goal, onSave, onClose }) {
                 Monthly contribution ($)
                 <span className="ml-1 font-normal text-white/40">— enables timeline projection</span>
               </label>
-              <input type="number" inputMode="decimal" value={contribution} onChange={e => setContribution(e.target.value)}
+              <input type="number" inputMode="decimal" value={contribution} onChange={change(setContribution)}
                 min="0" step="0.01" placeholder="0" className={inputCls} />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-white/80 mb-1.5">Target date (optional)</label>
-              <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} className={inputCls} />
+              <input type="date" value={deadline} onChange={change(setDeadline)} className={inputCls} />
             </div>
 
-            <div className="flex gap-3 pt-1">
-              <button type="button" onClick={onClose}
-                className="flex-1 py-3 border border-white/[0.11] rounded-lg text-sm font-medium text-white/60 hover:bg-white/5 transition-colors">
-                Cancel
-              </button>
-              <button type="submit"
-                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors">
-                Save
-              </button>
-            </div>
+            {saveError && <p role="alert" className="rounded-xl border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">{saveError}</p>}
           </form>
-        </div>
-      </div>
-    </div>
+    </BottomSheet>
   )
 }
 

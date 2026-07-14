@@ -163,32 +163,34 @@ export function ApplyAction({ step, onApply }) {
 // ── The one emphasized element on the page ──────────────────────────────────────
 // Tapping the card body opens the step's own page (title, why, and the full
 // how-to) — the hero is just the top step, bigger.
-export function UpNextCard({ step, onToggle, onApply, onOpen }) {
+export function UpNextCard({ step, onToggle, onApply, onOpen, progress }) {
   const meta = dueMeta(step.due)
   return (
     <AnimatePresence mode="popLayout">
       <motion.div key={step.id}
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -14 }}
         transition={{ duration: 0.25 }}
-        className="rounded-2xl bg-emerald-500/[0.08] border border-emerald-400/25 p-4">
+        className="rounded-2xl bg-gradient-to-br from-emerald-500/[0.13] to-white/[0.035] border border-emerald-400/25 p-4 sm:p-5 shadow-xl shadow-black/10">
+        {progress && <div className="mb-3 border-b border-white/[0.08] pb-2">{progress}</div>}
         <div onClick={() => onOpen(step)} className="cursor-pointer select-none">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300/90">Up next</span>
             <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-300/70">
-              how to <ChevronRight className="w-3 h-3" />
+              Details <ChevronRight className="w-3 h-3" />
             </span>
           </div>
           <div className="text-[15px] font-semibold text-white leading-snug">{step.text}</div>
-          {(step.detail || meta) && (
+          {(step.detail || step.impact || meta) && (
             <div className="mt-1 text-xs text-white/60 leading-relaxed">
               {step.detail}
+              {step.impact && <span className="ml-1.5 text-emerald-200/90">{step.impact}</span>}
               {meta && <span className={`ml-1.5 text-[10px] font-semibold ${meta.color}`}>{meta.label}</span>}
             </div>
           )}
         </div>
         <div className="mt-3 flex items-center gap-3 flex-wrap">
           <button onClick={() => onToggle(step.id)}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-lg shadow-emerald-900/30 transition-colors">
+            className="inline-flex min-h-11 items-center gap-1.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-lg shadow-emerald-900/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
             <Check className="w-4 h-4" strokeWidth={3} /> Done
           </button>
           {step.apply && onApply && <ApplyAction step={step} onApply={onApply} />}

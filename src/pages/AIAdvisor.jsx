@@ -25,7 +25,7 @@ const GOAL_INTENT = /\b(sav(e|ing|ings)|buy|buying|afford|down\s?-?payment|house
 const GUIDE_INTENT = /\b(open|start|set\s?up|sign\s?up|create|switch|roll\s?over|move|transfer|enroll)\b[^.?!]*\b(roth|ira|401k|403b|hsa|brokerage|savings? account|hysa|high.?yield|index fund|etf|mutual fund|emergency fund|life insurance|will|credit|account|invest)\b|\bwalk me through\b|\bstep[-\s]?by[-\s]?step\b|\bhow (do|can) i (open|start|set\s?up|sign\s?up|get|invest)\b/i
 
 import {
-  Send, Bot, Sparkles, RefreshCw, ArrowDown, Settings, ChevronLeft,
+  Send, Bot, Sparkles, RefreshCw, ArrowDown, Settings, MoreHorizontal, Wallet,
   Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Shield, Sprout,
   ClipboardList, Loader2, Brain, Plus, X, ArrowRight,
 } from 'lucide-react'
@@ -149,9 +149,9 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
 
   if (isUser) {
     return (
-      <motion.div className="flex justify-end mb-4"
+      <motion.div className="mb-5 flex justify-end"
         initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
-        <div className="max-w-[85%] md:max-w-[78%] bg-emerald-600 text-white rounded-2xl rounded-br-sm px-4 py-3 text-sm leading-relaxed shadow-lg">
+        <div className="max-w-[82%] rounded-2xl rounded-br-md border border-emerald-300/15 bg-emerald-600/90 px-4 py-2.5 text-sm leading-relaxed text-white md:max-w-[72%]">
           {msg.content}
         </div>
       </motion.div>
@@ -165,13 +165,13 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
   const showOptions = isLast && options.length > 0
 
   return (
-    <motion.div className="flex items-end gap-2 mb-4"
+    <motion.div className="mb-6 flex items-start gap-3"
       initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
-      <div className="w-8 h-8 rounded-full bg-emerald-500/20 ring-1 ring-emerald-400/30 flex items-center justify-center flex-shrink-0 mb-0.5">
-        <Bot className="w-4 h-4 text-emerald-300" />
+      <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-emerald-300/10 bg-emerald-400/[0.07]">
+        <Bot className="h-4 w-4 text-emerald-200/75" />
       </div>
-      <div className="max-w-[85%] md:max-w-[82%] space-y-2">
-        <div className="bg-white/10 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-3 text-sm text-white/85 leading-relaxed [&_strong]:text-white [&_strong]:font-semibold">
+      <div className="min-w-0 flex-1 space-y-3">
+        <div className="pr-1 text-[14px] leading-[1.7] text-white/78 [&_strong]:font-semibold [&_strong]:text-white">
           {renderContent(msg.content)}
         </div>
 
@@ -231,16 +231,17 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
 // ─── Welcome / empty state ─────────────────────────────────────────────────────
 function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, progressDelta }) {
   return (
-    <motion.div className="text-center py-4"
+    <motion.div className="py-5 text-center"
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-      <div className="relative w-16 h-16 mx-auto mb-4">
-        <div className="absolute -inset-8 rounded-full bg-emerald-500/[0.14] blur-2xl pointer-events-none" />
-        <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500/30 to-emerald-700/30 ring-1 ring-emerald-400/20 flex items-center justify-center shadow-lg">
-          <Bot className="w-8 h-8 text-emerald-300" />
+      <div className="relative mx-auto mb-5 h-14 w-14">
+        <div className="pointer-events-none absolute -inset-8 rounded-full bg-emerald-400/[0.08] blur-2xl" />
+        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-300/15 bg-emerald-400/[0.09]">
+          <Bot className="h-7 w-7 text-emerald-200" />
         </div>
       </div>
-      <h2 className="font-display text-[20px] font-medium text-white mb-2">Your personal financial advisor</h2>
-      <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed mb-5">
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-200/45">Personal to your numbers</p>
+      <h2 className="font-display text-[25px] font-medium tracking-[-0.02em] text-white">Make the next move clear.</h2>
+      <p className="mx-auto mb-6 mt-2 max-w-sm text-sm leading-relaxed text-white/45">
         {progressDelta?.has
           ? `Since ${progressDelta.days} days ago: ${progressDelta.delta >= 0 ? '+' : ''}$${Math.abs(progressDelta.delta).toLocaleString()} net worth${progressDelta.stepsDone ? `, ${progressDelta.stepsDone} step${progressDelta.stepsDone !== 1 ? 's' : ''} done` : ''}. `
           : ''}
@@ -253,34 +254,36 @@ function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, p
             for advice that's about you.</>}
       </p>
 
-      {hasData && (
-        <div className="flex justify-center mb-6">
+      <div className="mb-7 flex justify-center">
+        {hasData ? (
           <motion.button
             onClick={onBuildPlan}
             disabled={analyzing || building}
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-            className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-700/50 text-white rounded-xl font-semibold text-sm shadow-lg shadow-emerald-900/40 transition-colors"
+            className="btn-primary min-h-12 px-5"
           >
             {building ? (
               <>
                 <motion.div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
                   animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} />
-                Analyzing your plan…
+                Reviewing your finances…
               </>
             ) : (
-              <><ClipboardList className="w-4 h-4" /> Analyze my plan & suggest steps</>
+              <><ClipboardList className="h-4 w-4" /> Review my finances</>
             )}
           </motion.button>
-        </div>
-      )}
+        ) : (
+          <Link to="/money" className="btn-primary min-h-12 px-5"><Wallet className="h-4 w-4" /> Add my numbers</Link>
+        )}
+      </div>
 
-      <div className="text-[10px] font-semibold text-white/35 uppercase tracking-wider mb-2.5">Or start with</div>
+      <div className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">Ask something specific</div>
       <div className="flex flex-wrap justify-center gap-2 max-w-md mx-auto">
-        {SUGGESTIONS.map((s, i) => (
+        {SUGGESTIONS.slice(0, 3).map((s, i) => (
           <motion.button key={i} onClick={() => onSuggest(s.q ?? s.label)}
             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.12 + i * 0.04, duration: 0.25 }}
-            className="flex items-center gap-1.5 px-3 py-2 bg-white/[0.07] border border-white/[0.11] rounded-full text-[13px] text-white/70 hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-white transition-all">
+            className="flex min-h-10 items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-[13px] text-white/60 transition-colors hover:border-emerald-300/25 hover:bg-emerald-400/[0.06] hover:text-white">
             <s.icon className="w-3.5 h-3.5 text-emerald-300/80" />{s.label}
           </motion.button>
         ))}
@@ -318,6 +321,7 @@ export default function AIAdvisor() {
   const [pendingGuide, setPendingGuide] = useState(null)
   const [progressDelta, setProgressDelta] = useState(null)
   const [toast, setToast] = useState(null)   // transient status pill, optionally with a next action
+  const [menuOpen, setMenuOpen] = useState(false)
   const toastTimer = useRef(null)
   function flashToast(message, action = null) {
     setToast({ message, action })
@@ -328,6 +332,9 @@ export default function AIAdvisor() {
   const inputRef     = useRef(null)
   const scrollRef    = useRef(null)
   const isLoadingHistory = useRef(true)
+  useEffect(() => {
+    if (!input && inputRef.current) inputRef.current.style.height = 'auto'
+  }, [input])
   // ── Load data ───────────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
@@ -689,50 +696,43 @@ export default function AIAdvisor() {
   }
 
   const isEmpty = messages.length === 0 && !loading && !analyzing && !historyLoading && !pendingPlan && !buildingPlan
+  const showPlanNudge = !noKey && !historyLoading && gaps.length === 0 && plans.length === 0 && messages.length > 0 && !pendingPlan
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-white/10 bg-white/5 backdrop-blur-md px-4 md:px-6 py-3.5">
-        <div className="flex items-center justify-between max-w-3xl mx-auto">
+      <div className="flex-shrink-0 border-b border-white/[0.07] bg-[#08110e]/88 px-4 py-3 backdrop-blur-xl md:px-6">
+        <div className="mx-auto flex max-w-3xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link to="/" aria-label="Back to Garden"
-              className="md:hidden -ml-1.5 p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition-colors">
-              <ChevronLeft className="w-5 h-5" />
-            </Link>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-lg">
-              <Bot className="w-5 h-5 text-white" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-300/15 bg-emerald-400/[0.09]">
+              <Bot className="h-5 w-5 text-emerald-200" />
             </div>
             <div>
-              <h1 className="font-display text-[16px] font-medium text-white leading-tight">Financial Advisor</h1>
-              <p className="text-xs text-white/40">Personalized to your real data</p>
+              <h1 className="font-display text-[18px] font-medium leading-tight text-white">Advisor</h1>
+              <p className="text-[11px] text-white/35">Personal to your real numbers</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {!noKey && (
-              <button
-                onClick={handleBuildPlan}
-                disabled={buildingPlan || loading || analyzing || (pendingPlan && !pendingPlan.saved)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 text-xs font-semibold hover:bg-emerald-500/25 transition-colors disabled:opacity-50"
-                title={pendingPlan && !pendingPlan.saved ? 'Save the current plan first' : 'Generate a saveable action plan'}
-              >
-                {buildingPlan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ClipboardList className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">Action plan</span>
-              </button>
+          <div className="relative z-30">
+            {menuOpen && <button type="button" aria-label="Close advisor menu" onClick={() => setMenuOpen(false)} className="fixed inset-0 z-20 cursor-default" />}
+            <button type="button" onClick={() => setMenuOpen(open => !open)} aria-label="Advisor menu" aria-expanded={menuOpen}
+              className="flex h-11 w-11 items-center justify-center rounded-xl text-white/42 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60">
+              <MoreHorizontal className="h-5 w-5" />
+            </button>
+            {menuOpen && (
+              <motion.div initial={{ opacity: 0, y: -5, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+                className="absolute right-0 top-12 z-30 w-48 overflow-hidden rounded-2xl border border-white/[0.1] bg-[#0c1612] p-1.5 shadow-2xl">
+                {messages.length > 0 && (
+                  <button type="button" onClick={() => { setMenuOpen(false); handleClearChat() }}
+                    className="flex min-h-11 w-full items-center gap-2.5 rounded-xl px-3 text-left text-sm text-white/65 transition-colors hover:bg-white/[0.06] hover:text-white">
+                    <RefreshCw className="h-4 w-4" /> Start over
+                  </button>
+                )}
+                <Link to="/settings" onClick={() => setMenuOpen(false)}
+                  className="flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-sm text-white/65 transition-colors hover:bg-white/[0.06] hover:text-white">
+                  <Settings className="h-4 w-4" /> Settings
+                </Link>
+              </motion.div>
             )}
-            {messages.length > 0 && (
-              <button
-                onClick={handleClearChat}
-                className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
-                title="Start over (memories saved)"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </button>
-            )}
-            <Link to="/settings" aria-label="Settings" title="Settings"
-              className="md:hidden p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors">
-              <Settings className="w-4 h-4" />
-            </Link>
           </div>
         </div>
       </div>
@@ -765,22 +765,26 @@ export default function AIAdvisor() {
         )}
       </AnimatePresence>
 
-      {/* Data-gap nudge — the single highest-value missing field, dismissable.
-          Disappears on its own once the field is filled (see getDataGaps). */}
-      {!noKey && !historyLoading && gaps.length > 0 && (
-        <div className="flex-shrink-0 max-w-3xl w-full mx-auto px-4 pt-3">
-          <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/[0.07] border border-emerald-400/20">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-300/80 flex-shrink-0" />
-            <span className="flex-1 min-w-0 text-xs text-white/70 leading-snug">
-              {gaps[0].label}
-              {gaps.length > 1 && <span className="text-white/35"> +{gaps.length - 1} more</span>}
+      {/* One proactive prompt at a time: missing data first, then plan building. */}
+      {!noKey && !historyLoading && (gaps.length > 0 || showPlanNudge) && (
+        <div className="mx-auto w-full max-w-3xl flex-shrink-0 px-4 pt-3">
+          <div className="flex items-center gap-2.5 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2.5">
+            <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-emerald-200/70" />
+            <span className="min-w-0 flex-1 text-xs leading-snug text-white/60">
+              {gaps.length > 0 ? (
+                <>{gaps[0].label}{gaps.length > 1 && <span className="text-white/28"> +{gaps.length - 1} more</span>}</>
+              ) : 'Your numbers are ready. Turn this conversation into a short action plan.'}
             </span>
-            <Link to={gaps[0].href}
-              className="text-xs font-semibold text-emerald-300 hover:text-emerald-200 whitespace-nowrap flex-shrink-0">
-              {gaps[0].cta}
-            </Link>
-            <button onClick={() => dismissGap(gaps[0].id)} aria-label="Dismiss"
-              className="p-1 -m-1 text-white/25 hover:text-white/55 flex-shrink-0"><X className="w-3.5 h-3.5" /></button>
+            {gaps.length > 0 ? (
+              <Link to={gaps[0].href} className="flex-shrink-0 whitespace-nowrap text-xs font-semibold text-emerald-200 hover:text-emerald-100">{gaps[0].cta}</Link>
+            ) : (
+              <button type="button" onClick={handleBuildPlan} disabled={buildingPlan || loading || analyzing}
+                className="min-h-9 flex-shrink-0 rounded-lg px-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-300/[0.06] disabled:opacity-50">Build plan</button>
+            )}
+            {gaps.length > 0 && (
+              <button onClick={() => dismissGap(gaps[0].id)} aria-label="Dismiss"
+                className="-m-1 flex-shrink-0 p-1 text-white/22 hover:text-white/55"><X className="h-3.5 w-3.5" /></button>
+            )}
           </div>
         </div>
       )}
@@ -807,13 +811,13 @@ export default function AIAdvisor() {
               initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }} transition={{ duration: 0.15 }}
               onClick={() => { setAtBottom(true); bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }}
-              className="fixed bottom-24 right-4 z-10 w-9 h-9 bg-white/15 backdrop-blur-md border border-white/10 shadow-lg rounded-full flex items-center justify-center text-white/70 hover:text-emerald-300 hover:border-emerald-400/50 transition-colors"
+              className="advisor-scroll-button fixed right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.09] bg-[#101a16]/90 text-white/55 shadow-lg backdrop-blur-xl transition-colors hover:border-emerald-300/25 hover:text-emerald-200"
             >
               <ArrowDown className="w-4 h-4" />
             </motion.button>
           )}
         </AnimatePresence>
-        <div className={`max-w-3xl mx-auto px-4 py-6 ${isEmpty ? 'min-h-full flex flex-col justify-center' : ''}`}>
+        <div className={`mx-auto max-w-3xl px-4 py-6 ${isEmpty ? 'flex min-h-full flex-col justify-center' : ''}`}>
 
           {isEmpty && !noKey && (
             <WelcomeScreen
@@ -883,9 +887,9 @@ export default function AIAdvisor() {
           {/* Mid-conversation suggestion chips */}
           {messages.length > 0 && !loading && !analyzing && (
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 md:flex-wrap md:overflow-x-visible md:-mx-0 md:px-0 mt-2 mb-2">
-              {SUGGESTIONS.slice(0, 4).map((s, i) => (
+              {SUGGESTIONS.slice(0, 3).map((s, i) => (
                 <button key={i} onClick={() => send(s.q ?? s.label)}
-                  className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 bg-white/10 border border-white/[0.11] rounded-full text-xs text-white/60 hover:border-emerald-400/50 hover:text-white transition-all">
+                  className="flex min-h-9 flex-shrink-0 items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 text-xs text-white/50 transition-colors hover:border-emerald-300/20 hover:text-white/80">
                   <s.icon className="w-3 h-3 text-emerald-300/80" /> {s.label}
                 </button>
               ))}
@@ -896,15 +900,18 @@ export default function AIAdvisor() {
         </div>
       </div>
 
-      {/* Input — permanently flush to the bottom edge (the floating tab pill
-          is hidden on this screen, so there's no clearance to reserve). */}
-      <div className="flex-shrink-0" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        <div className="border-t border-white/10 bg-white/5 backdrop-blur-md">
-          <form onSubmit={e => { e.preventDefault(); send(input) }} className="max-w-3xl mx-auto px-4 py-3 md:py-4">
+      {/* Composer shares one clearance contract with the mobile app dock. */}
+      <div className="advisor-composer-shell flex-shrink-0">
+        <div className="border-t border-white/[0.07] bg-[#08110e]/92 backdrop-blur-xl">
+          <form onSubmit={e => { e.preventDefault(); send(input) }} className="mx-auto max-w-3xl px-4 py-3 md:py-4">
             <div className="flex gap-2 items-end">
-              <div className="flex-1 bg-white/10 border border-white/[0.11] rounded-2xl px-4 py-3 focus-within:border-emerald-400/50 focus-within:ring-1 focus-within:ring-emerald-400/20 transition-all">
+              <div className="flex-1 rounded-2xl border border-white/[0.1] bg-white/[0.055] px-4 py-3 transition-colors focus-within:border-emerald-300/40 focus-within:ring-1 focus-within:ring-emerald-300/15">
                 <textarea ref={inputRef} value={input}
-                  onChange={e => setInput(e.target.value)}
+                  onChange={e => {
+                    setInput(e.target.value)
+                    e.target.style.height = 'auto'
+                    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
+                  }}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}
                   placeholder={noKey ? 'Add your API key to start…' : 'Ask me anything…'}
                   disabled={noKey || loading || analyzing}
@@ -914,11 +921,11 @@ export default function AIAdvisor() {
                 />
               </div>
               <button type="submit" disabled={!input.trim() || loading || analyzing || noKey}
-                className="w-11 h-11 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors flex-shrink-0 shadow-lg shadow-emerald-900/30">
+                className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-950/25 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-white/[0.07] disabled:text-white/25">
                 <Send className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-center text-[10px] text-white/30 mt-2">
+            <p className="mt-2 hidden text-center text-[10px] text-white/25 sm:block">
               Educational guidance — not a substitute for a licensed financial planner.
             </p>
           </form>

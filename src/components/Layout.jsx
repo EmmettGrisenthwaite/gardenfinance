@@ -26,10 +26,9 @@ export default function Layout({ children }) {
   // the floating tab bar is hidden (it would imply they're top-level tabs).
   // A step's detail page is one of these: its back button returns to the Plan.
   const isSubPage   = pathname === '/settings' || pathname.startsWith('/plan/step/')
-  // The advisor chat is a full-screen composer (like a real chat app) — the
-  // pill would either overlap the send button or force a permanent dead gap
-  // above it, so it's hidden there too; the chat's own header carries a way back.
-  const hideNav     = isSubPage || pathname === '/advisor'
+  // Top-level tabs keep the dock; only secondary routes hide it. Advisor uses
+  // the shared dock-clearance variable so its composer stays above the dock.
+  const hideNav     = isSubPage
 
   // Hide the floating nav while a text field is focused (mobile keyboard up) so
   // it never covers an input's save button. Focus events alone are fragile —
@@ -71,8 +70,11 @@ export default function Layout({ children }) {
   }, [])
 
 
+  const dockVisible = !typing && !hideNav
+
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen"
+      style={{ '--mobile-dock-clearance': dockVisible ? 'calc(5.65rem + env(safe-area-inset-bottom))' : '0px' }}>
       {needsOnboarding && <Onboarding />}
 
       {/* ── Background — solid, professional deep green-charcoal ── */}
@@ -150,7 +152,7 @@ export default function Layout({ children }) {
           {/* Mobile top bar */}
           {/* The advisor and back-button sub-pages carry their own headers; skip
               the global bar there to avoid a redundant double header on mobile. */}
-          {pathname !== '/advisor' && !isSubPage && (
+          {isGarden && (
           <header className="md:hidden flex-shrink-0 px-4 h-14 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 bg-green-500/90 rounded-lg flex items-center justify-center shadow">
@@ -173,7 +175,7 @@ export default function Layout({ children }) {
 
           {/* Page content — immersive pages (garden, advisor) are full-bleed and
               own their scroll; other pages keep clearance for the floating nav */}
-          <main className={`flex-1 min-h-0 ${isImmersive ? 'overflow-hidden' : `overflow-auto ${isSubPage ? 'pb-6' : 'pb-28 md:pb-6'}`}`}>
+          <main className={`flex-1 min-h-0 ${isImmersive ? 'overflow-hidden' : `overflow-auto ${isSubPage ? 'pb-6' : 'pb-[var(--mobile-dock-clearance)] md:pb-6'}`}`}>
             {profileError && (
               <div role="alert" className="mx-auto mt-3 max-w-xl px-4">
                 <div className="flex items-center gap-3 rounded-xl border border-rose-400/25 bg-rose-500/10 px-3 py-2.5">
@@ -189,32 +191,31 @@ export default function Layout({ children }) {
 
       {/* ── Mobile HUD: floating pill nav (hidden on sub-pages + while typing) ── */}
       <nav
-        className={`md:hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-50 transition-all duration-200 ${
+        className={`md:hidden fixed bottom-2.5 left-3 right-3 z-50 transition-all duration-200 ${
           (typing || hideNav) ? 'opacity-0 translate-y-8 pointer-events-none' : 'translate-y-0'}`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="flex items-center gap-0.5 bg-black/40 backdrop-blur-2xl rounded-2xl border border-white/[0.11] px-1.5 py-1.5"
-          style={{ boxShadow: '0 12px 36px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.10)' }}>
+        <div className="mx-auto grid w-full max-w-sm grid-cols-4 items-center gap-1 rounded-[20px] border border-white/[0.11] bg-[#09110e]/92 p-1.5 backdrop-blur-2xl"
+          style={{ boxShadow: '0 14px 42px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.06)' }}>
           {HUD_ITEMS.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               end={to === '/'}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-xl transition-all duration-200 ${
+                `flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-[15px] px-2 py-1.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60 ${
                   isActive
-                    ? 'bg-gradient-to-b from-green-400/25 to-emerald-500/10 ring-1 ring-green-300/30 text-white'
-                    : 'text-white/45 hover:text-white hover:bg-white/10'
+                    ? 'bg-white/[0.09] text-white ring-1 ring-white/[0.08]'
+                    : 'text-white/40 hover:bg-white/[0.05] hover:text-white/75'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <Icon className={`w-5 h-5 transition-all duration-200 ${
-                    isActive ? 'text-green-300 scale-110 drop-shadow-[0_0_6px_rgba(134,239,172,0.6)]' : ''}`} />
-                  <span className={`text-[8.5px] font-bold tracking-wide transition-all duration-200 ${
-                    isActive ? 'text-green-100' : 'text-white/45'}`}>
-                    {label.toUpperCase()}
+                  <Icon className={`h-[19px] w-[19px] transition-colors duration-200 ${isActive ? 'text-emerald-300' : ''}`} />
+                  <span className={`text-[10px] font-semibold tracking-[-0.01em] transition-colors duration-200 ${
+                    isActive ? 'text-white' : 'text-white/40'}`}>
+                    {label}
                   </span>
                 </>
               )}

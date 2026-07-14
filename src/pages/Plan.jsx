@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ClipboardList, Bot, Target, Plus, Sprout, Loader2 } from 'lucide-react'
+import { ClipboardList, Bot, Target, Plus, Sprout, Loader2, MoreHorizontal, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden, milestonesToStage } from '@/context/GardenContext'
@@ -15,6 +15,7 @@ import { GoalItem, GoalModal, getProjection } from '@/components/GoalItem'
 import { UpNextCard, StepList, DoneAccordion, AddStepRow, SuggestionRow } from '@/components/PlanSteps'
 import GardenMeter from '@/components/GardenMeter'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
+import PageHeader from '@/components/ui/PageHeader'
 
 export default function Plan() {
   const { user, profile, setProfile, rememberCompletedStep } = useAuth()
@@ -31,6 +32,8 @@ export default function Plan() {
   const [growth,  setGrowth]  = useState(null)   // garden-grew celebration
   const [building, setBuilding] = useState(false)     // starter-plan generation
   const [error,   setError]   = useState(null)
+  const [showAllSteps, setShowAllSteps] = useState(false)
+  const [manageOpen, setManageOpen] = useState(false)
 
   // A step completed on its detail page may have crossed a garden stage — the
   // detail page passes the crossing back so the celebration fires right here.
@@ -103,6 +106,7 @@ export default function Plan() {
   const activeSteps = orderSteps(steps.filter(s => !s.done))
   const upNext      = activeSteps[0] ?? null
   const restSteps   = activeSteps.slice(1)
+  const visibleRestSteps = showAllSteps ? restSteps : restSteps.slice(0, 3)
   const doneSteps   = steps.filter(s => s.done)
 
   // Net worth auto-derives from what you own (accounts) minus what you owe
@@ -198,6 +202,7 @@ export default function Plan() {
       await deletePlan(plan.id, user.id)
       setPlan(null)
       setClearArmed(false)
+      setManageOpen(false)
     } catch (err) {
       setError(err.message ?? 'Could not clear your plan.')
     }
@@ -261,6 +266,7 @@ export default function Plan() {
       setModal(null)
     } catch (err) {
       setError(err.message ?? 'Could not save that goal.')
+      throw err
     }
   }
   async function deleteGoal(id) {
@@ -357,16 +363,36 @@ export default function Plan() {
       initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
       className="p-4 md:p-6 lg:p-8 max-w-2xl mx-auto space-y-4 pb-24 md:pb-8"
     >
-      <div>
-        <h1 className="font-display text-[26px] font-medium text-white drop-shadow-lg">Your Plan</h1>
-        <p className="text-white/60 mt-1 text-sm">
-          {tab === 'steps'
-            ? 'Check off steps to grow your garden.'
-            : 'Each goal plants a tree that grows as you save.'}
-        </p>
-      </div>
+      <PageHeader
+        icon={ClipboardList}
+        eyebrow="Your path"
+        title="Plan"
+        subtitle={tab === 'steps' ? 'One clear move at a time.' : 'Grow the goals that matter most.'}
+        actions={plan && (
+          <div className="relative">
+            <button onClick={() => setManageOpen(open => !open)} aria-label="Manage plan" aria-expanded={manageOpen}
+              className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.1] text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
+              <MoreHorizontal className="h-5 w-5" />
+            </button>
+            {manageOpen && (
+              <>
+                <button aria-label="Close plan menu" onClick={() => setManageOpen(false)} className="fixed inset-0 z-20 cursor-default" />
+                <div className="absolute right-0 top-12 z-30 w-56 rounded-2xl border border-white/[0.12] bg-[#101a14] p-2 shadow-2xl shadow-black/40">
+                  <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">Plan management</p>
+                  <button onClick={() => { if (clearArmed) clearPlan(); else setClearArmed(true) }}
+                    className={`flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm transition-colors ${clearArmed ? 'bg-rose-500/15 text-rose-200' : 'text-white/65 hover:bg-white/[0.06] hover:text-white'}`}>
+                    <Trash2 className="h-4 w-4" />
+                    {clearArmed ? 'Confirm clear plan' : 'Clear plan'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      />
 
       {/* ── Steps | Goals switcher — a checklist you DO vs targets you GROW ── */}
+      <div className="sticky top-0 z-20 -mx-1 border-y border-white/[0.06] bg-[#0b1410]/90 px-1 py-2 backdrop-blur-xl md:top-3 md:rounded-2xl md:border">
       <div className="flex p-1 rounded-xl bg-white/[0.06] border border-white/[0.10]">
         {[
           { id: 'steps', icon: ClipboardList, label: 'Steps',
@@ -388,6 +414,7 @@ export default function Plan() {
           </button>
         ))}
       </div>
+      </div>
 
       {loading ? (
         <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-24 bg-white/[0.075] rounded-2xl animate-pulse" />)}</div>
@@ -396,8 +423,6 @@ export default function Plan() {
           transition={{ duration: 0.18 }} className="space-y-3">
 
           {/* One thin line of garden progress — the reward, always visible */}
-          <GardenMeter done={completedSteps + goalsReached} />
-
           {building ? (
             /* Starter plan generating — skeleton steps, not a spinner */
             <div className="space-y-3">
@@ -409,27 +434,28 @@ export default function Plan() {
           ) : upNext ? (
             <>
               {/* THE emphasized element — the one thing to do next */}
-              <UpNextCard step={upNext} onToggle={toggleStep} onApply={applyAndMark} onOpen={openStep} />
+              <UpNextCard step={upNext} onToggle={toggleStep} onApply={applyAndMark} onOpen={openStep}
+                progress={<GardenMeter done={completedSteps + goalsReached} embedded />} />
 
               {/* Everything else stays quiet — tap a row for its own page */}
-              <StepList steps={restSteps} onToggle={toggleStep} onOpen={openStep} />
+              <StepList steps={visibleRestSteps} onToggle={toggleStep} onOpen={openStep} />
+              {restSteps.length > 3 && (
+                <button onClick={() => setShowAllSteps(show => !show)}
+                  className="min-h-11 w-full rounded-xl text-sm font-semibold text-white/45 transition-colors hover:bg-white/[0.04] hover:text-white/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
+                  {showAllSteps ? 'Show less' : `Show all ${restSteps.length} queued steps`}
+                </button>
+              )}
 
               {suggestion && <SuggestionRow suggestion={suggestion} onRun={runSuggestion} onDismiss={dismissSuggestion} />}
 
               <DoneAccordion steps={doneSteps} onToggle={toggleStep} />
 
-              <div className="flex items-center justify-between">
-                <AddStepRow onAdd={addOwnStep} />
-                <button onClick={() => { if (clearArmed) clearPlan(); else setClearArmed(true) }}
-                  className={`text-[11px] font-medium transition-colors ${
-                    clearArmed ? 'text-rose-300 font-semibold' : 'text-white/25 hover:text-white/50'}`}>
-                  {clearArmed ? 'Tap again to clear everything' : 'Clear my plan'}
-                </button>
-              </div>
+              <AddStepRow onAdd={addOwnStep} />
             </>
           ) : totalSteps > 0 ? (
             /* Every step done — celebrate + point forward */
             <>
+              <GardenMeter done={completedSteps + goalsReached} />
               <div className="bg-emerald-500/[0.08] rounded-2xl border border-emerald-400/25 p-6 text-center">
                 <div className="w-11 h-11 mx-auto mb-3 rounded-full bg-emerald-500/20 flex items-center justify-center">
                   <Sprout className="w-5 h-5 text-emerald-300" />
@@ -479,28 +505,28 @@ export default function Plan() {
           transition={{ duration: 0.18 }} className="space-y-3">
 
           {/* Living headline — this is goal news, so it lives on the Goals tab */}
-          {nearest && (
-            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-emerald-500/[0.1] border border-emerald-400/20">
-              <Sprout className="w-4 h-4 text-emerald-300 flex-shrink-0" />
-              <p className="text-sm text-white/90 leading-snug">
-                On pace to reach <span className="font-semibold text-white">{nearest.g.name}</span> by{' '}
-                <span className="font-semibold text-emerald-300">{nearest.p.label}</span>.
-              </p>
+          <div className="rounded-2xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/[0.12] to-white/[0.035] p-4 sm:p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200/65">Across all goals</p>
+                <p className="mt-2 font-display text-2xl font-medium text-white tabular-nums">
+                  ${goals.reduce((s, g) => s + Number(g.current_amount || 0), 0).toLocaleString()}
+                </p>
+                <p className="mt-1 text-xs text-white/45">
+                  of ${goals.reduce((s, g) => s + Number(g.target_amount || 0), 0).toLocaleString()} saved · {goalsReached} reached
+                </p>
+              </div>
+              <button onClick={() => setModal('new')}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
+                <Plus className="w-3.5 h-3.5" /> Add goal
+              </button>
             </div>
-          )}
-
-          {/* Saved-so-far summary + add */}
-          <div className="flex items-center justify-between">
-            {goals.length > 0 ? (
-              <span className="text-xs text-white/45 tabular-nums">
-                ${goals.reduce((s, g) => s + Number(g.current_amount || 0), 0).toLocaleString()} saved
-                {' '}of ${goals.reduce((s, g) => s + Number(g.target_amount || 0), 0).toLocaleString()}
-              </span>
-            ) : <span />}
-            <button onClick={() => setModal('new')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors">
-              <Plus className="w-3.5 h-3.5" /> Add goal
-            </button>
+            {nearest && (
+              <p className="mt-4 border-t border-white/[0.08] pt-3 text-sm text-white/65">
+                <Sprout className="mr-1.5 inline h-4 w-4 text-emerald-300" />
+                <span className="font-semibold text-white">{nearest.g.name}</span> is on pace for <span className="text-emerald-200">{nearest.p.label}</span>.
+              </p>
+            )}
           </div>
 
           {goals.length === 0 ? (
@@ -510,7 +536,7 @@ export default function Plan() {
               </p>
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid gap-3 md:grid-cols-2">
               {goals.map(g => (
                 <GoalItem key={g.id} goal={g}
                   onEdit={setModal} onDelete={deleteGoal}
