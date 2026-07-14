@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   AlertCircle, ArrowRight, CalendarDays, ChevronDown, ChevronRight,
@@ -162,6 +162,7 @@ function SaveFooter({ onCancel, onSave, saving, saveLabel = 'Save', disabled = f
 export default function Money() {
   const { user, profile, setProfile } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [accounts, setAccounts] = useState([])
   const [debts, setDebts] = useState([])
   const [cashFlowItems, setCashFlowItems] = useState([])
@@ -203,6 +204,16 @@ export default function Money() {
     loadData().catch(loadError => setError(loadError.message ?? 'Could not load your money data.'))
       .finally(() => setLoading(false))
   }, [user.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Arriving from a nudge (dashboard money-picture row, advisor gap banner):
+  // open the exact sheet that resolves it — one less tap between "I was asked"
+  // and "I'm typing the number".
+  useEffect(() => {
+    const sheet = location.state?.sheet
+    if (!sheet || loading) return
+    window.history.replaceState({}, '')   // don't re-open on back/refresh
+    openSheet(sheet)
+  }, [loading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const snapshot = useMemo(() => computeSnapshot({
     profile, accounts, debts, cashFlowItems, budgetLimits,

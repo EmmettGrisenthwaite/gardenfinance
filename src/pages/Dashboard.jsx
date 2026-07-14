@@ -9,6 +9,7 @@ import { listPlans, updatePlanSteps } from '@/lib/advisorPlans'
 import { orderSteps } from '@/lib/planOrder'
 import { netWorthTrend } from '@/lib/netWorth'
 import Onboarding from '@/components/Onboarding'
+import MoneySetupNudge from '@/components/MoneySetupNudge'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
 import { isChunkError, reloadOnce } from '@/lib/chunkReload'
 
@@ -99,7 +100,9 @@ export default function Dashboard() {
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
         listPlans(user.id),
-        supabase.from('accounts').select('balance').eq('user_id', user.id),
+        // Full rows: the money-picture nudge needs type/subtype to tell an
+        // investment account from cash, not just the balance.
+        supabase.from('accounts').select('*').eq('user_id', user.id),
       ])
       if (g.error) throw g.error
       if (d.error) throw d.error
@@ -121,7 +124,7 @@ export default function Dashboard() {
   // $3,400 card) at the exact moment the user first sees their dashboard.
   useEffect(() => {
     if (!profile?.onboarding_complete) return
-    supabase.from('accounts').select('balance').eq('user_id', user.id)
+    supabase.from('accounts').select('*').eq('user_id', user.id)
       .then(({ data, error: accountsError }) => {
         if (accountsError) setError(accountsError.message ?? 'Could not refresh your balances.')
         else setAccounts(data ?? [])
@@ -234,6 +237,12 @@ export default function Dashboard() {
             <span className="flex-1 min-w-0 text-xs font-semibold text-white leading-snug">Finish your profile so your advisor knows you</span>
             <span className="text-xs font-semibold text-amber-300 flex-shrink-0">Add →</span>
           </button>
+        )}
+
+        {/* Money-picture prompt — one nudge at a time: profile first, then this.
+            Snoozeable, self-clearing, retires once the picture is complete. */}
+        {!profileIncomplete && !loading && (
+          <MoneySetupNudge profile={profile} accounts={accounts} debts={debts} goals={goals} />
         )}
 
         {!loading && (

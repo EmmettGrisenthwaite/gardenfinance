@@ -812,7 +812,8 @@ export default function AIAdvisor() {
               ) : 'Your numbers are ready. Turn this conversation into a short action plan.'}
             </span>
             {gaps.length > 0 ? (
-              <Link to={gaps[0].href} className="flex-shrink-0 whitespace-nowrap text-xs font-semibold text-emerald-200 hover:text-emerald-100">{gaps[0].cta}</Link>
+              <Link to={gaps[0].href} state={gaps[0].sheet ? { sheet: gaps[0].sheet } : undefined}
+                className="flex-shrink-0 whitespace-nowrap text-xs font-semibold text-emerald-200 hover:text-emerald-100">{gaps[0].cta}</Link>
             ) : (
               <button type="button" onClick={handleBuildPlan} disabled={buildingPlan || loading || analyzing}
                 className="min-h-9 flex-shrink-0 rounded-lg px-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-300/[0.06] disabled:opacity-50">Build plan</button>
