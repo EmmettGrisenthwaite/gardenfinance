@@ -1,21 +1,38 @@
-import { useState, useEffect } from 'react'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ClipboardList, Bot, Target, Plus, Sprout, Loader2, MoreHorizontal, Trash2 } from 'lucide-react'
+import { ClipboardList, Target, Plus, Sprout, MoreHorizontal, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden, milestonesToStage } from '@/context/GardenContext'
 import { getPlan, updatePlanSteps, deletePlan, applyStep, appendSteps, normalizeSteps } from '@/lib/advisorPlans'
 import { orderSteps } from '@/lib/planOrder'
-import { requestPlan } from '@/lib/claude'
+import { requestPlan, chatConfigured } from '@/lib/claude'
 import { buildContext, buildSystemPrompt } from '@/lib/advisorContext'
 import { buildHowToContext } from '@/lib/howToContext'
-import { buildSuggestions } from '@/components/SmartSuggestions'
 import { GoalItem, GoalModal, getProjection } from '@/components/GoalItem'
-import { UpNextCard, StepList, DoneAccordion, AddStepRow, SuggestionRow } from '@/components/PlanSteps'
+import { UpNextCard, StepList, DoneAccordion, AddStepRow, NextChapterCard } from '@/components/PlanSteps'
 import GardenMeter from '@/components/GardenMeter'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
 import PageHeader from '@/components/ui/PageHeader'
+import {
+  filterFreshPlanSteps,
+  isCurrentNextChapter,
+  nextChapterFingerprint,
+  shouldRequestNextChapter,
+} from '@/lib/planReplenishment'
+
+function readStorage(storage, key) {
+  try { return storage.getItem(key) } catch { return null }
+}
+
+function writeStorage(storage, key, value) {
+  try { storage.setItem(key, value) } catch {}
+}
+
+function removeStorage(storage, key) {
+  try { storage.removeItem(key) } catch {}
+}
 
 export default function Plan() {
   const { user, profile, setProfile, rememberCompletedStep } = useAuth()
@@ -30,10 +47,15 @@ export default function Plan() {
   const [loading, setLoading] = useState(true)
   const [modal,   setModal]   = useState(null)   // null | 'new' | goal
   const [growth,  setGrowth]  = useState(null)   // garden-grew celebration
-  const [building, setBuilding] = useState(false)     // starter-plan generation
   const [error,   setError]   = useState(null)
   const [showAllSteps, setShowAllSteps] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
+  const [savingStep, setSavingStep] = useState(false)
+  const [nextChapter, setNextChapter] = useState(null)
+  const [nextStatus, setNextStatus] = useState('idle')
+  const [nextError, setNextError] = useState(null)
+  const [attemptedFingerprint, setAttemptedFingerprint] = useState(null)
+  const dismissGrowth = useCallback(() => setGrowth(null), [])
 
   // A step completed on its detail page may have crossed a garden stage — the
   // detail page passes the crossing back so the celebration fires right here.
@@ -94,7 +116,7 @@ export default function Plan() {
   }, [])
 
   // ── Derived milestone counts ─────────────────────────────────────────────────
-  const steps          = plan?.steps ?? []
+  const steps          = useMemo(() => plan?.steps ?? [], [plan])
   const completedSteps = steps.filter(s => s.done).length
   const totalSteps     = steps.length
   const goalsReached   = goals.filter(g => Number(g.target_amount) > 0 && Number(g.current_amount) >= Number(g.target_amount)).length
@@ -108,6 +130,13 @@ export default function Plan() {
   const restSteps   = activeSteps.slice(1)
   const visibleRestSteps = showAllSteps ? restSteps : restSteps.slice(0, 3)
   const doneSteps   = steps.filter(s => s.done)
+  const currentFingerprint = useMemo(() => nextChapterFingerprint({
+    userId: user.id, profile, steps, goals, debts, accounts,
+  }), [user.id, profile, steps, goals, debts, accounts])
+  const fingerprintRef = useRef(currentFingerprint)
+  useEffect(() => { fingerprintRef.current = currentFingerprint }, [currentFingerprint])
+  const dismissedKey = `next-chapter-dismissed-${user.id}`
+  const cacheKey = `next-chapter-draft-${user.id}-${currentFingerprint}`
 
   // Net worth auto-derives from what you own (accounts) minus what you owe
   // (debts) — one source of truth, always in sync as those change.
@@ -154,21 +183,26 @@ export default function Plan() {
     })
   }
   async function toggleStep(stepId) {
+    if (savingStep || !plan) return
     const step = steps.find(s => s.id === stepId)
     if (!step) return
     const completing = !step.done
-    if (completing) {
-      try {
-        await rememberCompletedStep(step.text)
-      } catch (err) {
-        setError(err.message ?? 'Could not update what your profile knows about this step.')
-        return
-      }
-      celebrate(1, step.text)   // crossing into a new stage?
-    }
-    editSteps(list => list.map(s => s.id === stepId
+    const next = steps.map(s => s.id === stepId
       ? { ...s, done: completing, completedAt: completing ? new Date().toISOString() : null }
-      : s))
+      : s)
+    setSavingStep(true)
+    try {
+      if (completing) {
+        await rememberCompletedStep(step.text)
+      }
+      await updatePlanSteps(plan.id, next, user.id)
+      setPlan(previous => previous ? { ...previous, steps: next, updated_at: new Date().toISOString() } : previous)
+      if (completing) celebrate(1, step.text)
+    } catch (err) {
+      setError(err.message ?? 'Could not save that completed step.')
+    } finally {
+      setSavingStep(false)
+    }
   }
   // Tapping a step opens its own page: the why + the full how-to, with a back
   // button. The step rides along in nav state for an instant paint.
@@ -228,27 +262,164 @@ export default function Plan() {
     }
   }
 
-  // ── One-tap starter plan (the advisor's brain, right here) ───────────────────
-  async function buildStarterPlan() {
-    if (building) return
-    setBuilding(true)
-    setError(null)
-    try {
-      const ctx = buildContext(money, goals, debts, profile, { plans: [], accounts })
-      const system = buildSystemPrompt(ctx)
-      const p = await requestPlan([{
-        role: 'user',
-        content: 'Based on my actual numbers, build me a short, concrete starter financial action plan — 3 to 5 ordered steps. Where a step means starting a savings/investment goal or adjusting my monthly income/expense numbers, include its apply action so I can act in one tap.',
-      }], system)
-      // These are the plan's founding steps, not an import from elsewhere — no
-      // "from:" origin tag.
-      const { plan: created } = await appendSteps(user.id, p.steps, { source: 'advisor' })
-      setPlan(created)
-    } catch (err) {
-      setError(err.message ?? 'Could not build your plan. Try again.')
-    } finally {
-      setBuilding(false)
+  const generateNextChapter = useCallback(async ({ force = false } = {}) => {
+    const requestFingerprint = currentFingerprint
+    if (!force && (nextStatus === 'loading' || nextStatus === 'saving')) return
+
+    if (force) {
+      removeStorage(window.localStorage, dismissedKey)
+      removeStorage(window.sessionStorage, cacheKey)
     }
+
+    setAttemptedFingerprint(requestFingerprint)
+    setNextChapter(null)
+    setNextError(null)
+    setNextStatus('loading')
+
+    try {
+      if (!chatConfigured) {
+        throw new Error('The advisor service is not available right now.')
+      }
+
+      const ctx = buildContext(money, goals, debts, profile, {
+        plans: plan ? [plan] : [],
+        accounts,
+      })
+      const system = buildSystemPrompt(ctx)
+      const generated = await requestPlan([{
+        role: 'user',
+        content: `Build the next chapter of my financial action plan. Return exactly 5 concise, ordered, practical steps based on my current finances, goals, debts, accounts, ${activeSteps.length} unfinished plan steps, and completed history. Do not repeat anything already active or completed. Avoid recommending insurance, investing, emergency-fund, or debt work when the profile and completed history show it is already handled. Include apply actions only when they are safe and immediately useful.`,
+      }], system)
+
+      const { fresh } = filterFreshPlanSteps(steps, generated.steps, { dedupeCompleted: true })
+      const proposed = fresh.slice(0, 5)
+      if (proposed.length < 3) {
+        throw new Error('The advisor could not find enough new steps yet. You can try again when your finances change.')
+      }
+
+      if (!isCurrentNextChapter(requestFingerprint, fingerprintRef.current)) return
+
+      const draft = {
+        title: generated.title || 'Keep your momentum growing',
+        steps: proposed,
+      }
+      writeStorage(window.sessionStorage, cacheKey, JSON.stringify({
+        fingerprint: requestFingerprint,
+        draft,
+      }))
+      setNextChapter({ fingerprint: requestFingerprint, draft })
+      setNextStatus('ready')
+    } catch (err) {
+      if (!isCurrentNextChapter(requestFingerprint, fingerprintRef.current)) return
+      setNextError(err.message ?? 'Could not prepare your next chapter.')
+      setNextStatus('error')
+    }
+  }, [accounts, activeSteps.length, cacheKey, currentFingerprint, debts, dismissedKey, goals, money, nextStatus, plan, profile, steps])
+
+  useEffect(() => {
+    if (loading || growth || tab !== 'steps') return
+
+    if (activeSteps.length > 2) {
+      if (nextStatus !== 'idle' || nextChapter || nextError) {
+        setNextChapter(null)
+        setNextError(null)
+        setNextStatus('idle')
+        setAttemptedFingerprint(null)
+      }
+      return
+    }
+
+    if (attemptedFingerprint && attemptedFingerprint !== currentFingerprint && nextStatus !== 'saving') {
+      setNextChapter(null)
+      setNextError(null)
+      setNextStatus('idle')
+      setAttemptedFingerprint(null)
+      return
+    }
+
+    if (nextChapter && nextChapter.fingerprint !== currentFingerprint) {
+      setNextChapter(null)
+      setNextStatus('idle')
+      setNextError(null)
+      return
+    }
+
+    if (nextChapter || nextStatus === 'loading' || nextStatus === 'saving' || nextStatus === 'error') return
+
+    const cached = readStorage(window.sessionStorage, cacheKey)
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached)
+        if (parsed.fingerprint === currentFingerprint && parsed.draft?.steps?.length) {
+          setNextChapter(parsed)
+          setNextStatus('ready')
+          return
+        }
+      } catch {
+        removeStorage(window.sessionStorage, cacheKey)
+      }
+    }
+
+    const dismissedFingerprint = readStorage(window.localStorage, dismissedKey)
+    if (dismissedFingerprint === currentFingerprint) {
+      if (nextStatus !== 'dismissed') setNextStatus('dismissed')
+      return
+    }
+
+    if (!shouldRequestNextChapter({
+      activeCount: activeSteps.length,
+      fingerprint: currentFingerprint,
+      attemptedFingerprint,
+      dismissedFingerprint,
+      hasDraft: Boolean(nextChapter),
+      loading,
+      busy: savingStep,
+    })) return
+
+    void generateNextChapter()
+  }, [activeSteps.length, attemptedFingerprint, cacheKey, currentFingerprint, dismissedKey, generateNextChapter, growth, loading, nextChapter, nextError, nextStatus, savingStep, tab])
+
+  async function approveNextChapter() {
+    if (!nextChapter?.draft?.steps?.length || nextStatus === 'saving') return
+    if (!isCurrentNextChapter(nextChapter.fingerprint, currentFingerprint)) {
+      void generateNextChapter({ force: true })
+      return
+    }
+
+    setNextError(null)
+    setNextStatus('saving')
+    try {
+      const { plan: updated, added } = await appendSteps(user.id, nextChapter.draft.steps, {
+        source: 'advisor',
+        group: 'Next chapter',
+        dedupeCompleted: true,
+      })
+      if (!added) throw new Error('Those steps are already part of your financial history.')
+      setPlan(updated)
+      removeStorage(window.sessionStorage, cacheKey)
+      setNextChapter(null)
+      setAttemptedFingerprint(null)
+      setNextStatus('idle')
+    } catch (err) {
+      setNextError(err.message ?? 'Could not add these steps. Your current plan was not changed.')
+      setNextStatus('error')
+    }
+  }
+
+  function dismissNextChapter() {
+    writeStorage(window.localStorage, dismissedKey, currentFingerprint)
+    removeStorage(window.sessionStorage, cacheKey)
+    setNextChapter(null)
+    setNextError(null)
+    setNextStatus('dismissed')
+  }
+
+  function regenerateNextChapter() {
+    setNextChapter(null)
+    setNextError(null)
+    setNextStatus('idle')
+    setAttemptedFingerprint(null)
+    void generateNextChapter({ force: true })
   }
 
   // ── Goal handlers ────────────────────────────────────────────────────────────
@@ -298,54 +469,6 @@ export default function Plan() {
     if (!goal) return
     const next = Number(goal.current_amount) + amount
     updateProgress(goalId, next)
-  }
-
-  // ── The one suggestion (whispered, dismissable, only when the plan runs low) ──
-  const DISMISS_KEY = `plan-sugg-dismissed-${user.id}`
-  const [dismissed, setDismissed] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(DISMISS_KEY)) ?? [] } catch { return [] }
-  })
-  function dismissSuggestion(id) {
-    const next = [...dismissed, id]
-    setDismissed(next)
-    try { localStorage.setItem(DISMISS_KEY, JSON.stringify(next)) } catch {}
-  }
-  const suggestion = (!loading && activeSteps.length < 3)
-    ? buildSuggestions({ profile, goals, debts, accounts, plans: plan ? [plan] : [] })
-        .filter(s => !dismissed.includes(s.id))[0] ?? null
-    : null
-
-  async function runSuggestion(action) {
-    try {
-      if (action.kind === 'task') {
-        const { plan: next } = await appendSteps(user.id, [{ text: action.text }], { source: 'suggestion' })
-        setPlan(next)
-      } else if (action.kind === 'goal') {
-        await addSuggestedGoal(action.preset)
-      } else if (action.kind === 'ask') {
-        navigate('/advisor', { state: { ask: action.q } })
-      }
-    } catch (err) {
-      setError(err.message ?? 'Could not apply that suggestion.')
-    }
-  }
-  // One-tap goal from a preset, else open the modal to fill in details.
-  async function addSuggestedGoal(preset) {
-    if (!preset) { setModal('new'); return }
-    // An emergency-fund goal starts at the user's existing liquid cushion (the
-    // engine passes it as a hint) instead of pretending they're at $0.
-    const target = Math.round(preset.target_amount) || 0
-    const startAt = Math.min(Math.max(0, Math.round(preset.current_amount_hint || 0)), target)
-    const { data, error } = await supabase.from('goals').insert({
-      user_id: user.id, name: preset.name, goal_type: preset.goal_type || 'savings',
-      target_amount: target, current_amount: startAt,
-      monthly_contribution: Math.round(preset.monthly_contribution) || 0, deadline: null,
-    }).select().single()
-    if (error) {
-      setError(error.message ?? 'Could not add that goal.')
-      return
-    }
-    if (data) setGoals(gs => [...gs, data])
   }
 
   // Situation snapshot for the goal cards' inline "Show me how" guides (steps
@@ -423,15 +546,7 @@ export default function Plan() {
           transition={{ duration: 0.18 }} className="space-y-3">
 
           {/* One thin line of garden progress — the reward, always visible */}
-          {building ? (
-            /* Starter plan generating — skeleton steps, not a spinner */
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm text-emerald-200/80 px-1">
-                <Loader2 className="w-4 h-4 animate-spin" /> Building your plan from your real numbers…
-              </div>
-              {[1, 2, 3, 4].map(i => <div key={i} className="h-12 bg-white/[0.06] rounded-xl animate-pulse" />)}
-            </div>
-          ) : upNext ? (
+          {upNext ? (
             <>
               {/* THE emphasized element — the one thing to do next */}
               <UpNextCard step={upNext} onToggle={toggleStep} onApply={applyAndMark} onOpen={openStep}
@@ -446,9 +561,19 @@ export default function Plan() {
                 </button>
               )}
 
-              {suggestion && <SuggestionRow suggestion={suggestion} onRun={runSuggestion} onDismiss={dismissSuggestion} />}
-
               <DoneAccordion steps={doneSteps} onToggle={toggleStep} />
+
+              {activeSteps.length <= 2 && !growth && (
+                <NextChapterCard
+                  status={nextStatus}
+                  draft={nextChapter?.draft}
+                  error={nextError}
+                  onAdd={approveNextChapter}
+                  onDismiss={dismissNextChapter}
+                  onRegenerate={regenerateNextChapter}
+                  onRetry={regenerateNextChapter}
+                />
+              )}
 
               <AddStepRow onAdd={addOwnStep} />
             </>
@@ -461,39 +586,36 @@ export default function Plan() {
                   <Sprout className="w-5 h-5 text-emerald-300" />
                 </div>
                 <p className="text-white font-semibold text-sm mb-1">Every step done — your garden thanks you.</p>
-                <p className="text-white/50 text-xs mb-4">Ask your advisor what's next, or add your own.</p>
-                <Link to="/advisor"
-                  state={{ ask: 'I finished my current plan. What should I do next based on my numbers?' }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition-colors">
-                  <Bot className="w-4 h-4" /> What's next?
-                </Link>
+                <p className="text-readable-secondary text-xs">Your next suggestions appear below after this completion is safely remembered.</p>
               </div>
-              {suggestion && <SuggestionRow suggestion={suggestion} onRun={runSuggestion} onDismiss={dismissSuggestion} />}
               <DoneAccordion steps={doneSteps} onToggle={toggleStep} />
+              {!growth && (
+                <NextChapterCard
+                  status={nextStatus}
+                  draft={nextChapter?.draft}
+                  error={nextError}
+                  onAdd={approveNextChapter}
+                  onDismiss={dismissNextChapter}
+                  onRegenerate={regenerateNextChapter}
+                  onRetry={regenerateNextChapter}
+                />
+              )}
               <AddStepRow onAdd={addOwnStep} />
             </>
           ) : (
-            /* First run — one tap from empty to a real, personalized plan */
-            <div className="bg-white/[0.075] rounded-2xl border border-white/[0.11] p-8 text-center">
-              <div className="w-11 h-11 mx-auto mb-3 rounded-full bg-emerald-500/15 flex items-center justify-center">
-                <Sprout className="w-5 h-5 text-emerald-400" />
-              </div>
-              <p className="text-white font-semibold text-sm mb-1">Your garden is waiting</p>
-              <p className="text-white/45 text-xs max-w-xs mx-auto mb-4">
-                I'll turn your numbers into a short checklist. Each step you check off grows your garden.
-              </p>
-              <button onClick={buildStarterPlan}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold shadow-lg shadow-emerald-900/30 transition-colors">
-                <ClipboardList className="w-4 h-4" /> Build my starter plan
-              </button>
-              <div className="mt-3">
-                <Link to="/advisor"
-                  state={{ ask: 'I need a simple starter financial plan. Based on my actual numbers, what should I do first?' }}
-                  className="text-xs text-white/40 hover:text-emerald-300 transition-colors">
-                  or ask your advisor →
-                </Link>
-              </div>
-            </div>
+            <>
+              <NextChapterCard
+                status={nextStatus}
+                draft={nextChapter?.draft}
+                error={nextError}
+                onAdd={approveNextChapter}
+                onDismiss={dismissNextChapter}
+                onRegenerate={regenerateNextChapter}
+                onRetry={regenerateNextChapter}
+                isEmpty
+              />
+              <AddStepRow onAdd={addOwnStep} />
+            </>
           )}
 
           {error && (
@@ -549,7 +671,7 @@ export default function Plan() {
       )}
 
       {modal && <GoalModal goal={modal === 'new' ? null : modal} onSave={saveGoal} onClose={() => setModal(null)} />}
-      <GardenGrowthToast data={growth} onDismiss={() => setGrowth(null)} />
+      <GardenGrowthToast data={growth} onDismiss={dismissGrowth} />
     </motion.div>
   )
 }

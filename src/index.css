@@ -7,10 +7,27 @@
 
 /* Money and metrics align cleanly everywhere */
 @layer base {
-  body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  :root {
+    --gf-text-primary: #f4f7f5;
+    --gf-text-secondary: #cad2cd;
+    --gf-text-muted: #aab6af;
+    --gf-text-disabled: #829088;
+    --gf-text-placeholder: #98a59e;
+  }
+  body {
+    color: var(--gf-text-primary);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
   /* Native controls render dark (legible text, dark calendars/selects) on the
      dark shell — without this, default black input text is invisible. */
-  input, textarea, select { color-scheme: dark; }
+  input, textarea, select { color-scheme: dark; font: inherit; }
+  input::placeholder, textarea::placeholder {
+    color: var(--gf-text-placeholder) !important;
+    opacity: 1;
+  }
 
   /* Slim translucent scrollbars — default chrome scrollbars read as undesigned
      against the dark shell. */
@@ -184,6 +201,45 @@ button:focus-visible {
   }
 }
 
+/* Legacy opacity utilities made real information disappear into the dark
+   background. These semantic fallbacks keep every existing route readable
+   while components move toward named text roles. */
+@layer utilities {
+  .text-readable-primary { color: var(--gf-text-primary); }
+  .text-readable-secondary { color: var(--gf-text-secondary); }
+  .text-readable-muted { color: var(--gf-text-muted); }
+  .text-readable-disabled { color: var(--gf-text-disabled); }
+
+  /* Legacy micro-label utilities remain compact without dropping below the
+     product's readable 11px floor. */
+  :where([class~="text-[9px]"], [class~="text-[10px]"]) {
+    font-size: 0.6875rem !important;
+    line-height: 1rem !important;
+  }
+
+  :where(
+    [class~="text-white/20"], [class~="text-white/25"], [class~="text-white/28"],
+    [class~="text-white/30"], [class~="text-white/35"], [class~="text-white/38"],
+    [class~="text-white/[0.20]"], [class~="text-white/[0.25]"], [class~="text-white/[0.28]"],
+    [class~="text-white/[0.30]"], [class~="text-white/[0.35]"], [class~="text-white/[0.38]"]
+  ) { color: var(--gf-text-muted) !important; }
+
+  :where(
+    [class~="text-white/40"], [class~="text-white/42"], [class~="text-white/45"], [class~="text-white/50"],
+    [class~="text-white/[0.40]"], [class~="text-white/[0.42]"], [class~="text-white/[0.45]"], [class~="text-white/[0.50]"]
+  ) { color: var(--gf-text-secondary) !important; }
+
+  :where([class~="text-emerald-200/45"], [class~="text-emerald-200/55"], [class~="text-emerald-300/40"]) {
+    color: #a7f3d0 !important;
+  }
+  :where([class~="text-sky-200/45"]) { color: #bae6fd !important; }
+  :where([class~="text-rose-100/55"]) { color: #ffe4e6 !important; }
+
+  :where(button, input, select, textarea):disabled {
+    color: var(--gf-text-disabled);
+  }
+}
+
 /* ── Dark-glass design primitives (shared across pages, legibility-safe) ──────
    Inputs use a near-opaque surface + color-scheme:dark so native selects/date
    pickers render dark and text stays high-contrast (WCAG ≥ 4.5:1). */
@@ -203,10 +259,11 @@ button:focus-visible {
     @apply rounded-xl border border-white/[0.08] bg-white/[0.045];
   }
   .field-label {
-    @apply block text-xs font-medium text-white/55 mb-1.5;
+    @apply block text-xs font-semibold mb-1.5;
+    color: var(--gf-text-secondary);
   }
   .glass-input {
-    @apply w-full rounded-lg px-3 py-2.5 text-sm text-white placeholder-white/35
+    @apply w-full rounded-lg px-3 py-2.5 text-sm text-white
            focus:outline-none transition-colors;
     background-color: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.16);

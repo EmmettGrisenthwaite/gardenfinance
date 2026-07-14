@@ -310,3 +310,100 @@ export function SuggestionRow({ suggestion, onRun, onDismiss }) {
     </div>
   )
 }
+
+// A reviewable replenishment set. It is generated automatically when the queue
+// runs low, but nothing changes in the durable plan until the user approves it.
+export function NextChapterCard({ status, draft, error, onAdd, onDismiss, onRegenerate, onRetry, isEmpty = false }) {
+  if (status === 'loading' || status === 'idle') {
+    return (
+      <div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/[0.06] p-4" aria-live="polite">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-400/10 text-emerald-200">
+            <Loader2 className="h-4 w-4 animate-spin" />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-white">Preparing your next chapter</p>
+            <p className="mt-0.5 text-xs text-readable-secondary">Looking at what you finished and what your numbers need next.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'error' && !draft?.steps?.length) {
+    return (
+      <div className="rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4" role="status">
+        <p className="text-sm font-semibold text-white">Your current plan is safe.</p>
+        <p className="mt-1 text-xs text-readable-secondary">{error || 'We could not prepare new steps just now.'}</p>
+        <button type="button" onClick={onRetry}
+          className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-amber-200/25 bg-amber-200/10 px-4 text-sm font-semibold text-amber-100 transition-colors hover:bg-amber-200/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/60">
+          <RefreshCw className="h-4 w-4" /> Try again
+        </button>
+      </div>
+    )
+  }
+
+  if (status === 'dismissed') {
+    if (!isEmpty) {
+      return (
+        <button type="button" onClick={onRetry}
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-readable-secondary transition-colors hover:bg-white/[0.04] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
+          <Sparkles className="h-4 w-4 text-emerald-200" /> Generate a new next chapter
+        </button>
+      )
+    }
+    return (
+      <div className="rounded-2xl border border-white/[0.1] bg-white/[0.045] p-5 text-center">
+        <p className="text-sm font-semibold text-white">Your plan is ready when you are.</p>
+        <p className="mx-auto mt-1 max-w-sm text-xs text-readable-secondary">Generate a personalized starting set, or add your own first move.</p>
+        <button type="button" onClick={onRetry} className="btn-primary mt-4 min-h-11">
+          <Sparkles className="h-4 w-4" /> Generate next steps
+        </button>
+      </div>
+    )
+  }
+
+  if (!draft?.steps?.length) return null
+  const saving = status === 'saving'
+  return (
+    <div className="overflow-hidden rounded-2xl border border-emerald-300/25 bg-gradient-to-br from-emerald-400/[0.11] to-white/[0.04] shadow-xl shadow-black/10">
+      <div className="flex items-start gap-3 border-b border-white/[0.08] px-4 py-3.5">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-400/10 text-emerald-200">
+          <Sparkles className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-200">Next chapter</p>
+          <p className="mt-0.5 text-sm font-semibold text-white">{draft.title || 'Keep your momentum growing'}</p>
+          <p className="mt-1 text-xs text-readable-secondary">Review these suggestions. Nothing is added until you approve.</p>
+        </div>
+      </div>
+      <div className="divide-y divide-white/[0.07] px-4">
+        {draft.steps.map((step, index) => (
+          <div key={step.id || `${step.text}-${index}`} className="flex gap-3 py-3">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-[11px] font-bold text-emerald-100">{index + 1}</span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold leading-snug text-white">{step.text}</p>
+              {step.detail && <p className="mt-1 text-xs leading-relaxed text-readable-secondary">{step.detail}</p>}
+              {step.impact && <p className="mt-1 text-xs font-semibold text-emerald-200">{step.impact}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+      {status === 'error' && error && (
+        <p className="mx-4 mt-3 rounded-xl border border-rose-300/25 bg-rose-300/[0.08] px-3 py-2 text-xs font-medium text-rose-100" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2 border-t border-white/[0.08] px-4 py-3.5">
+        <button type="button" onClick={onAdd} disabled={saving} className="btn-primary min-h-11 flex-1 sm:flex-none">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          {saving ? 'Adding…' : 'Add to my plan'}
+        </button>
+        <button type="button" onClick={onRegenerate} disabled={saving} className="btn-ghost min-h-11 px-3">
+          <RefreshCw className="h-4 w-4" /> Regenerate
+        </button>
+        <button type="button" onClick={onDismiss} disabled={saving} className="btn-ghost min-h-11 px-3">Not now</button>
+      </div>
+    </div>
+  )
+}

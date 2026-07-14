@@ -500,7 +500,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
             <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
               <Sprout className="w-4 h-4 text-white" />
             </div>
-            <span className="text-white font-bold text-sm">Garden Financial</span>
+            <span className="font-brand text-white font-semibold text-sm">Garden Financial</span>
             {onClose && (
               <button onClick={onClose} aria-label="Close"
                 className="ml-auto -mr-1 p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/15 transition-colors">

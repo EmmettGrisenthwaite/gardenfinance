@@ -102,7 +102,7 @@ export default function Layout({ children }) {
                   <Sprout className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <div className="font-display font-semibold text-white text-[15px] tracking-tight drop-shadow">Garden Financial</div>
+                  <div className="font-brand font-semibold text-white text-[15px] tracking-tight drop-shadow">Garden Financial</div>
                   <div className="text-[10px] text-white/55">Grow your wealth</div>
                 </div>
               </div>
@@ -158,7 +158,7 @@ export default function Layout({ children }) {
               <div className="w-7 h-7 bg-green-500/90 rounded-lg flex items-center justify-center shadow">
                 <Sprout className="w-4 h-4 text-white" />
               </div>
-              <span className="font-display font-semibold text-white text-[15px] tracking-tight drop-shadow">Garden Financial</span>
+              <span className="font-brand font-semibold text-white text-[15px] tracking-tight drop-shadow">Garden Financial</span>
             </div>
             <NavLink
               to="/settings"

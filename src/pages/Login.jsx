@@ -89,7 +89,7 @@ export default function Login() {
             style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
             <Sprout className="w-7 h-7 text-white" strokeWidth={2.5} />
           </div>
-          <h1 className="font-display text-[27px] font-medium text-white tracking-tight">Garden Financial</h1>
+          <h1 className="font-brand text-[27px] font-semibold text-white tracking-tight">Garden Financial</h1>
           <p className="text-white/45 text-sm mt-1 font-medium">Grow your financial future</p>
         </div>
 

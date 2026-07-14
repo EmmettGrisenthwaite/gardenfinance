@@ -27,8 +27,8 @@ export default function PageHeader({
         )}
         <div className="min-w-0">
           {eyebrow && <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200/55">{eyebrow}</p>}
-          <h1 className={`${compact ? 'text-[19px]' : 'text-[25px] md:text-[28px]'} truncate font-display font-medium leading-tight tracking-[-0.01em] text-white`}>{title}</h1>
-          {subtitle && <p className="mt-1 max-w-xl text-xs leading-relaxed text-white/45 md:text-sm">{subtitle}</p>}
+          <h1 className={`${compact ? 'text-[19px]' : 'text-[25px] md:text-[28px]'} truncate font-display font-semibold leading-tight tracking-[-0.02em] text-white`}>{title}</h1>
+          {subtitle && <p className="mt-1 max-w-xl text-xs leading-relaxed text-readable-secondary md:text-sm">{subtitle}</p>}
         </div>
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}

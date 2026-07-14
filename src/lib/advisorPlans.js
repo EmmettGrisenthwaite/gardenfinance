@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { filterFreshPlanSteps } from './planReplenishment.js'
 
 // ── The one-plan model ──────────────────────────────────────────────────────────
 // A user has exactly ONE plan ("Your plan"). Every surface that produces steps —
@@ -7,39 +8,6 @@ import { supabase } from '@/lib/supabase'
 // sibling plans. `getPlan` lazily merges any legacy multi-plan rows.
 
 const GENERIC_TITLE = /^your (action )?plan$/i
-
-// Normalize a step's text for dedupe: amounts and punctuation vary between
-// phrasings of the same action ("Save $1,000" vs "save 1000"), so strip them.
-function dedupeKey(text) {
-  return (text || '')
-    .toLowerCase()
-    .replace(/\$?[\d,.]+/g, ' ')
-    .replace(/[^\p{L}\s]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-// Two steps are the same action if one key contains the other, or if their
-// CONTENT words overlap heavily — the model paraphrases freely ("add your
-// income & expenses to get real numbers" vs "…so I can see your real numbers"),
-// and containment alone misses those. Deliberately conservative: a missed
-// paraphrase is clutter the user can delete; a false positive silently drops a
-// real step (which is why appendSteps reports `skipped` out loud).
-const STOPWORDS = new Set(['a', 'an', 'the', 'your', 'you', 'my', 'i', 'me', 'to', 'so',
-  'can', 'at', 'for', 'of', 'on', 'in', 'with', 'and', 'or', 'is', 'are', 'it', 'that',
-  'this', 'about', 'any', 'once', 'even', 'get', 'see'])
-function contentWords(key) {
-  return new Set(key.split(' ').filter(w => w && !STOPWORDS.has(w)))
-}
-function sameStep(keyA, keyB) {
-  if (!keyA || !keyB) return false
-  if (keyA.includes(keyB) || keyB.includes(keyA)) return true
-  const a = contentWords(keyA), b = contentWords(keyB)
-  if (a.size < 4 || b.size < 4) return false   // short texts collide too easily
-  let inter = 0
-  for (const w of a) if (b.has(w)) inter++
-  return inter / (a.size + b.size - inter) >= 0.6
-}
 
 // Normalize raw plan steps (from the model or a caller) into stored step objects.
 export function normalizeSteps(steps = []) {
@@ -102,30 +70,22 @@ export async function listPlans(userId) {
   return plan ? [plan] : []
 }
 
-// Append steps to the user's plan (creating it if needed), skipping any step
-// that duplicates an existing NOT-done one. Returns { plan, added, skipped } so
-// callers can be honest: "Added 2 steps — 1 already there."
-export async function appendSteps(userId, rawSteps, { source = null, group = null } = {}) {
+// Append steps to the user's plan (creating it if needed). Existing callers
+// dedupe against active work; replenishment can also include completed history.
+// Returns { plan, added, skipped } so callers can report what actually changed.
+export async function appendSteps(userId, rawSteps, { source = null, group = null, dedupeCompleted = false } = {}) {
   const incoming = normalizeSteps(rawSteps)
   let plan = await getPlan(userId)
   const existing = plan?.steps ?? []
-  const keys = existing.filter(s => !s.done).map(s => dedupeKey(s.text)).filter(Boolean)
   const now = new Date().toISOString()
-
-  const fresh = []
-  let skipped = 0
-  for (const s of incoming) {
-    const key = dedupeKey(s.text)
-    const dup = key && keys.some(k => sameStep(k, key))
-    if (dup) { skipped++; continue }
-    fresh.push({
+  const filtered = filterFreshPlanSteps(existing, incoming, { dedupeCompleted })
+  const fresh = filtered.fresh.map(s => ({
       ...s,
       source: s.source ?? source,
       group:  s.group ?? (group && !GENERIC_TITLE.test(group) ? group : null),
       addedAt: now,
-    })
-    if (key) keys.push(key)   // also dedupe within the incoming batch
-  }
+  }))
+  const skipped = filtered.skipped
 
   if (fresh.length === 0) return { plan, added: 0, skipped }
   if (plan) {

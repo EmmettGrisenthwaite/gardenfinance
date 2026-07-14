@@ -95,8 +95,8 @@ export default function BottomSheet({
             <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-white/15 sm:hidden" aria-hidden="true" />
             <div className="flex items-start justify-between gap-4 border-b border-white/[0.07] px-5 py-4">
               <div className="min-w-0">
-                <h2 id={titleId} className="font-display text-xl font-medium text-white">{title}</h2>
-                {subtitle && <p className="mt-1 text-xs leading-relaxed text-white/45">{subtitle}</p>}
+                <h2 id={titleId} className="font-display text-xl font-semibold text-white">{title}</h2>
+                {subtitle && <p className="mt-1 text-xs leading-relaxed text-readable-secondary">{subtitle}</p>}
               </div>
               <button type="button" onClick={requestClose} aria-label={`Close ${title}`}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/40 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60">

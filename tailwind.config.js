@@ -2,12 +2,17 @@
 module.exports = {
     darkMode: ["class"],
     content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
-  theme: {
-  	extend: {
-  		fontFamily: {
-  			sans: ['Inter Variable', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
-  			display: ['Fraunces Variable', 'Fraunces', 'Georgia', 'serif'],
-  		},
+    theme: {
+        extend: {
+            fontFamily: {
+                sans: ['Inter Variable', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                display: ['Inter Variable', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                brand: ['Fraunces Variable', 'Fraunces', 'Georgia', 'serif'],
+            },
+		fontSize: {
+			xs: ['0.8125rem', { lineHeight: '1.25rem' }],
+			sm: ['0.9375rem', { lineHeight: '1.5rem' }],
+		},
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',

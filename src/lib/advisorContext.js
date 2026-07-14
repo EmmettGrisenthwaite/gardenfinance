@@ -2,8 +2,7 @@ import { computeSnapshot, LIMITS } from '@/lib/finance'
 import { getDataGaps } from '@/lib/dataGaps'
 
 // The advisor's system prompt + user-situation context, shared between the
-// advisor chat and the Plan page's one-tap "Build my starter plan" — one brain,
-// two doors.
+// advisor conversation and the Plan page's reviewable next-chapter draft.
 
 // ─── System prompt ─────────────────────────────────────────────────────────────
 export function buildSystemPrompt(ctx, memoriesText = '') {
@@ -171,7 +170,7 @@ export function buildContext(money, goals, debts, profile, extras = {}) {
   const netWorth = acctTotal - totalDebt
 
   if (income === 0 && expenses === 0 && goals.length === 0 && debts.length === 0 && !netWorth && acctTotal === 0) {
-    return 'The user has not added any financial data yet. Encourage them to fill in their monthly income, expenses, and net worth in the "Your money" card on the Plan tab, set a savings goal, and — most valuably — ask you to build them an action plan. Their garden grows as they complete plan steps.'
+    return 'The user has not added any financial data yet. Encourage them to fill in their monthly income, expenses, assets, and debts on the Money tab, then review the personalized draft on the Plan tab. Their garden grows as they complete approved plan steps.'
   }
 
   let ctx = ''
@@ -287,6 +286,12 @@ export function buildContext(money, goals, debts, profile, extras = {}) {
       const pending = p.steps.filter(s => !s.done).map(s => s.text).slice(0, 4)
       ctx += `  • "${p.title}" — ${done}/${p.steps.length} done${pending.length ? `. Next: ${pending.join('; ')}` : ' ✓ complete!'}\n`
     })
+    const completedHistory = extras.plans
+      .flatMap(p => p.steps.filter(s => s.done).map(s => s.text).filter(Boolean))
+      .slice(-25)
+    if (completedHistory.length) {
+      ctx += `  Completed history (already handled — do not recommend again): ${completedHistory.map(text => `"${text}"`).join(', ')}\n`
+    }
     // The steps they finished most recently — so praise can be specific.
     const recent = extras.plans
       .flatMap(p => p.steps.filter(s => s.done && s.completedAt))
@@ -297,7 +302,7 @@ export function buildContext(money, goals, debts, profile, extras = {}) {
     }
     ctx += `When you give actionable advice, OFFER TO ADD IT TO THEIR PLAN — that is the single most valued action in this app.\n\n`
   } else {
-    ctx += `THEIR PLAN: empty. Your most valuable move is to build them a short, concrete action plan — the "Build action plan" button saves a checklist to their Plan, and checking steps off grows their garden. Offer this early.\n\n`
+    ctx += `THEIR PLAN: empty. Their Plan tab prepares a short, reviewable action-plan draft and only saves it after approval. Help them fill any important data gaps so that draft is specific; checking approved steps off grows their garden.\n\n`
   }
 
   // ── Profile
