@@ -66,7 +66,7 @@ function hashState(value) {
   return (hash >>> 0).toString(36)
 }
 
-export function nextChapterFingerprint({ userId, profile, steps, goals, debts, accounts }) {
+export function nextChapterFingerprint({ userId, profile, steps, goals, debts, accounts, cashFlowItems = [], budgetLimits = [] }) {
   const state = {
     userId: userId || '',
     profile: {
@@ -92,14 +92,31 @@ export function nextChapterFingerprint({ userId, profile, steps, goals, debts, a
     })),
     debts: sortedRecords(debts, debt => ({
       id: debt?.id || '', name: debt?.name || '', balance: Number(debt?.balance) || 0,
-      rate: Number(debt?.interest_rate) || 0,
+      type: debt?.type || '', rate: Number(debt?.interest_rate) || 0,
+      minimum: Number(debt?.minimum_payment) || 0, planned: Number(debt?.planned_payment) || 0,
+      limit: Number(debt?.credit_limit) || 0, included: debt?.include_in_net_worth !== false,
     })),
     accounts: sortedRecords(accounts, account => ({
       id: account?.id || '', name: account?.name || '', type: account?.type || '',
+      subtype: account?.subtype || '', institution: account?.institution || '',
       balance: Number(account?.balance) || 0, rate: Number(account?.interest_rate) || 0,
+      contribution: Number(account?.monthly_contribution) || 0,
+      contributionPercent: Number(account?.contribution_percent) || 0,
+      match: Number(account?.employer_match_percent) || 0,
+      matchLimit: Number(account?.employer_match_limit_percent) || 0,
+      liquid: account?.is_liquid ?? null, included: account?.include_in_net_worth !== false,
+    })),
+    cashFlowItems: sortedRecords(cashFlowItems, item => ({
+      id: item?.id || '', kind: item?.kind || '', group: item?.group_key || '',
+      category: item?.category_key || '', name: item?.name || '',
+      amount: Number(item?.amount) || 0, frequency: item?.frequency || 'monthly',
+      monthly: Number(item?.monthly_amount) || 0,
+    })),
+    budgetLimits: sortedRecords(budgetLimits, limit => ({
+      category: limit?.category || '', monthly: Number(limit?.monthly_limit) || 0,
     })),
   }
-  return `next-v1-${hashState(JSON.stringify(state))}`
+  return `next-v2-${hashState(JSON.stringify(state))}`
 }
 
 export function shouldRequestNextChapter({

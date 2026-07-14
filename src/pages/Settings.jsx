@@ -152,7 +152,7 @@ export default function Settings() {
     setOperationError(null)
     try {
       const uid = user.id
-      const [g, d, a, p, c, s, m, bl] = await Promise.all([
+      const [g, d, a, p, c, s, m, bl, cf] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', uid),
         supabase.from('debts').select('*').eq('user_id', uid),
         supabase.from('accounts').select('*').eq('user_id', uid),
@@ -161,15 +161,16 @@ export default function Settings() {
         supabase.from('net_worth_snapshots').select('*').eq('user_id', uid),
         supabase.from('advisor_memories').select('*').eq('user_id', uid),
         supabase.from('budget_limits').select('*').eq('user_id', uid),
+        supabase.from('cash_flow_items').select('*').eq('user_id', uid),
       ])
-      const failed = [g, d, a, p, c, s, m, bl].find(result => result.error)
+      const failed = [g, d, a, p, c, s, m, bl, cf].find(result => result.error)
       if (failed) throw failed.error
       const payload = {
         exported_at: new Date().toISOString(),
         account: { email: user.email, name },
         profile, goals: g.data ?? [], debts: d.data ?? [], accounts: a.data ?? [],
         plans: p.data ?? [], conversations: c.data ?? [], net_worth_snapshots: s.data ?? [],
-        memories: m.data ?? [], budget_limits: bl.data ?? [],
+        memories: m.data ?? [], budget_limits: bl.data ?? [], cash_flow_items: cf.data ?? [],
       }
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
@@ -197,6 +198,7 @@ export default function Settings() {
         supabase.from('net_worth_snapshots').delete().eq('user_id', uid),
         supabase.from('advisor_memories').delete().eq('user_id', uid),
         supabase.from('budget_limits').delete().eq('user_id', uid),
+        supabase.from('cash_flow_items').delete().eq('user_id', uid),
         supabase.from('profiles').delete().eq('id', uid),
       ])
       const failed = results.find(result => result.error)

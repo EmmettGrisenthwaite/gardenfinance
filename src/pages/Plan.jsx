@@ -9,6 +9,7 @@ import { getPlan, updatePlanSteps, deletePlan, applyStep, appendSteps, normalize
 import { orderSteps } from '@/lib/planOrder'
 import { requestPlan, chatConfigured } from '@/lib/claude'
 import { buildContext, buildSystemPrompt } from '@/lib/advisorContext'
+import { computeSnapshot } from '@/lib/finance'
 import { buildHowToContext } from '@/lib/howToContext'
 import { GoalItem, GoalModal, getProjection } from '@/components/GoalItem'
 import { UpNextCard, StepList, DoneAccordion, AddStepRow, NextChapterCard } from '@/components/PlanSteps'
@@ -44,6 +45,8 @@ export default function Plan() {
   const [debts,   setDebts]   = useState([])
   const [money,   setMoney]   = useState({ income: 0, expenses: 0, netWorth: 0 })
   const [accounts, setAccounts] = useState([])
+  const [cashFlowItems, setCashFlowItems] = useState([])
+  const [budgetLimits, setBudgetLimits] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal,   setModal]   = useState(null)   // null | 'new' | goal
   const [growth,  setGrowth]  = useState(null)   // garden-grew celebration
@@ -76,23 +79,37 @@ export default function Plan() {
 
   useEffect(() => {
     async function load() {
-      const [g, d, pl, ac] = await Promise.all([
+      const [g, d, pl, ac, flow, limits] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id).order('created_at'),
         supabase.from('debts').select('*').eq('user_id', user.id),
         getPlan(user.id),
         supabase.from('accounts').select('*').eq('user_id', user.id),
+        supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order'),
+        supabase.from('budget_limits').select('*').eq('user_id', user.id),
       ])
       if (g.error) throw g.error
       if (d.error) throw d.error
       if (ac.error) throw ac.error
+      if (flow.error) throw flow.error
+      if (limits.error) throw limits.error
+      const loadedAccounts = ac.data ?? []
+      const loadedDebts = d.data ?? []
+      const loadedFlow = flow.data ?? []
+      const loadedLimits = limits.data ?? []
+      const loadedSnapshot = computeSnapshot({
+        profile, accounts: loadedAccounts, debts: loadedDebts, goals: g.data ?? [],
+        cashFlowItems: loadedFlow, budgetLimits: loadedLimits,
+      })
       setGoals(g.data ?? [])
-      setDebts(d.data ?? [])
+      setDebts(loadedDebts)
       setPlan(pl)
-      setAccounts(ac.data ?? [])
+      setAccounts(loadedAccounts)
+      setCashFlowItems(loadedFlow)
+      setBudgetLimits(loadedLimits)
       setMoney({
-        income:   Number(profile?.monthly_income)   || 0,
-        expenses: Number(profile?.monthly_expenses) || 0,
-        netWorth: Number(profile?.net_worth)         || 0,
+        income: loadedSnapshot.income,
+        expenses: loadedSnapshot.expenses,
+        netWorth: loadedSnapshot.netWorth,
       })
       setLoading(false)
     }
@@ -131,8 +148,8 @@ export default function Plan() {
   const visibleRestSteps = showAllSteps ? restSteps : restSteps.slice(0, 3)
   const doneSteps   = steps.filter(s => s.done)
   const currentFingerprint = useMemo(() => nextChapterFingerprint({
-    userId: user.id, profile, steps, goals, debts, accounts,
-  }), [user.id, profile, steps, goals, debts, accounts])
+    userId: user.id, profile, steps, goals, debts, accounts, cashFlowItems, budgetLimits,
+  }), [user.id, profile, steps, goals, debts, accounts, cashFlowItems, budgetLimits])
   const fingerprintRef = useRef(currentFingerprint)
   useEffect(() => { fingerprintRef.current = currentFingerprint }, [currentFingerprint])
   const dismissedKey = `next-chapter-dismissed-${user.id}`
@@ -140,8 +157,8 @@ export default function Plan() {
 
   // Net worth auto-derives from what you own (accounts) minus what you owe
   // (debts) — one source of truth, always in sync as those change.
-  const accountsTotal = accounts.reduce((s, a) => s + Number(a.balance || 0), 0)
-  const debtsTotal    = debts.reduce((s, d) => s + Number(d.balance || 0), 0)
+  const accountsTotal = accounts.filter(a => a.include_in_net_worth !== false).reduce((s, a) => s + Number(a.balance || 0), 0)
+  const debtsTotal    = debts.filter(d => d.include_in_net_worth !== false).reduce((s, d) => s + Number(d.balance || 0), 0)
   const netWorth      = accountsTotal - debtsTotal
 
   // Keep the garden in sync with live state.
@@ -255,6 +272,14 @@ export default function Plan() {
           setProfile(data)
           setMoney(m => ({ ...m, income: Number(data.monthly_income) || 0, expenses: Number(data.monthly_expenses) || 0 }))
         }
+        const [flowResult, limitResult] = await Promise.all([
+          supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order'),
+          supabase.from('budget_limits').select('*').eq('user_id', user.id),
+        ])
+        if (flowResult.error) throw flowResult.error
+        if (limitResult.error) throw limitResult.error
+        setCashFlowItems(flowResult.data ?? [])
+        setBudgetLimits(limitResult.data ?? [])
       }
       if (step.apply?.type === 'goal') await loadGoals()
     } catch (err) {
@@ -284,6 +309,8 @@ export default function Plan() {
       const ctx = buildContext(money, goals, debts, profile, {
         plans: plan ? [plan] : [],
         accounts,
+        cashFlowItems,
+        budgetLimits,
       })
       const system = buildSystemPrompt(ctx)
       const generated = await requestPlan([{
@@ -314,7 +341,7 @@ export default function Plan() {
       setNextError(err.message ?? 'Could not prepare your next chapter.')
       setNextStatus('error')
     }
-  }, [accounts, activeSteps.length, cacheKey, currentFingerprint, debts, dismissedKey, goals, money, nextStatus, plan, profile, steps])
+  }, [accounts, activeSteps.length, budgetLimits, cacheKey, cashFlowItems, currentFingerprint, debts, dismissedKey, goals, money, nextStatus, plan, profile, steps])
 
   useEffect(() => {
     if (loading || growth || tab !== 'steps') return

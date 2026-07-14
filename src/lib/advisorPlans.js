@@ -155,15 +155,22 @@ export async function applyStep(userId, apply) {
   }
   if (apply?.type === 'budget') {
     const isIncome = apply.budget_type === 'income'
-    const col = isIncome ? 'monthly_income' : 'monthly_expenses'
-    const { data: prof, error: readErr } = await supabase.from('profiles')
-      .select(col).eq('id', userId).single()
-    if (readErr) throw readErr
     const amount = Math.max(0, Number(apply.amount) || 0)
-    const next = Math.max(0, Number(prof?.[col] || 0) + amount)
-    const { error } = await supabase.from('profiles').update({ [col]: next }).eq('id', userId)
+    const name = apply.name || apply.category || (isIncome ? 'Additional income' : 'Additional spending')
+    const keyBase = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'plan_item'
+    const { error } = await supabase.from('cash_flow_items').insert({
+      user_id: userId,
+      kind: isIncome ? 'income' : 'expense',
+      group_key: isIncome ? 'income' : 'wants',
+      category_key: `plan_${keyBase}`,
+      name,
+      amount,
+      frequency: 'monthly',
+      source: 'plan',
+      sort_order: 999,
+    })
     if (error) throw error
-    return `${isIncome ? 'Income' : 'Expenses'} updated → $${next.toLocaleString()}/mo`
+    return `${name} added to your Monthly Plan at $${amount.toLocaleString()}/mo`
   }
   throw new Error('Nothing to apply for this step')
 }

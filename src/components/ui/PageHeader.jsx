@@ -16,7 +16,7 @@ export default function PageHeader({
       <div className="flex min-w-0 items-center gap-3">
         {onBack && (
           <button type="button" onClick={onBack} aria-label={backLabel}
-            className="-ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white/55 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60">
+            className="-ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-readable-secondary transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60">
             <ChevronLeft className="h-5 w-5" />
           </button>
         )}
@@ -26,8 +26,8 @@ export default function PageHeader({
           </div>
         )}
         <div className="min-w-0">
-          {eyebrow && <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200/55">{eyebrow}</p>}
-          <h1 className={`${compact ? 'text-[19px]' : 'text-[25px] md:text-[28px]'} truncate font-display font-semibold leading-tight tracking-[-0.02em] text-white`}>{title}</h1>
+          {eyebrow && <p className="mb-0.5 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-100/80">{eyebrow}</p>}
+          <h1 className={`${compact ? 'text-[19px]' : 'text-[25px] md:text-[28px]'} truncate font-semibold leading-tight tracking-[-0.02em] text-white`}>{title}</h1>
           {subtitle && <p className="mt-1 max-w-xl text-xs leading-relaxed text-readable-secondary md:text-sm">{subtitle}</p>}
         </div>
       </div>

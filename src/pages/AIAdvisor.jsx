@@ -229,7 +229,7 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
 }
 
 // ─── Welcome / empty state ─────────────────────────────────────────────────────
-function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, progressDelta }) {
+function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, progressDelta, suggestions }) {
   return (
     <motion.div className="py-5 text-center"
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -239,9 +239,9 @@ function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, p
           <Bot className="h-7 w-7 text-emerald-200" />
         </div>
       </div>
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-200/45">Personal to your numbers</p>
+      <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-100/75">Personal to your numbers</p>
       <h2 className="font-display text-[25px] font-medium tracking-[-0.02em] text-white">Make the next move clear.</h2>
-      <p className="mx-auto mb-6 mt-2 max-w-sm text-sm leading-relaxed text-white/45">
+      <p className="mx-auto mb-6 mt-2 max-w-sm text-sm leading-relaxed text-readable-secondary">
         {progressDelta?.has
           ? `Since ${progressDelta.days} days ago: ${progressDelta.delta >= 0 ? '+' : ''}$${Math.abs(progressDelta.delta).toLocaleString()} net worth${progressDelta.stepsDone ? `, ${progressDelta.stepsDone} step${progressDelta.stepsDone !== 1 ? 's' : ''} done` : ''}. `
           : ''}
@@ -277,13 +277,13 @@ function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, p
         )}
       </div>
 
-      <div className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">Ask something specific</div>
+      <div className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-readable-muted">Ask something specific</div>
       <div className="flex flex-wrap justify-center gap-2 max-w-md mx-auto">
-        {SUGGESTIONS.slice(0, 3).map((s, i) => (
+        {suggestions.slice(0, 3).map((s, i) => (
           <motion.button key={i} onClick={() => onSuggest(s.q ?? s.label)}
             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.12 + i * 0.04, duration: 0.25 }}
-            className="flex min-h-10 items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.04] px-3.5 py-2 text-[13px] text-white/60 transition-colors hover:border-emerald-300/25 hover:bg-emerald-400/[0.06] hover:text-white">
+            className="flex min-h-10 items-center gap-1.5 rounded-full border border-white/[0.1] bg-white/[0.045] px-3.5 py-2 text-[13px] text-readable-secondary transition-colors hover:border-emerald-300/25 hover:bg-emerald-400/[0.06] hover:text-white">
             <s.icon className="w-3.5 h-3.5 text-emerald-300/80" />{s.label}
           </motion.button>
         ))}
@@ -312,6 +312,8 @@ export default function AIAdvisor() {
   const [debts,    setDebts]            = useState([])
   const [plans,    setPlans]            = useState([])
   const [accounts, setAccounts]         = useState([])
+  const [cashFlowItems, setCashFlowItems] = useState([])
+  const [budgetLimits, setBudgetLimits] = useState([])
   const [memories, setMemories]         = useState([])
   const [error, setError]               = useState(null)
   const [atBottom, setAtBottom]         = useState(true)
@@ -338,28 +340,42 @@ export default function AIAdvisor() {
   // ── Load data ───────────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const [g, d, conv, pl, ac, mems] = await Promise.all([
+      const [g, d, conv, pl, ac, flow, limits, mems] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
         supabase.from('conversations').select('messages').eq('user_id', user.id).single(),
         listPlans(user.id),
         supabase.from('accounts').select('*').eq('user_id', user.id),
+        supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order'),
+        supabase.from('budget_limits').select('*').eq('user_id', user.id),
         getMemories(),
       ])
       if (g.error) throw g.error
       if (d.error) throw d.error
       if (ac.error) throw ac.error
+      if (flow.error) throw flow.error
+      if (limits.error) throw limits.error
       if (conv.error && conv.error.code !== 'PGRST116') throw conv.error
       const loadedGoals = g.data ?? []
       const loadedDebts = d.data ?? []
       const loadedAccounts = ac.data ?? []
-      const trend = await netWorthTrend(user.id, computeSnapshot({
+      const loadedFlow = flow.data ?? []
+      const loadedLimits = limits.data ?? []
+      const loadedSnapshot = computeSnapshot({
         profile, accounts: loadedAccounts, debts: loadedDebts, goals: loadedGoals,
-      }).netWorth)
+        cashFlowItems: loadedFlow, budgetLimits: loadedLimits,
+      })
+      const trend = await netWorthTrend(user.id, {
+        netWorth: loadedSnapshot.netWorth,
+        assets: loadedSnapshot.assets,
+        liabilities: loadedSnapshot.totalDebt,
+      })
       setGoals(loadedGoals)
       setDebts(loadedDebts)
       setPlans(pl ?? [])
       setAccounts(loadedAccounts)
+      setCashFlowItems(loadedFlow)
+      setBudgetLimits(loadedLimits)
       setMemories(mems ?? [])
 
       // Calculate progress delta since last visit
@@ -450,13 +466,25 @@ export default function AIAdvisor() {
   }), [profile, accounts, debts])
 
   const systemPrompt = useMemo(() => {
-    const ctx = buildContext(money, goals, debts, profile, { plans, accounts })
+    const ctx = buildContext(money, goals, debts, profile, { plans, accounts, cashFlowItems, budgetLimits })
     const memoriesText = formatMemoriesForContext(memories)
     return buildSystemPrompt(ctx, memoriesText)
-  }, [money, goals, debts, profile, plans, accounts, memories])
+  }, [money, goals, debts, profile, plans, accounts, cashFlowItems, budgetLimits, memories])
 
   const noKey  = !chatConfigured
   const hasData = goals.length > 0 || debts.length > 0 || plans.length > 0 || money.income > 0 || money.expenses > 0 || money.netWorth !== 0
+  const quickSuggestions = useMemo(() => {
+    const hasInvestmentAccount = accounts.some(account => account.type === 'brokerage' || [
+      'taxable_brokerage', 'roth_ira', 'traditional_ira', '401k', '403b', 'hsa', 'sep_ira', 'crypto', 'other_investment',
+    ].includes(account.subtype))
+    return [
+      SUGGESTIONS[0],
+      hasInvestmentAccount
+        ? { label: 'Review my investments', q: 'Review my investment accounts and contributions. What should I improve next?', icon: TrendingUp }
+        : SUGGESTIONS[1],
+      SUGGESTIONS[2],
+    ]
+  }, [accounts])
 
   // ── Data gaps — a light, dismissable nudge to fill in what sharpens advice
   // most (a debt's rate, an investment balance…). Purely derived from live
@@ -468,8 +496,8 @@ export default function AIAdvisor() {
     try { return JSON.parse(localStorage.getItem(GAP_DISMISS_KEY)) ?? [] } catch { return [] }
   })
   const gaps = useMemo(
-    () => getDataGaps({ profile, accounts, debts, goals }).filter(g => !dismissedGaps.includes(g.id)),
-    [profile, accounts, debts, goals, dismissedGaps],
+    () => getDataGaps({ profile, accounts, debts, goals, cashFlowItems }).filter(g => !dismissedGaps.includes(g.id)),
+    [profile, accounts, debts, goals, cashFlowItems, dismissedGaps],
   )
   function dismissGap(id) {
     const next = [...dismissedGaps, id]
@@ -653,6 +681,14 @@ export default function AIAdvisor() {
           .select('*').eq('id', user.id).single()
         if (profileError) throw profileError
         if (refreshedProfile) setProfile(refreshedProfile)
+        const [flowResult, limitResult] = await Promise.all([
+          supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order'),
+          supabase.from('budget_limits').select('*').eq('user_id', user.id),
+        ])
+        if (flowResult.error) throw flowResult.error
+        if (limitResult.error) throw limitResult.error
+        setCashFlowItems(flowResult.data ?? [])
+        setBudgetLimits(limitResult.data ?? [])
         flashToast(message)
         setError(null)
       } catch (err) {
@@ -827,6 +863,7 @@ export default function AIAdvisor() {
               onBuildPlan={handleBuildPlan}
               building={buildingPlan}
               progressDelta={progressDelta}
+              suggestions={quickSuggestions}
             />
           )}
 
@@ -887,7 +924,7 @@ export default function AIAdvisor() {
           {/* Mid-conversation suggestion chips */}
           {messages.length > 0 && !loading && !analyzing && (
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 md:flex-wrap md:overflow-x-visible md:-mx-0 md:px-0 mt-2 mb-2">
-              {SUGGESTIONS.slice(0, 3).map((s, i) => (
+              {quickSuggestions.map((s, i) => (
                 <button key={i} onClick={() => send(s.q ?? s.label)}
                   className="flex min-h-9 flex-shrink-0 items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 text-xs text-white/50 transition-colors hover:border-emerald-300/20 hover:text-white/80">
                   <s.icon className="w-3 h-3 text-emerald-300/80" /> {s.label}

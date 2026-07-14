@@ -9,10 +9,12 @@
 // the user fills a field, its gap disappears from this list on the next render,
 // which is what makes every surface that reads it "stop asking" automatically.
 
+import { accountFamily, subtypeLabel } from './moneyModel.js'
+
 const num = (v) => Number(v) || 0
 
 // Ranked highest-value first: things that change what the advisor would say.
-export function getDataGaps({ profile, accounts = [], debts = [], goals = [] }) {
+export function getDataGaps({ profile, accounts = [], debts = [], goals = [], cashFlowItems = [] }) {
   const gaps = []
   const p = profile || {}
 
@@ -31,11 +33,45 @@ export function getDataGaps({ profile, accounts = [], debts = [], goals = [] }) 
     })
   }
 
+  const missingMinimums = debts.filter(d => num(d.balance) > 0 && (d.minimum_payment === null || d.minimum_payment === undefined))
+  if (missingMinimums.length > 0) {
+    const largest = [...missingMinimums].sort((a, b) => num(b.balance) - num(a.balance))[0]
+    gaps.push({
+      id: 'debt_minimum',
+      label: missingMinimums.length === 1
+        ? `What's the minimum payment on ${largest.name}?`
+        : `Add minimum payments for ${missingMinimums.length} debts`,
+      sub: 'Needed before the app can show an honest debt-free date.',
+      cta: 'Add payment', href: '/money',
+    })
+  }
+
+  const missingSubtype = accounts.find(account => num(account.balance) > 0 && !account.subtype)
+  if (missingSubtype) {
+    gaps.push({
+      id: 'account_subtype',
+      label: `What kind of account is ${missingSubtype.name}?`,
+      sub: 'Improves liquidity, tax, and contribution guidance.',
+      cta: 'Add type', href: '/money',
+    })
+  }
+
+  const missingApy = accounts.find(account => accountFamily(account) === 'cash' && num(account.balance) > 0 &&
+    (account.interest_rate === null || account.interest_rate === undefined))
+  if (missingApy) {
+    gaps.push({
+      id: 'cash_apy',
+      label: `Add the APY for ${missingApy.name}`,
+      sub: `${subtypeLabel(missingApy)} rates reveal whether idle cash could earn more.`,
+      cta: 'Add APY', href: '/money',
+    })
+  }
+
   // 2) Says they're investing, but no dollar amount is on record.
   const investTypes = Array.isArray(p.investment_types) ? p.investment_types : []
   const isInvesting = investTypes.length > 0 && !investTypes.includes('none')
-  const investedTotal = accounts.filter(a => a.type === 'brokerage').reduce((s, a) => s + num(a.balance), 0)
-  if (isInvesting && investedTotal === 0) {
+  const investmentAccounts = accounts.filter(account => accountFamily(account) === 'investment')
+  if (isInvesting && investmentAccounts.length === 0) {
     gaps.push({
       id: 'invest_amount',
       label: 'How much do you have invested so far?',
@@ -45,7 +81,8 @@ export function getDataGaps({ profile, accounts = [], debts = [], goals = [] }) 
   }
 
   // 3) No income on record — almost nothing else can be computed without it.
-  if (!num(p.monthly_income)) {
+  const detailedIncome = cashFlowItems.filter(item => item.kind === 'income').reduce((sum, item) => sum + num(item.monthly_amount ?? item.amount), 0)
+  if (!num(p.monthly_income) && !detailedIncome) {
     gaps.push({
       id: 'income',
       label: 'What do you take home each month?',
@@ -55,7 +92,8 @@ export function getDataGaps({ profile, accounts = [], debts = [], goals = [] }) 
   }
 
   // 4) No expenses on record.
-  if (!num(p.monthly_expenses)) {
+  const detailedExpenses = cashFlowItems.filter(item => item.kind === 'expense').reduce((sum, item) => sum + num(item.monthly_amount ?? item.amount), 0)
+  if (!num(p.monthly_expenses) && !detailedExpenses) {
     gaps.push({
       id: 'expenses',
       label: "What's your monthly spending — rent, food, bills, subscriptions?",

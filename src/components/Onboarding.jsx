@@ -399,9 +399,9 @@ export default function Onboarding({ onClose, profileOnly = false }) {
     // donut + advisor context. Update-or-insert so re-running setup never creates
     // duplicate rows (which would double the summed account value).
     const accountRows = [
-      { type: 'checking',  name: 'Checking',    balance: checking },
-      { type: 'savings',   name: 'Savings',     balance: savings },
-      { type: 'brokerage', name: 'Investments', balance: brokerage },
+      { type: 'checking',  subtype: 'checking',         name: 'Checking',    balance: checking },
+      { type: 'savings',   subtype: 'standard_savings', name: 'Savings',     balance: savings },
+      { type: 'brokerage', subtype: 'taxable_brokerage', name: 'Investments', balance: brokerage },
     ]
     if (accountRows.length) {
       try {
@@ -410,8 +410,8 @@ export default function Onboarding({ onClose, profileOnly = false }) {
         for (const a of accountRows) {
           const match = existing?.find(e => e.type === a.type)
           const result = match
-            ? await supabase.from('accounts').update({ balance: a.balance, name: a.name }).eq('id', match.id).eq('user_id', user.id)
-            : await supabase.from('accounts').insert({ ...a, user_id: user.id })
+            ? await supabase.from('accounts').update({ balance: a.balance, name: a.name, subtype: a.subtype, last_verified_at: new Date().toISOString().slice(0, 10) }).eq('id', match.id).eq('user_id', user.id)
+            : await supabase.from('accounts').insert({ ...a, user_id: user.id, last_verified_at: new Date().toISOString().slice(0, 10) })
           if (result.error) throw result.error
         }
       } catch (err) {
@@ -433,8 +433,8 @@ export default function Onboarding({ onClose, profileOnly = false }) {
         const name = debt.name.trim()
         const match = existingDebts?.find(d => d.name?.trim().toLowerCase() === name.toLowerCase())
         const result = match
-          ? await supabase.from('debts').update({ name, balance: Number(debt.balance), interest_rate: debt.interest_rate ?? null }).eq('id', match.id).eq('user_id', user.id)
-          : await supabase.from('debts').insert({ user_id: user.id, name, balance: Number(debt.balance), interest_rate: debt.interest_rate ?? null })
+          ? await supabase.from('debts').update({ name, type: 'other', balance: Number(debt.balance), interest_rate: debt.interest_rate ?? null, last_verified_at: new Date().toISOString().slice(0, 10) }).eq('id', match.id).eq('user_id', user.id)
+          : await supabase.from('debts').insert({ user_id: user.id, name, type: 'other', balance: Number(debt.balance), interest_rate: debt.interest_rate ?? null, last_verified_at: new Date().toISOString().slice(0, 10) })
         if (result.error) {
           setError(result.error.message ?? 'Could not save your debts.')
           setSaving(false)
@@ -445,8 +445,6 @@ export default function Onboarding({ onClose, profileOnly = false }) {
 
     const payload = {
       ...profileFields,
-      monthly_income:   Number(answers.monthly_income)   || 0,
-      monthly_expenses: Number(answers.monthly_expenses) || 0,
       net_worth:        netWorth,
     }
     const { data, error: profileError } = await supabase
@@ -459,7 +457,30 @@ export default function Onboarding({ onClose, profileOnly = false }) {
       setSaving(false)
       return
     }
-    setProfile(data)
+    const { data: existingFlow, error: flowReadError } = await supabase.from('cash_flow_items')
+      .select('id').eq('user_id', user.id).limit(1)
+    if (flowReadError) {
+      setError(flowReadError.message ?? 'Could not prepare your monthly plan.')
+      setSaving(false)
+      return
+    }
+    let savedProfile = data
+    if (!existingFlow?.length) {
+      const income = Number(answers.monthly_income) || 0
+      const expenses = Number(answers.monthly_expenses) || 0
+      const items = [
+        ...(income > 0 ? [{ kind: 'income', group_key: 'income', category_key: 'other_income', name: 'Take-home income', amount: income, frequency: 'monthly', source: 'onboarding', sort_order: 0 }] : []),
+        ...(expenses > 0 ? [{ kind: 'expense', group_key: 'wants', category_key: 'other_spending', name: 'Current monthly spending', amount: expenses, frequency: 'monthly', source: 'onboarding', sort_order: 1 }] : []),
+      ]
+      const { data: monthlyPlan, error: flowSaveError } = await supabase.rpc('save_monthly_plan', { p_items: items, p_limits: [] })
+      if (flowSaveError) {
+        setError(flowSaveError.message ?? 'Could not save your monthly plan.')
+        setSaving(false)
+        return
+      }
+      savedProfile = monthlyPlan?.profile || data
+    }
+    setProfile(savedProfile)
     setSaving(false)
     onClose?.()
   }

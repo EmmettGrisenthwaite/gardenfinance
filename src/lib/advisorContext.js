@@ -1,5 +1,6 @@
 import { computeSnapshot, LIMITS } from '@/lib/finance'
 import { getDataGaps } from '@/lib/dataGaps'
+import { accountFamily, inferLiquidity, itemMonthlyAmount, subtypeLabel, taxTreatment } from '@/lib/moneyModel'
 
 // The advisor's system prompt + user-situation context, shared between the
 // advisor conversation and the Plan page's reviewable next-chapter draft.
@@ -161,7 +162,7 @@ RESPONSE FORMAT RULES
 }
 
 // ─── User situation context ────────────────────────────────────────────────────
-export function buildContext(money, goals, debts, profile, extras = {}) {
+export function buildLegacyContext(money, goals, debts, profile, extras = {}) {
   const { income = 0, expenses = 0 } = money
   const net = income - expenses
   const totalDebt = debts.reduce((s, d) => s + Number(d.balance || 0), 0)
@@ -341,4 +342,137 @@ export function buildContext(money, goals, debts, profile, extras = {}) {
   }
 
   return ctx
+}
+
+// Detailed context used by every current Advisor and Next Chapter caller. The
+// legacy formatter above remains exported for compatibility with older tests or
+// embeds, while this version treats account-level records and monthly categories
+// as stronger evidence than onboarding answers.
+export function buildContext(money, goals = [], debts = [], profile, extras = {}) {
+  const accounts = extras.accounts ?? []
+  const cashFlowItems = extras.cashFlowItems ?? []
+  const budgetLimits = extras.budgetLimits ?? []
+  const snap = computeSnapshot({ profile, accounts, debts, goals, cashFlowItems, budgetLimits })
+
+  if (!snap.income && !snap.expenses && !snap.assets && !snap.totalDebt && goals.length === 0) {
+    return 'The user has not added financial data yet. Encourage them to fill in their typical monthly plan, accounts, and debts on the Money tab, then review the draft on the Plan tab.'
+  }
+
+  const dollars = value => `$${Math.round(Number(value) || 0).toLocaleString()}`
+  let context = 'COMPUTED FINANCIAL DIAGNOSTICS (calculated by the app; trust these values and do not recompute them):\n'
+  context += `  Cash-flow margin: ${dollars(snap.cashFlowMargin)}/mo (${Math.round(snap.savingsRate * 100)}% of income)\n`
+  context += `  Future allocations: ${dollars(snap.futureAllocations)}/mo; unallocated: ${dollars(snap.unallocated)}/mo\n`
+  context += `  Emergency runway: ${snap.efMonths.toFixed(1)} months; target ${snap.efTargetMonths} months (${dollars(snap.efTargetAmount)})\n`
+  context += `  Net worth: ${dollars(snap.netWorth)} (${dollars(snap.assets)} assets minus ${dollars(snap.totalDebt)} liabilities)\n`
+  if (snap.debtMonthlyInterest > 0) {
+    context += `  Debt cost: about ${dollars(snap.debtMonthlyInterest)}/mo interest at ${snap.weightedDebtApr.toFixed(2)}% weighted APR\n`
+    context += `  Required payments: ${dollars(snap.requiredDebtPayments)}/mo; planned payments: ${dollars(snap.plannedDebtPayments)}/mo\n`
+  }
+  if (snap.debtFree && !snap.debtFree.stuck) {
+    context += `  Minimum-aware avalanche: about ${snap.debtFree.months} months to debt-free (${snap.debtFree.debtFreeLabel}), using the recorded planned payment pool\n`
+  } else if (snap.totalDebt > 0) {
+    context += '  Debt-free date intentionally withheld until every active debt has APR and minimum-payment data\n'
+  }
+  context += `  NEXT-DOLLAR PRIORITY: ${snap.next.title} — ${snap.next.why}\n\n`
+
+  context += 'TYPICAL MONTHLY PLAN (planning amounts, not actual transaction spending):\n'
+  context += `  Income ${dollars(snap.income)}; needs ${dollars(snap.needs)}; wants ${dollars(snap.wants)}; future allocations ${dollars(snap.futureAllocations)}\n`
+  if (cashFlowItems.length) {
+    const groups = { income: [], needs: [], wants: [], future: [] }
+    cashFlowItems.forEach(item => {
+      const group = groups[item.group_key] ? item.group_key : item.kind === 'income' ? 'income' : item.kind === 'allocation' ? 'future' : 'wants'
+      groups[group].push(`${item.name}: ${dollars(itemMonthlyAmount(item))}/mo`)
+    })
+    Object.entries(groups).forEach(([group, items]) => {
+      if (items.length) context += `  ${group}: ${items.join('; ')}\n`
+    })
+    if (budgetLimits.length) {
+      context += `  Category targets: ${budgetLimits.map(limit => `${limit.category} ${dollars(limit.monthly_limit)}/mo`).join('; ')}\n`
+    }
+  } else {
+    context += '  Only legacy income/expense totals are known; category detail has not been added\n'
+  }
+  context += '\n'
+
+  if (accounts.length) {
+    context += 'ACCOUNTS (manual account-level tracking; no live bank connection or holdings data):\n'
+    accounts.forEach(account => {
+      const family = accountFamily(account)
+      const details = [subtypeLabel(account), account.institution, `${dollars(account.balance)} balance`]
+      if (family === 'cash') {
+        details.push(account.interest_rate == null ? 'APY missing' : `${Number(account.interest_rate)}% APY`)
+        details.push(inferLiquidity(account) ? 'liquid' : 'restricted')
+      }
+      if (family === 'investment') {
+        details.push(account.interest_rate == null ? 'expected return missing' : `${Number(account.interest_rate)}% expected return (estimate, not actual performance)`)
+        if (Number(account.monthly_contribution) > 0) details.push(`${dollars(account.monthly_contribution)}/mo contribution`)
+        const tax = taxTreatment(account)
+        if (tax) details.push(tax)
+        if (Number(account.employer_match_percent) > 0) {
+          details.push(`${Number(account.employer_match_percent)}% employer match up to ${Number(account.employer_match_limit_percent) || 0}% contribution`)
+        }
+      }
+      if (account.include_in_net_worth === false) details.push('excluded from net worth')
+      if (account.last_verified_at) details.push(`verified ${account.last_verified_at}`)
+      context += `  ${account.name} [${family}]: ${details.filter(Boolean).join(', ')}\n`
+    })
+    if (snap.cashAccounts.length) context += `  Cash yield: ${snap.weightedCashApy.toFixed(2)}% weighted APY, about ${dollars(snap.annualCashInterest)}/year estimated interest\n`
+    if (snap.investmentAccounts.length) context += `  Investment contributions: ${dollars(snap.investmentMonthlyContributions)}/mo across ${snap.investmentAccounts.length} accounts\n`
+    context += '\n'
+  }
+
+  if (debts.length) {
+    context += 'DEBTS (highest APR first):\n'
+    ;[...debts].filter(debt => Number(debt.balance) > 0)
+      .sort((left, right) => Number(right.interest_rate || 0) - Number(left.interest_rate || 0))
+      .forEach(debt => {
+        const details = [debt.type || 'other', `${dollars(debt.balance)} balance`]
+        details.push(debt.interest_rate == null ? 'APR missing' : `${Number(debt.interest_rate)}% APR`)
+        details.push(debt.minimum_payment == null ? 'minimum payment missing' : `${dollars(debt.minimum_payment)} minimum`)
+        if (debt.planned_payment != null) details.push(`${dollars(debt.planned_payment)} planned`)
+        if (debt.type === 'credit_card' && Number(debt.credit_limit) > 0) details.push(`${Math.round(Number(debt.balance) / Number(debt.credit_limit) * 100)}% utilization`)
+        if (debt.due_day) details.push(`due day ${debt.due_day}`)
+        context += `  ${debt.name}: ${details.join(', ')}\n`
+      })
+    context += '\n'
+  } else {
+    context += 'DEBTS: None tracked\n\n'
+  }
+
+  if (goals.length) {
+    context += 'GOALS:\n'
+    goals.forEach(goal => {
+      const target = Number(goal.target_amount) || 0
+      const current = Number(goal.current_amount) || 0
+      context += `  ${goal.name}: ${dollars(current)} of ${dollars(target)}${Number(goal.monthly_contribution) > 0 ? `, ${dollars(goal.monthly_contribution)}/mo` : ''}\n`
+    })
+    context += '\n'
+  }
+
+  const gaps = getDataGaps({ profile, accounts, debts, goals, cashFlowItems })
+  if (gaps.length) {
+    context += 'MOST VALUABLE MISSING DATA (ask only when relevant; completed fields disappear automatically):\n'
+    gaps.forEach((gap, index) => { context += `  ${index + 1}. ${gap.label}\n` })
+    context += '\n'
+  }
+
+  if (extras.plans?.length) {
+    context += 'CURRENT PLAN (do not duplicate active or completed work):\n'
+    extras.plans.forEach(plan => {
+      const active = (plan.steps || []).filter(step => !step.done).map(step => step.text)
+      const completed = (plan.steps || []).filter(step => step.done).map(step => step.text)
+      context += `  Active: ${active.length ? active.join('; ') : 'none'}\n`
+      context += `  Completed history: ${completed.length ? completed.join('; ') : 'none'}\n`
+    })
+    context += '\n'
+  }
+
+  if (profile) {
+    const investmentEvidence = snap.hasInvestmentAccount
+      ? `Detailed records confirm ${snap.investmentAccounts.length} investment account(s); trust this over onboarding.`
+      : `Onboarding investment answer: ${(profile.investment_types || []).join(', ') || 'not answered'}.`
+    context = `PROFILE:\n  Employment: ${profile.employment_type || 'not answered'}\n  Health insurance: ${profile.health_insurance || 'not answered'}\n  Employer retirement answer: ${profile.employer_401k || 'not answered'}\n  ${investmentEvidence}\n  Primary goal: ${profile.primary_goal || 'not answered'}\n\n${context}`
+  }
+
+  return context
 }

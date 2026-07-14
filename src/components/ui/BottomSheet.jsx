@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
 
@@ -78,7 +79,9 @@ export default function BottomSheet({
 
   const widths = { sm: 'sm:max-w-md', md: 'sm:max-w-xl', lg: 'sm:max-w-2xl' }
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -95,11 +98,11 @@ export default function BottomSheet({
             <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-white/15 sm:hidden" aria-hidden="true" />
             <div className="flex items-start justify-between gap-4 border-b border-white/[0.07] px-5 py-4">
               <div className="min-w-0">
-                <h2 id={titleId} className="font-display text-xl font-semibold text-white">{title}</h2>
+                <h2 id={titleId} className="text-xl font-semibold tracking-[-0.01em] text-white">{title}</h2>
                 {subtitle && <p className="mt-1 text-xs leading-relaxed text-readable-secondary">{subtitle}</p>}
               </div>
               <button type="button" onClick={requestClose} aria-label={`Close ${title}`}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/40 transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60">
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-readable-secondary transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -109,7 +112,7 @@ export default function BottomSheet({
             {confirmDiscard ? (
               <div className="border-t border-amber-300/15 bg-amber-300/[0.04] px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
                 <p className="text-sm font-semibold text-white">Discard unsaved changes?</p>
-                <p className="mt-0.5 text-xs text-white/45">Your saved financial data will stay unchanged.</p>
+                <p className="mt-0.5 text-[13px] text-readable-secondary">Your saved financial data will stay unchanged.</p>
                 <div className="mt-3 flex gap-2">
                   <button type="button" onClick={() => setConfirmDiscard(false)} className="btn-ghost min-h-11 flex-1">Keep editing</button>
                   <button type="button" onClick={() => onCloseRef.current()} className="min-h-11 flex-1 rounded-xl border border-rose-300/20 bg-rose-400/10 px-4 text-sm font-semibold text-rose-100 transition-colors hover:bg-rose-400/20">Discard</button>
@@ -123,6 +126,7 @@ export default function BottomSheet({
           </motion.section>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }
