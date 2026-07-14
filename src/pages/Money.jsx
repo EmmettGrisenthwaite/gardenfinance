@@ -18,6 +18,7 @@ import {
 import { netWorthTrend } from '@/lib/netWorth'
 import PageHeader from '@/components/ui/PageHeader'
 import BottomSheet from '@/components/ui/BottomSheet'
+import MoneySetupNudge from '@/components/MoneySetupNudge'
 
 const fmt = value => {
   const amount = Number(value) || 0
@@ -165,6 +166,7 @@ export default function Money() {
   const location = useLocation()
   const [accounts, setAccounts] = useState([])
   const [debts, setDebts] = useState([])
+  const [goals, setGoals] = useState([])
   const [cashFlowItems, setCashFlowItems] = useState([])
   const [budgetLimits, setBudgetLimits] = useState([])
   const [trend, setTrend] = useState({ delta: 0, days: 0, has: false })
@@ -185,16 +187,18 @@ export default function Money() {
   const [breakdown, setBreakdown] = useState(null)
 
   async function loadData() {
-    const [accountResult, debtResult, flowResult, limitResult] = await Promise.all([
+    const [accountResult, debtResult, goalResult, flowResult, limitResult] = await Promise.all([
       supabase.from('accounts').select('*').eq('user_id', user.id).order('created_at'),
       supabase.from('debts').select('*').eq('user_id', user.id).order('created_at'),
+      supabase.from('goals').select('*').eq('user_id', user.id).order('created_at'),
       supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order').order('created_at'),
       supabase.from('budget_limits').select('*').eq('user_id', user.id).order('category'),
     ])
-    const failed = [accountResult, debtResult, flowResult, limitResult].find(result => result.error)
+    const failed = [accountResult, debtResult, goalResult, flowResult, limitResult].find(result => result.error)
     if (failed) throw failed.error
     setAccounts(accountResult.data ?? [])
     setDebts(debtResult.data ?? [])
+    setGoals(goalResult.data ?? [])
     setCashFlowItems(flowResult.data ?? [])
     setBudgetLimits(limitResult.data ?? [])
     return { accounts: accountResult.data ?? [], debts: debtResult.data ?? [] }
@@ -216,8 +220,8 @@ export default function Money() {
   }, [loading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const snapshot = useMemo(() => computeSnapshot({
-    profile, accounts, debts, cashFlowItems, budgetLimits,
-  }), [profile, accounts, debts, cashFlowItems, budgetLimits])
+    profile, accounts, debts, goals, cashFlowItems, budgetLimits,
+  }), [profile, accounts, debts, goals, cashFlowItems, budgetLimits])
 
   useEffect(() => {
     if (loading) return
@@ -912,6 +916,10 @@ export default function Money() {
       } />
 
       {error && <div role="alert" className="mb-4 flex gap-3 rounded-2xl border border-rose-300/20 bg-rose-400/[0.08] p-4 text-[13px] leading-5 text-rose-100"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>}
+
+      <div className="mb-4">
+        <MoneySetupNudge profile={profile} accounts={accounts} debts={debts} goals={goals} cashFlowItems={cashFlowItems} />
+      </div>
 
       <section className="overflow-hidden rounded-[28px] border border-emerald-200/15 bg-[radial-gradient(circle_at_top_right,rgba(52,211,153,0.13),transparent_42%),linear-gradient(145deg,rgba(14,31,24,0.98),rgba(7,17,13,0.98))] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.24)] sm:p-6">
         <div className="flex items-start justify-between gap-4">

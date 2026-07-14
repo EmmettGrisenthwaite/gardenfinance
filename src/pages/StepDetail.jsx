@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { milestonesToStage } from '@/context/GardenContext'
 import { getPlan, updatePlanSteps, applyStep } from '@/lib/advisorPlans'
+import { milestoneEventForStep } from '@/lib/gardenModel'
+import { recordGardenMilestone } from '@/lib/gardenProgress'
 import { buildHowToContext } from '@/lib/howToContext'
 import { StepGuide, DueChip, ApplyAction, dueMeta } from '@/components/PlanSteps'
 import PageHeader from '@/components/ui/PageHeader'
@@ -22,7 +24,6 @@ export default function StepDetail() {
   // (needed to save changes) hydrates in the background.
   const [step, setStep]   = useState(location.state?.step ?? null)
   const [plan, setPlan]   = useState(null)
-  const [goals, setGoals] = useState([])
   const [debts, setDebts] = useState([])
   const [missing, setMissing] = useState(false)
   const [error, setError] = useState(null)
@@ -30,13 +31,11 @@ export default function StepDetail() {
 
   useEffect(() => {
     async function load() {
-      const [pl, g, d] = await Promise.all([
+      const [pl, d] = await Promise.all([
         getPlan(user.id),
-        supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
       ])
       setPlan(pl)
-      setGoals(g.data ?? [])
       setDebts(d.data ?? [])
       const found = pl?.steps.find(s => s.id === stepId)
       if (found) setStep(found)
@@ -75,17 +74,28 @@ export default function StepDetail() {
       // suggestion and finance surface already reading the updated profile.
       await rememberCompletedStep(step.text)
 
-      // Does this check-off cross a garden stage? Compute here so the Plan page
-      // can fire the celebration the moment we land back on it.
-      const completedSteps = plan.steps.filter(s => s.done).length
-      const goalsReached = goals.filter(g => Number(g.target_amount) > 0 && Number(g.current_amount) >= Number(g.target_amount)).length
-      const oldStage = milestonesToStage(completedSteps + goalsReached)
-      const newStage = milestonesToStage(completedSteps + goalsReached + 1)
+      const completedAt = new Date().toISOString()
       const next = plan.steps.map(s => s.id === step.id
-        ? { ...s, done: true, completedAt: new Date().toISOString() } : s)
+        ? { ...s, done: true, completedAt } : s)
       await updatePlanSteps(plan.id, next, user.id)
       setPlan(p => ({ ...p, steps: next }))
-      navigate('/plan', { state: newStage > oldStage ? { grew: { stage: newStage, stepText: step.text } } : undefined })
+      let navigationState
+      try {
+        const stepIndex = plan.steps.findIndex(item => item.id === step.id)
+        const garden = await recordGardenMilestone(milestoneEventForStep(
+          plan,
+          { ...step, done: true, completedAt },
+          stepIndex >= 0 ? stepIndex : 0,
+        ))
+        const oldStage = milestonesToStage(garden.previousTotal)
+        const newStage = milestonesToStage(garden.total)
+        navigationState = garden.inserted && newStage > oldStage
+          ? { grew: { stage: newStage, stepText: step.text } }
+          : undefined
+      } catch {
+        navigationState = { gardenSyncError: 'Step saved. Permanent garden progress will catch up automatically.' }
+      }
+      navigate('/plan', { state: navigationState })
     } catch (err) {
       setError(err.message ?? 'Could not complete that step.')
       setCompleting(false)

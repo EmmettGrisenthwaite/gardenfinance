@@ -1,4 +1,5 @@
-import { memo, useRef, useMemo, useEffect, Suspense, Component } from 'react'
+import { memo, useRef, useMemo, useEffect, useState, Suspense, Component } from 'react'
+import { useReducedMotion } from 'framer-motion'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import {
   Float, Html, Sparkles, ContactShadows,
@@ -7,6 +8,7 @@ import {
 import { EffectComposer, Bloom, Vignette, HueSaturation } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import { useGarden } from '@/context/GardenContext'
+import { groupGardenGoals, STAGE_NAMES } from '@/lib/gardenModel'
 
 // ─── Drag-to-peek camera state (no React state in the canvas) ─────────────────
 let dragAzimuth = 0
@@ -90,32 +92,6 @@ function makeGroundTexture(base, light, dark, seed = 1) {
 const goalPct    = (g) => Math.min(Math.round((Number(g.current_amount) / (Number(g.target_amount) || 1)) * 100), 100)
 const plantStage = (p) => p >= 100 ? 5 : p >= 70 ? 4 : p >= 45 ? 3 : p >= 20 ? 2 : p > 0 ? 1 : 0
 
-// Contextual icon from a goal's name (falls back to type)
-function goalIcon(name = '', type = 'savings') {
-  const n = name.toLowerCase()
-  const has = (...k) => k.some(w => n.includes(w))
-  if (has('house', 'home', 'mortgage', 'down payment', 'apartment', 'condo')) return '🏡'
-  if (has('car', 'auto', 'vehicle', 'truck', 'tesla'))                        return '🚗'
-  if (has('vacation', 'trip', 'travel', 'holiday', 'flight', 'getaway'))      return '✈️'
-  if (has('wedding', 'ring', 'engage', 'marri'))                              return '💍'
-  if (has('emergency', 'rainy', 'safety', 'cushion'))                         return '🛟'
-  if (has('baby', 'child', 'kid', 'family'))                                  return '👶'
-  if (has('school', 'college', 'tuition', 'education', 'degree', 'student'))  return '🎓'
-  if (has('retire', '401k', '401', 'ira', 'roth', 'pension'))                 return '🏦'
-  if (has('invest', 'brokerage', 'stock', 'equity', 'portfolio', 'index'))    return '📈'
-  if (has('wealth', 'growth', 'million', 'rich'))                             return '💎'
-  if (has('phone', 'laptop', 'computer', 'tech', 'gadget'))                   return '💻'
-  if (has('debt', 'loan', 'credit', 'payoff', 'pay off'))                     return '💳'
-  if (has('boat', 'yacht', 'sail'))                                           return '⛵'
-  if (has('bike', 'cycle', 'motor'))                                          return '🏍️'
-  if (has('health', 'medical', 'gym', 'fitness'))                             return '💪'
-  if (has('business', 'startup', 'company', 'venture'))                       return '💼'
-  if (has('gift', 'present', 'holiday'))                                      return '🎁'
-  if (has('fund', 'save', 'saving', 'nest', 'cash'))                          return '💰'
-  if (has('future', 'dream', 'goal'))                                         return '⭐'
-  return type === 'investment' ? '📈' : '🌱'
-}
-
 // ─── Ribbon geometry (for stream) ────────────────────────────────────────────
 function makeRibbonGeo(ctrlPts, width, N = 64) {
   const curve  = new THREE.CatmullRomCurve3(ctrlPts)
@@ -165,7 +141,7 @@ function getTimeOfDay() {
     ambInt:   isNight ? 0.15 : 0.82,
   }
 }
-const TOD = getTimeOfDay()
+let TOD = getTimeOfDay()
 
 // ─── Sky backdrop ─────────────────────────────────────────────────────────────
 // A large inverted gradient sphere fills the canvas so tall phones never see a
@@ -191,7 +167,12 @@ function makeSkyTexture(top, bottom) {
   tex.colorSpace = THREE.SRGBColorSpace
   return tex
 }
-const skyTexture = makeSkyTexture(TOD.skyTop, TOD.bgColor)
+let skyTexture = makeSkyTexture(TOD.skyTop, TOD.bgColor)
+function refreshTimeOfDay() {
+  TOD = getTimeOfDay()
+  skyTexture?.dispose?.()
+  skyTexture = makeSkyTexture(TOD.skyTop, TOD.bgColor)
+}
 function SkyBackdrop() {
   const groupRef = useRef()
   const { camera } = useThree()
@@ -222,19 +203,31 @@ function SkyBackdrop() {
 // We want the full island + fence + a little sky visible, so target visible
 // world-width ≈ 19 units → zoom = canvas_px / 19 ≈ canvas_px * 0.053.
 // Clamp so it never feels microscopic on huge desktop monitors.
-function ResponsiveCamera() {
-  const { camera, size } = useThree()
+function ResponsiveCamera({ reducedMotion = false }) {
+  const { camera, size, invalidate } = useThree()
   const basePos = useMemo(() => new THREE.Vector3(18, 28, 18), [])
+  const targetZoom = useMemo(() => {
+    const zoomW = size.width / 20.8
+    const zoomH = size.height / 25.5
+    return Math.min(Math.max(Math.min(zoomW, zoomH), 12), 56)
+  }, [size.height, size.width])
+
+  useEffect(() => {
+    if (!reducedMotion) return
+    camera.zoom = targetZoom
+    camera.position.copy(basePos)
+    camera.lookAt(0, -0.8, 0)
+    camera.updateProjectionMatrix()
+    invalidate()
+  }, [basePos, camera, invalidate, reducedMotion, targetZoom])
+
   useFrame(({ clock }) => {
     // Fit the WHOLE island in both axes. In the iso projection the island spans
     // ~17 world-units wide and ~21 tall (disc ellipse + the dirt underside), so
     // zoom to the more constraining axis — otherwise a wide/short container
     // (like the dashboard card) clips the top and bottom.
-    const zoomW  = size.width  / 19.8
-    const zoomH  = size.height / 24
-    const target = Math.min(Math.max(Math.min(zoomW, zoomH), 12), 56)
-    if (Math.abs(camera.zoom - target) > 0.3) {
-      camera.zoom += (target - camera.zoom) * 0.08
+    if (Math.abs(camera.zoom - targetZoom) > 0.3) {
+      camera.zoom += (targetZoom - camera.zoom) * 0.08
       camera.updateProjectionMatrix()
     }
     // Drag-to-peek spring-back when the user releases.
@@ -249,9 +242,9 @@ function ResponsiveCamera() {
     }
     // Subtle living drift — gentle sway, kept small so the island stays centred
     const t = clock.elapsedTime
-    const driftX = Math.sin(t * 0.08) * 0.9
-    const driftZ = Math.cos(t * 0.08) * 0.9
-    const driftY = Math.sin(t * 0.05) * 0.5
+    const driftX = reducedMotion ? 0 : Math.sin(t * 0.08) * 0.55
+    const driftZ = reducedMotion ? 0 : Math.cos(t * 0.08) * 0.55
+    const driftY = reducedMotion ? 0 : Math.sin(t * 0.05) * 0.28
     const targetPos = basePos.clone().applyAxisAngle(Y_UP, dragAzimuth)
     camera.position.set(targetPos.x + driftX, targetPos.y + driftY, targetPos.z + driftZ)
     // Aim a bit below the disc so the island sits centred (underside hangs down)
@@ -300,23 +293,24 @@ function GltfToon({ url, position = [0,0,0], rotation = [0,0,0], scale = 1,
 // ─── Floating island ──────────────────────────────────────────────────────────
 // Per-stage ground palette: barren brown (0) → deep lush green (5)
 const STAGE_GROUND = [
-  { base: '#9c7a4e', light: '#b89868', dark: '#7a5c38', lip: '#6e5230' }, // 0 barren
-  { base: '#a6a45a', light: '#c6c47e', dark: '#7e7a40', lip: '#7a7038' }, // 1 sprouting
-  { base: '#7cc85e', light: '#b4e188', dark: '#5aa748', lip: '#4a9c38' }, // 2 greening
-  { base: '#6cc24a', light: '#a6dd76', dark: '#479a38', lip: '#3f8f33' }, // 3 growing
-  { base: '#5cb840', light: '#9bd86a', dark: '#3f8f33', lip: '#368a2e' }, // 4 thriving
-  { base: '#4fae36', light: '#90d65f', dark: '#368a2e', lip: '#2f7e28' }, // 5 flourishing
+  { base: '#9d8558', light: '#c2ad7a', dark: '#77643f', lip: '#715a34' },
+  { base: '#9eaa61', light: '#c5cf82', dark: '#748247', lip: '#69763d' },
+  { base: '#82b963', light: '#b6d98b', dark: '#5f9349', lip: '#568a40' },
+  { base: '#70b957', light: '#a9d77e', dark: '#4f9340', lip: '#468a38' },
+  { base: '#62b550', light: '#9fd376', dark: '#438d38', lip: '#3d8432' },
+  { base: '#55ad48', light: '#94cf6d', dark: '#398532', lip: '#347b2d' },
+  { base: '#49a842', light: '#8bcb67', dark: '#327e2d', lip: '#2e7628' },
+  { base: '#3fa13d', light: '#82c961', dark: '#2c7829', lip: '#286f24' },
 ]
-function FloatingIsland({ stage, netWorthTier = 0 }) {
-  const g = STAGE_GROUND[Math.max(0, Math.min(5, stage))]
+function FloatingIsland({ stage }) {
+  const g = STAGE_GROUND[Math.max(0, Math.min(7, stage))]
   const groundTex = useMemo(() => makeGroundTexture(g.base, g.light, g.dark, stage + 1), [g, stage])
   return (
     <group>
       {/* Grassy top — painted texture (browns at low stages, greens as it grows) */}
       <mesh position={[0, 0.70, 0]} receiveShadow castShadow>
         <cylinderGeometry args={[8.3, 8.3, 0.50, 96]} />
-        <meshToonMaterial map={groundTex} gradientMap={getToonGrad()}
-          emissive={netWorthTier >= 4 ? '#1a0e00' : '#000'} emissiveIntensity={netWorthTier >= 4 ? 0.10 : 0} />
+        <meshToonMaterial map={groundTex} gradientMap={getToonGrad()} />
       </mesh>
       {/* Soft grassy lip overhanging the cliff */}
       <mesh position={[0, 0.45, 0]}>
@@ -404,19 +398,21 @@ const GRASS_COUNT = 760
 const streamZAt = () => 0   // river now runs straight across the middle (z = 0)
 // Grass per stage: dead/dry & sparse at 0 → lush, dense, deep-green at 5.
 const STAGE_GRASS = [
-  { count: 150, h: [0.45, 0.85], tones: ['#a8905c', '#b89a64', '#9c8450', '#c2a86e', '#8f7a48'] }, // 0 dead/dry
-  { count: 330, h: [0.55, 1.05], tones: ['#9cae54', '#aab864', '#8ca048', '#b6c270', '#7e9440'] }, // 1 drying green
-  { count: 480, h: [0.65, 1.35], tones: ['#6ace4c', '#7ed85d', '#57bd3c', '#82d65f'] },           // 2 fresh
-  { count: 600, h: [0.70, 1.45], tones: ['#57bd3c', '#6ace4c', '#4aa636', '#7ed85d'] },           // 3 green
-  { count: 700, h: [0.70, 1.55], tones: ['#4aa636', '#57bd3c', '#3f9c33', '#6ace4c'] },           // 4 lush
-  { count: 760, h: [0.72, 1.60], tones: ['#3f9c33', '#4aa636', '#57bd3c', '#349029'] },           // 5 deep
+  { count: 180, h: [0.40, 0.76], tones: ['#899456', '#9da365', '#788449', '#b2aa70'] },
+  { count: 300, h: [0.50, 0.94], tones: ['#8fa653', '#a2b763', '#7f9848', '#b3c374'] },
+  { count: 410, h: [0.58, 1.12], tones: ['#72b557', '#85c367', '#62a648', '#93c977'] },
+  { count: 520, h: [0.64, 1.28], tones: ['#62b34c', '#75c15d', '#51a23f', '#86ca6b'] },
+  { count: 610, h: [0.68, 1.40], tones: ['#55ad43', '#68ba52', '#469a38', '#79c461'] },
+  { count: 680, h: [0.70, 1.48], tones: ['#49a33b', '#59b047', '#3e9233', '#6cbb55'] },
+  { count: 730, h: [0.72, 1.54], tones: ['#419a36', '#50a943', '#378a2f', '#62b64d'] },
+  { count: 760, h: [0.74, 1.60], tones: ['#398f31', '#489e3c', '#317f2a', '#58aa46'] },
 ]
 function GrassBlades({ stage, windStrength }) {
   const meshRef = useRef()
   const coloredStage = useRef(-1)
   const dummy  = useMemo(() => new THREE.Object3D(), [])
   const tmpCol = useMemo(() => new THREE.Color(), [])
-  const cfg = STAGE_GRASS[Math.max(0, Math.min(5, stage))]
+  const cfg = STAGE_GRASS[Math.max(0, Math.min(7, stage))]
   const blades = useMemo(() => {
     const out = []
     let guard = 0
@@ -931,12 +927,24 @@ const LANTERN_POS = [
 ]
 
 // ─── Signpost — compact game-style marker: icon ringed by progress + name tag ──
-function Signpost({ name, progress, type = 'savings', icon, yOffset = 0, empty = false }) {
+function Signpost({
+  name,
+  progress = null,
+  type = 'savings',
+  yOffset = 0,
+  empty = false,
+  markerText,
+  persistentLabel = false,
+  showProgressText = true,
+  onSelect,
+  accessibleLabel,
+}) {
   const isInv  = type === 'investment'
-  const done   = progress >= 100
+  const hasProgress = Number.isFinite(progress)
+  const done   = hasProgress && progress >= 100
   const ring   = done ? '#fbbf24' : isInv ? '#f59e0b' : '#22c55e'
   const accent = done ? '#fde68a' : isInv ? '#fcd34d' : '#86efac'
-  const ic     = empty ? '+' : done ? '🏆' : (icon ?? (isInv ? '📈' : '🌱'))
+  const marker = markerText ?? (empty ? '+' : done ? '✓' : hasProgress ? `${progress}%` : '•')
   return (
     <group position={[0, 0.10, 1.28]}>
       {/* Slim grounding post */}
@@ -944,44 +952,47 @@ function Signpost({ name, progress, type = 'savings', icon, yOffset = 0, empty =
         <cylinderGeometry args={[0.035, 0.045, 0.80, 6]} />
         <meshToonMaterial color={isInv ? '#a8742a' : '#8a6a32'} gradientMap={getToonGrad()} />
       </mesh>
-      {/* Compact floating marker — circular progress ring around the icon */}
-      <Html position={[0, 1.06 + yOffset, 0]} center zIndexRange={[20, 0]}
-        style={{ pointerEvents: 'none', userSelect: 'none' }}>
-        <div style={{
-          fontFamily: 'Inter Variable, system-ui, sans-serif',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
-        }}>
+      <Html position={[0, 1.06 + yOffset, 0]} center zIndexRange={[30, 0]}
+        style={{ pointerEvents: 'auto', userSelect: 'none' }}>
+        <button type="button" onClick={onSelect} onPointerDown={event => event.stopPropagation()}
+          aria-label={accessibleLabel || `${name}, ${progress}% complete`}
+          className="group relative flex min-h-11 min-w-11 flex-col items-center gap-1 rounded-xl p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
+          style={{ fontFamily: 'Inter Variable, Inter, system-ui, sans-serif' }}>
           {/* Progress ring (conic) wrapping the glossy icon chip. Empty plots are
               a dashed, muted "plant here" invitation — no ring fill, no %. */}
           <div style={{
-            width: '30px', height: '30px', borderRadius: '50%', padding: '2.5px',
-            background: empty ? 'transparent' : `conic-gradient(${ring} ${progress * 3.6}deg, rgba(255,255,255,0.30) 0deg)`,
-            border: empty ? '1.5px dashed rgba(255,255,255,0.45)' : 'none',
+            width: '36px', height: '36px', borderRadius: '50%', padding: '3px',
+            background: empty || !hasProgress ? 'rgba(8,17,14,0.82)' : `conic-gradient(${ring} ${progress * 3.6}deg, rgba(255,255,255,0.30) 0deg)`,
+            border: empty ? '1.5px dashed rgba(255,255,255,0.45)' : !hasProgress ? '1px solid rgba(255,255,255,0.25)' : 'none',
             boxShadow: empty ? 'none' : '0 4px 10px rgba(0,0,0,0.40)',
           }}>
             <div style={{
               width: '100%', height: '100%', borderRadius: '50%',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: empty ? '15px' : '12px', fontWeight: 700,
+              fontSize: empty ? '16px' : marker.length > 2 ? '10px' : '13px', fontWeight: 800,
               color: empty ? 'rgba(255,255,255,0.75)' : undefined,
-              background: empty ? 'rgba(12,20,10,0.45)'
+              background: empty || !hasProgress ? 'rgba(12,20,10,0.72)'
                         : isInv ? 'linear-gradient(135deg,#fde68a,#f59e0b)'
                                 : 'linear-gradient(135deg,#bbf7d0,#34d399)',
+              ...(hasProgress || empty ? {} : { color: '#fff' }),
               boxShadow: empty ? 'none' : 'inset 0 1px 2px rgba(255,255,255,0.55)',
-            }}>{ic}</div>
+            }}>{marker}</div>
           </div>
-          {/* Tiny name + % tag (% hidden on empty invitations) */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '3px',
-            background: 'rgba(12,20,10,0.80)', border: '1px solid rgba(255,255,255,0.16)',
-            borderRadius: '7px', padding: '1.5px 6px', whiteSpace: 'nowrap', backdropFilter: 'blur(3px)',
-            opacity: empty ? 0.85 : 1,
+          {/* Keep the sanctuary quiet: goal names reveal on hover/focus while
+              the two collection groves retain a small permanent label. */}
+          <div className={`absolute left-1/2 top-[calc(100%-2px)] flex -translate-x-1/2 items-center gap-1 transition-all duration-160 ${
+            persistentLabel
+              ? 'opacity-100'
+              : 'pointer-events-none translate-y-1 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100'
+          }`} style={{
+            background: 'rgba(8,17,14,0.90)', border: '1px solid rgba(255,255,255,0.20)',
+            borderRadius: '8px', padding: '3px 7px', whiteSpace: 'nowrap', backdropFilter: 'blur(5px)',
           }}>
-            <span style={{ fontSize: '9px', fontWeight: 800, color: empty ? 'rgba(255,255,255,0.8)' : '#fff', maxWidth: '82px',
+            <span style={{ fontSize: '13px', fontWeight: 700, color: empty ? 'rgba(255,255,255,0.9)' : '#fff', maxWidth: '116px',
               overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
-            {!empty && <span style={{ fontSize: '8.5px', fontWeight: 800, color: accent }}>{progress}%</span>}
+            {!empty && hasProgress && showProgressText && <span style={{ fontSize: '12px', fontWeight: 800, color: accent }}>{progress}%</span>}
           </div>
-        </div>
+        </button>
       </Html>
     </group>
   )
@@ -1045,24 +1056,6 @@ function InteractivePlot({ position, onSelect, children }) {
     </group>
   )
 }
-
-// ─── Empty plot — the "Add a goal" invitation ─────────────────────────────────
-function EmptyPlot({ position, label = 'Add a goal', onSelect, signYOffset = 0 }) {
-  return (
-    <InteractivePlot position={position} onSelect={onSelect}>
-      <mesh rotation={[-Math.PI/2,0,0]} position={[0,0.01,0]} receiveShadow>
-        <ringGeometry args={[0.98, 1.32, 40]} />
-        <meshToonMaterial color="#c8b890" gradientMap={getToonGrad()} />
-      </mesh>
-      <mesh rotation={[-Math.PI/2,0,0]} receiveShadow>
-        <circleGeometry args={[0.98, 40]} />
-        <meshToonMaterial color="#6b3e1e" gradientMap={getToonGrad()} />
-      </mesh>
-      <Signpost name={label} progress={0} type="savings" empty yOffset={signYOffset} />
-    </InteractivePlot>
-  )
-}
-
 
 // ─── Cemented accomplishment — a reached goal is set in stone ─────────────────
 // A stone plinth + gold plaque ring the plot, so a completed goal reads as a
@@ -1141,7 +1134,7 @@ function CementedBase({ animateIn = false }) {
 function GoalSlot({ position, goal, onSelect, yOffset = 0 }) {
   const p = goalPct(goal), st = plantStage(p), done = p >= 100
   const isInv = goal.goal_type === 'investment'
-  const nm = goal.name.length > 14 ? goal.name.slice(0, 13) + '…' : goal.name
+  const nm = goal.name.length > 22 ? `${goal.name.slice(0, 21)}…` : goal.name
   const wasDoneRef = useRef(done)
   useEffect(() => { wasDoneRef.current = done }, [done])
   const animateIn = done && !wasDoneRef.current
@@ -1161,8 +1154,24 @@ function GoalSlot({ position, goal, onSelect, yOffset = 0 }) {
       </mesh>
       {done && <CementedBase animateIn={animateIn} />}
       {isInv ? <InvestPlant stage={st} /> : <SavingsPlant stage={st} />}
-      <Signpost name={nm} progress={p} type={isInv ? 'investment' : 'savings'}
-        icon={done ? '🏆' : goalIcon(goal.name, isInv ? 'investment' : 'savings')} yOffset={yOffset} />
+      <Signpost name={nm} progress={p} type={isInv ? 'investment' : 'savings'} yOffset={yOffset}
+        onSelect={onSelect} accessibleLabel={`Open ${goal.name}, ${p}% complete`} />
+    </InteractivePlot>
+  )
+}
+
+function CollectionGrove({ position, name, count, legacy = false, onSelect, yOffset = 0 }) {
+  return (
+    <InteractivePlot position={position} onSelect={onSelect}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]} receiveShadow>
+        <circleGeometry args={[1.28, 40]} />
+        <meshToonMaterial color={legacy ? '#75633d' : '#5c4930'} gradientMap={getToonGrad()} />
+      </mesh>
+      <LushTree position={[-0.45, 0.02, 0.08]} scale={0.72} palette={legacy ? 'gold' : 'green'} fruit={legacy} rotation={0.5} />
+      <LushTree position={[0.38, 0.02, -0.18]} scale={0.62} palette={legacy ? 'orange' : 'lime'} fruit={legacy} rotation={-0.7} />
+      <Signpost name={name} progress={legacy ? 100 : null} markerText={legacy ? '✓' : `${count}`} persistentLabel showProgressText={false}
+        yOffset={yOffset} onSelect={onSelect}
+        accessibleLabel={`Open ${name}, ${count} ${count === 1 ? 'goal' : 'goals'}`} />
     </InteractivePlot>
   )
 }
@@ -1309,27 +1318,6 @@ function CloudFraming({ dark = false, windStrength = 0 }) {
   )
 }
 
-// ─── Rain ─────────────────────────────────────────────────────────────────────
-const RAIN_POOL = Array.from({length:50}, () => ({
-  x:(Math.random()-0.5)*28, y:Math.random()*18, z:(Math.random()-0.5)*28, speed:0.18+Math.random()*0.12,
-}))
-function RainSystem({ severity }) {
-  const refs = useRef([]), count = Math.round(severity*50)
-  useFrame(() => {
-    refs.current.forEach(r => { if (!r) return; r.position.y -= r.userData.speed; r.position.x -= r.userData.speed*0.10; if (r.position.y < -6) r.position.y = 18 })
-  })
-  return (
-    <>
-      {RAIN_POOL.slice(0,count).map((d,i) => (
-        <mesh key={i} ref={el=>{refs.current[i]=el;if(el)el.userData.speed=d.speed}} position={[d.x,d.y,d.z]} rotation={[0,0,0.12]}>
-          <cylinderGeometry args={[0.014,0.014,0.33,4]} />
-          <meshBasicMaterial color="#93c5fd" transparent opacity={0.38} />
-        </mesh>
-      ))}
-    </>
-  )
-}
-
 // ─── Butterflies ──────────────────────────────────────────────────────────────
 const BF_CONFIGS = [
   { start:[-3.0,3.8,1.5],  colors:['#f97316','#fb923c'], t0:0.0 },
@@ -1391,58 +1379,6 @@ function Birds({ count = 3 }) {
         </group>
       ))}
     </group>
-  )
-}
-
-// ─── Falling leaves (stage ≥ 2) ───────────────────────────────────────────────
-const LEAF_COUNT = 14
-const LEAF_TONES = ['#c97a2a', '#d99030', '#b5562a', '#cc8a3a', '#7a9e3e']
-function FallingLeaves({ windStrength }) {
-  const meshRef = useRef()
-  const dummy = useMemo(() => new THREE.Object3D(), [])
-  const tmpCol = useMemo(() => new THREE.Color(), [])
-  const trees = useMemo(() => [...SAVINGS_ZONE_TREES, ...INVEST_ZONE_TREES], [])
-  const leaves = useMemo(() => Array.from({ length: LEAF_COUNT }, (_, i) => {
-    const t = trees[i % trees.length]
-    return {
-      baseX: t.p[0] + (Math.random() - 0.5) * 1.6,
-      baseZ: t.p[2] + (Math.random() - 0.5) * 1.6,
-      y0: 2.6 + Math.random() * 1.8,
-      speed: 0.22 + Math.random() * 0.18,
-      phase: Math.random() * Math.PI * 2,
-      sway: 0.25 + Math.random() * 0.3,
-      tone: LEAF_TONES[i % LEAF_TONES.length],
-      size: 0.08 + Math.random() * 0.07,
-    }
-  }), [trees])
-  useFrame(({ clock }) => {
-    if (!meshRef.current) return
-    const t = clock.elapsedTime
-    const ws = windStrength * 0.18
-    for (let i = 0; i < LEAF_COUNT; i++) {
-      const l = leaves[i]
-      const cycle = (t * l.speed + l.phase) % 3.6
-      const y = l.y0 - cycle
-      const s = l.size * Math.min(1, cycle * 2.2) * Math.min(1, (3.6 - cycle) * 1.8)
-      const x = l.baseX + Math.sin(t * 0.9 + l.phase) * l.sway + ws * t
-      const z = l.baseZ + Math.cos(t * 0.7 + l.phase) * l.sway
-      dummy.position.set(x, Math.max(0.7, y), z)
-      dummy.rotation.set(Math.sin(t + l.phase) * 0.6, 0, Math.cos(t * 1.2 + l.phase) * 0.8)
-      dummy.scale.setScalar(Math.max(0.001, s))
-      dummy.updateMatrix()
-      meshRef.current.setMatrixAt(i, dummy.matrix)
-      tmpCol.set(l.tone)
-      if (TOD.isNight) tmpCol.multiplyScalar(0.45)
-      meshRef.current.setColorAt(i, tmpCol)
-    }
-    meshRef.current.instanceMatrix.needsUpdate = true
-    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true
-  })
-  return (
-    <instancedMesh ref={meshRef} args={[null, null, LEAF_COUNT]}>
-      <planeGeometry args={[1, 1]} />
-      <meshBasicMaterial vertexColors transparent opacity={0.70} side={THREE.DoubleSide} depthWrite={false} />
-    </instancedMesh>
   )
 }
 
@@ -1508,25 +1444,6 @@ function LushTree({ position, scale = 1, palette = 'green', fruit = false, rotat
 // A full ring of lush trees, all kept clear of the diagonal stream band and the
 // central path so nothing sits in the water or blocks the walkway.
 // Zone orchards: trees that grow with each category's total value.
-// Savings (front of stream) → green trees · Investments (back) → gold trees.
-// Ordered most-prominent first so they fill in as the category grows.
-// Savings orchard — a tight grove on the left rim, clear of every plot
-const SAVINGS_ZONE_TREES = [
-  { p: [-6.6, 0.95,  2.2], s: 0.85, r: 2.1 },
-  { p: [-7.2, 0.95,  1.2], s: 0.90, r: 0.9 },
-  { p: [-6.7, 0.95,  3.4], s: 0.95, r: 0.4 },
-  { p: [-2.4, 0.95,  7.0], s: 0.80, r: 1.9 },
-]
-// Investment orchard — mirror grove on the right rim
-const INVEST_ZONE_TREES = [
-  { p: [ 6.6, 0.95,  2.2], s: 0.85, r: 2.1 },
-  { p: [ 7.2, 0.95,  1.2], s: 0.90, r: 2.4 },
-  { p: [ 6.7, 0.95,  3.4], s: 0.95, r: 0.4 },
-  { p: [ 2.4, 0.95,  7.0], s: 0.80, r: 0.8 },
-]
-const SAVINGS_TONES = ['green', 'lime']  // variety within the green theme
-const INVEST_TONES  = ['gold', 'orange'] // variety within the gold theme
-
 // ── Animals ──
 function Chicken({ position, color = '#fbfbf6', t0 = 0 }) {
   const ref = useRef()
@@ -1646,21 +1563,15 @@ function CelebrationBurst() {
 }
 
 // ─── Island group ─────────────────────────────────────────────────────────────
-function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal }) {
-  const { windStrength, netWorthTier = 0,
-          savingsTier = 0, investTier = 0 } = weather
-  // Goals fill the quadrant slots in creation order (stable placement).
-  const sortedGoals = [...goals].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0))
-  // Greenery, animals, and orchards all scale up with the plan stage.
-  const bedCount    = stage < 2 ? 0 : stage < 4 ? 1 : FLOWER_BEDS.length
-  const mushCount   = stage < 3 ? 0 : Math.min(2 + (netWorthTier >= 2 ? 2 : 0), MUSHROOM_DEFS.length)
-  const birdCount   = stage < 2 ? 0 : (netWorthTier >= 4 ? 7 : netWorthTier >= 3 ? 5 : netWorthTier >= 2 ? 3 : 0)
-  const savingsTreeCount = Math.min(2 + savingsTier, SAVINGS_ZONE_TREES.length)
-  const investTreeCount  = Math.min(2 + investTier,  INVEST_ZONE_TREES.length)
+function IslandGroup({ groupedGoals, stage, momentum, onSelectGoal, onSelectOverflow, onSelectLegacy, reducedMotion }) {
+  const windStrength = reducedMotion ? 0 : momentum === 'lively' ? 0.24 : momentum === 'gentle' ? 0.14 : 0.07
+  const bedCount = stage < 4 ? 0 : stage < 6 ? 1 : FLOWER_BEDS.length
+  const mushCount = stage < 5 ? 0 : stage < 7 ? 2 : MUSHROOM_DEFS.length
+  const birdCount = reducedMotion || stage < 4 ? 0 : momentum === 'lively' ? Math.min(6, stage) : momentum === 'gentle' ? 2 : 0
 
   return (
     <group>
-      <FloatingIsland stage={stage} netWorthTier={netWorthTier} />
+      <FloatingIsland stage={stage} />
       <GrassBlades stage={stage} windStrength={windStrength} />
       <Stream />
       <StreamRipples />
@@ -1672,35 +1583,20 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal }) {
       <Fence />
       {LANTERN_POS.map((p, i) => <Lantern key={`ln${i}`} position={p} />)}
 
-      {/* No zone labels — the garden is one growing landscape, not four labelled
-          pillars. The four quadrants are goal plots (below). */}
+      {stage >= 6 && momentum === 'lively' && !reducedMotion && <FarmLife />}
 
-      {/* Animals wander the lawns once the garden is thriving */}
-      {stage >= 3 && <FarmLife />}
-
-      {/* Goal plots fill all four quadrants in order — each goal plants a tree
-          that grows with its progress and is cemented in stone once reached. The
-          next free slot shows a single "Add a goal" invitation. */}
-      {sortedGoals.slice(0, QUADRANT_SLOTS.length).map((g, i) => (
+      {groupedGoals.visible.map((g, i) => (
         <GoalSlot key={g.id} position={QUADRANT_SLOTS[i]} goal={g} yOffset={SLOT_SIGN_OFFSET[i]}
           onSelect={onSelectGoal ? () => onSelectGoal(g) : undefined} />
       ))}
-      {sortedGoals.length < QUADRANT_SLOTS.length && (
-        <EmptyPlot position={QUADRANT_SLOTS[sortedGoals.length]} onSelect={onAddGoal}
-          signYOffset={SLOT_SIGN_OFFSET[sortedGoals.length]} />
+      {groupedGoals.overflow.length > 0 && (
+        <CollectionGrove position={QUADRANT_SLOTS[7]} name={`More · ${groupedGoals.overflow.length}`}
+          count={groupedGoals.overflow.length} onSelect={onSelectOverflow} yOffset={SLOT_SIGN_OFFSET[7]} />
       )}
-
-      {/* Savings orchard (front) — green trees that grow with total savings */}
-      {SAVINGS_ZONE_TREES.slice(0, savingsTreeCount).map((t, i) => (
-        <LushTree key={`sv${i}`} position={t.p} scale={t.s} rotation={t.r}
-          palette={savingsTier === 0 ? 'bare' : SAVINGS_TONES[i % SAVINGS_TONES.length]}
-          fruit={savingsTier >= 3 && i % 3 === 0} />
-      ))}
-      {/* Investment orchard (back) — gold trees that grow with total investments */}
-      {INVEST_ZONE_TREES.slice(0, investTreeCount).map((t, i) => (
-        <LushTree key={`iv${i}`} position={t.p} scale={t.s} rotation={t.r}
-          palette={investTier === 0 ? 'bare' : INVEST_TONES[i % INVEST_TONES.length]} />
-      ))}
+      {groupedGoals.legacy.length > 0 && (
+        <CollectionGrove position={QUADRANT_SLOTS[6]} name={`Legacy · ${groupedGoals.legacy.length}`}
+          count={groupedGoals.legacy.length} legacy onSelect={onSelectLegacy} yOffset={SLOT_SIGN_OFFSET[6]} />
+      )}
       {FLOWER_BEDS.slice(0, bedCount).map((p, i) => (
         <FlowerBed key={`fb${i}`} position={p} rotation={i * 0.8} windStrength={windStrength} />
       ))}
@@ -1710,28 +1606,24 @@ function IslandGroup({ goals, stage, weather, onSelectGoal, onAddGoal }) {
 
       {birdCount > 0 && <Birds count={birdCount} />}
 
-      {stage >= 2 && <FallingLeaves windStrength={windStrength} />}
-
-      {netWorthTier >= 3 && (
-        <Sparkles count={24} scale={[10, 3, 10]} position={[0, 3.0, 0]}
-          size={2.5} speed={0.18} color="#fbbf24" opacity={0.52} />
-      )}
     </group>
   )
 }
 
 // ─── Scene ────────────────────────────────────────────────────────────────────
-function Scene({ goals, stage, weather, onSelectGoal, onAddGoal }) {
-  const { cloudCount, darkClouds, hasDeficit, deficitSeverity, pollenCount, butterflyCount, windStrength, netWorthTier = 0 } = weather
+function Scene({ groupedGoals, stage, momentum, sceneTone, onSelectGoal, onSelectOverflow, onSelectLegacy, reducedMotion, quality }) {
+  const cloudCount = sceneTone === 'strained' ? 2 : 0
+  const windStrength = reducedMotion ? 0 : momentum === 'lively' ? 0.22 : momentum === 'gentle' ? 0.12 : 0.05
+  const butterflyCount = reducedMotion || momentum !== 'lively' || stage < 4 ? 0 : Math.min(4, stage - 2)
   return (
     <>
-      <ResponsiveCamera />
-      <color attach="background" args={[darkClouds ? '#1c262e' : TOD.bgColor]} />
+      <ResponsiveCamera reducedMotion={reducedMotion} />
+      <color attach="background" args={[TOD.bgColor]} />
       <SkyBackdrop />
       <hemisphereLight skyColor={TOD.skyTop} groundColor={TOD.skyGnd} intensity={TOD.ambInt} />
       <directionalLight
         position={TOD.sunPos}
-        intensity={darkClouds ? TOD.sunInt * 0.4 : TOD.sunInt}
+        intensity={sceneTone === 'strained' ? TOD.sunInt * 0.82 : TOD.sunInt}
         color={TOD.sunColor}
         castShadow
         shadow-mapSize={[2048, 2048]}
@@ -1745,53 +1637,45 @@ function Scene({ goals, stage, weather, onSelectGoal, onAddGoal }) {
       <directionalLight position={[-8, 4, -10]} intensity={TOD.isNight ? 0.10 : 0.38} color="#b8d4ff" />
       {/* Stream glow — soft cool fill near the water (river runs along z = 0) */}
       <pointLight position={[0, 1.05, 0]} intensity={TOD.isNight ? 1.6 : 0.55} color="#5cc6f0" distance={9} decay={2.2} />
-      {netWorthTier >= 2 && (
-        <pointLight position={[3.6, 2.6, 3.4]} intensity={0.5 + netWorthTier*0.28} color="#f59e0b" distance={12} decay={2} />
-      )}
-      <fog attach="fog" args={[darkClouds ? '#1c262e' : TOD.isNight ? '#050d18' : '#0f2a30', 42, 115]} />
+      <fog attach="fog" args={[TOD.isNight ? '#050d18' : '#0f2a30', 42, 115]} />
 
       <ContactShadows position={[0, 0.97, 0]} opacity={0.50} width={24} height={24} blur={2.2} far={4.5} color="#1a3808" />
 
-      <Float speed={0.7} rotationIntensity={0.03} floatIntensity={0.55} floatingRange={[-0.12, 0.12]}>
-        <IslandGroup goals={goals} stage={stage} weather={weather}
-          onSelectGoal={onSelectGoal} onAddGoal={onAddGoal} />
-      </Float>
+      {reducedMotion ? (
+        <IslandGroup groupedGoals={groupedGoals} stage={stage} momentum={momentum} reducedMotion
+          onSelectGoal={onSelectGoal} onSelectOverflow={onSelectOverflow} onSelectLegacy={onSelectLegacy} />
+      ) : (
+        <Float speed={0.55} rotationIntensity={0.018} floatIntensity={0.32} floatingRange={[-0.08, 0.08]}>
+          <IslandGroup groupedGoals={groupedGoals} stage={stage} momentum={momentum}
+            onSelectGoal={onSelectGoal} onSelectOverflow={onSelectOverflow} onSelectLegacy={onSelectLegacy} />
+        </Float>
+      )}
 
       <CelebrationBurst />
 
-      {stage >= 2 && (
-        <Sparkles count={TOD.isNight ? 28 : 10} scale={[14, 6, 14]} position={[0, 1.8, 0]}
+      {!reducedMotion && momentum === 'lively' && stage >= 4 && (
+        <Sparkles count={TOD.isNight ? 20 : 8} scale={[14, 6, 14]} position={[0, 1.8, 0]}
           size={TOD.isNight ? 3.5 : 2.2} speed={0.25}
           color={TOD.isNight ? '#fef08a' : '#c8f5a0'} opacity={TOD.isNight ? 0.80 : 0.42} />
-      )}
-      {pollenCount > 0 && (
-        <Sparkles count={pollenCount} scale={[10, 4, 10]} position={[0, 2.0, 0]} size={1.5} speed={0.18} color="#fbbf24" opacity={0.42} />
       )}
       {BF_CONFIGS.slice(0, butterflyCount).map((b, i) => (
         <Butterfly key={i} startPos={b.start} colors={b.colors} t0={b.t0} />
       ))}
-      {TOD.isNight && stage >= 1 && <Fireflies />}
-      {/* Decorative distant clouds — always present for sky depth */}
-      <CloudFraming dark={darkClouds} windStrength={windStrength} />
-      <CloudShape position={[-23, 12, -15]} scale={1.5} dark={darkClouds} speed={0.5} windStrength={windStrength} />
-      <CloudShape position={[ 22, 14, -18]} scale={1.2} dark={darkClouds} speed={0.6} windStrength={windStrength} />
+      {!reducedMotion && TOD.isNight && momentum !== 'resting' && stage >= 2 && <Fireflies />}
+      <CloudFraming dark={false} windStrength={windStrength} />
+      <CloudShape position={[-23, 12, -15]} scale={1.5} dark={false} speed={reducedMotion ? 0 : 0.35} windStrength={windStrength} />
+      <CloudShape position={[ 22, 14, -18]} scale={1.2} dark={false} speed={reducedMotion ? 0 : 0.42} windStrength={windStrength} />
       {cloudCount > 0 && (
         <>
-          <CloudShape position={[-16, 10, -6]} scale={1.3} dark={darkClouds} speed={0.8} windStrength={windStrength} />
-          {cloudCount > 1 && <CloudShape position={[14, 8, -10]} scale={1.1} dark={darkClouds} speed={1.2} windStrength={windStrength} />}
-          {cloudCount > 2 && <CloudShape position={[-10, 12, 4]} scale={0.9} dark={darkClouds} speed={0.9} windStrength={windStrength} />}
-          {cloudCount > 3 && <CloudShape position={[18, 9, 5]} scale={1.0} dark={darkClouds} speed={1.0} windStrength={windStrength} />}
+          <CloudShape position={[-16, 10, -6]} scale={1.2} dark={false} speed={reducedMotion ? 0 : 0.45} windStrength={windStrength} />
+          <CloudShape position={[14, 8, -10]} scale={1.0} dark={false} speed={reducedMotion ? 0 : 0.55} windStrength={windStrength} />
         </>
       )}
-      {hasDeficit && <RainSystem severity={deficitSeverity} />}
-      {/* multisampling=0 — multisampled render targets flicker on mobile GLES
-          (iOS Safari especially); the Canvas keeps antialias for edges */}
-      <EffectComposer multisampling={0}>
+      {quality === 'high' && !reducedMotion && <EffectComposer multisampling={0}>
         <Bloom intensity={0.42} luminanceThreshold={0.60} luminanceSmoothing={0.85} mipmapBlur radius={0.66} />
-        {/* Hay Day "candy" grade — lush saturation + gentle contrast */}
-        <HueSaturation saturation={TOD.isNight ? 0.05 : 0.18} />
-        <Vignette eskil={false} offset={0.26} darkness={TOD.isNight ? 0.80 : 0.40} />
-      </EffectComposer>
+        <HueSaturation saturation={TOD.isNight ? 0.04 : 0.11} />
+        <Vignette eskil={false} offset={0.28} darkness={TOD.isNight ? 0.72 : 0.34} />
+      </EffectComposer>}
     </>
   )
 }
@@ -1814,13 +1698,29 @@ class GardenErrorBoundary extends Component {
   componentDidCatch(err) { if (import.meta.env.DEV) console.warn('Garden3D failed:', err) }
   render() {
     if (this.state.failed) {
+      const fallbackStage = STAGE_NAMES[this.props.stage] || STAGE_NAMES[0]
+      const growth = Math.max(0, Math.min(7, Number(this.props.stage) || 0))
       return (
-        <div className="w-full h-full flex items-center justify-center"
-          style={{ background: 'linear-gradient(160deg, #7ec8e3 0%, #a8dba8 60%, #79bd6a 100%)' }}>
-          <div className="text-center text-white/90 drop-shadow">
-            <div className="text-4xl mb-2">🌳</div>
-            <div className="text-sm font-semibold">Your garden is resting</div>
-            <div className="text-xs text-white/70 mt-1">3D view unavailable on this device</div>
+        <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_50%_42%,#4f9b57_0,#24573c_34%,#0a2018_68%,#07110d_100%)]">
+          <div className="text-center text-white drop-shadow">
+            <div className="relative mx-auto mb-4 h-36 w-44" aria-hidden="true">
+              <div className="absolute bottom-2 left-1/2 h-14 w-32 -translate-x-1/2 rounded-[50%] bg-[#5a341f] shadow-2xl" />
+              <div className="absolute bottom-8 left-1/2 h-20 w-40 -translate-x-1/2 rounded-[50%] border border-emerald-100/25 bg-[#4f8f4f] shadow-[inset_0_8px_20px_rgba(255,255,255,0.12)]">
+                <div className="absolute inset-3 rounded-[50%] border border-dashed border-amber-100/25 bg-[#6c5430]/45" />
+              </div>
+              <div className="absolute bottom-[4.15rem] left-1/2 -translate-x-1/2">
+                <span className="block w-2 -translate-x-1/2 rounded-full bg-emerald-200/95" style={{ height: `${18 + growth * 5}px` }} />
+                <span className="absolute -left-7 top-2 h-5 w-8 rotate-12 rounded-[100%_0_100%_0] bg-emerald-300/95" />
+                <span className="absolute -right-6 top-0 h-5 w-8 -rotate-12 rounded-[0_100%_0_100%] bg-emerald-200/95" />
+                {growth >= 3 && <span className="absolute -left-7 -top-5 h-10 w-14 rounded-[50%] bg-emerald-400/95 shadow-lg" />}
+              </div>
+              {Array.from({ length: growth >= 4 ? growth - 2 : 0 }, (_, index) => (
+                <span key={index} className="absolute h-3 w-3 rounded-full border-2 border-amber-50/80 bg-amber-300"
+                  style={{ left: `${30 + index * 17}%`, bottom: `${37 + (index % 2) * 8}%` }} />
+              ))}
+            </div>
+            <div className="text-[15px] font-semibold">Your {fallbackStage} garden is resting</div>
+            <div className="mt-1 text-[13px] font-medium text-white/75">The peaceful view is available without 3D.</div>
           </div>
         </div>
       )
@@ -1830,12 +1730,31 @@ class GardenErrorBoundary extends Component {
 }
 
 // ─── Export ───────────────────────────────────────────────────────────────────
-const Garden3D = memo(function Garden3D({ onSelectGoal, onAddGoal }) {
-  const { stage, weather, goals } = useGarden()
+const Garden3D = memo(function Garden3D({ onSelectGoal, onSelectOverflow, onSelectLegacy }) {
+  const { stage, milestones, momentum, sceneTone, goals } = useGarden()
   const containerRef = useRef()
+  const reducedMotion = useReducedMotion()
+  const [quality, setQuality] = useState('high')
+  const [, setTimeVersion] = useState(0)
+  const groupedGoals = useMemo(() => groupGardenGoals(goals, milestones), [goals, milestones])
+
+  useEffect(() => {
+    const refresh = () => {
+      refreshTimeOfDay()
+      setTimeVersion(version => version + 1)
+    }
+    const timer = setInterval(refresh, 5 * 60 * 1000)
+    const onVisibility = () => { if (document.visibilityState === 'visible') refresh() }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [])
+
   useEffect(() => {
     const el = containerRef.current
-    if (!el) return
+    if (!el || reducedMotion) return undefined
     let active = false, sx = 0, moved = false, pid = null
     const down = (e) => {
       active = true; moved = false; sx = e.clientX; pid = e.pointerId
@@ -1867,24 +1786,26 @@ const Garden3D = memo(function Garden3D({ onSelectGoal, onAddGoal }) {
       el.removeEventListener('pointerup', up)
       el.removeEventListener('pointercancel', up)
     }
-  }, [])
+  }, [reducedMotion])
   return (
     <div ref={containerRef} className="w-full h-full touch-none" style={{ touchAction: 'none' }}>
-      <GardenErrorBoundary>
+      <GardenErrorBoundary stage={stage}>
         <Canvas
           orthographic
-          shadows={{ type: THREE.PCFSoftShadowMap }}
-          dpr={[1, 1.5]}
+          frameloop={reducedMotion ? 'demand' : 'always'}
+          shadows={quality === 'high' ? { type: THREE.PCFSoftShadowMap } : false}
+          dpr={quality === 'high' ? [1, 1.5] : [1, 1]}
           gl={{ antialias: true, powerPreference: 'high-performance',
                 toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: TOD.isNight ? 0.80 : 1.13 }}
           camera={{ position: [18, 28, 18], zoom: 21 }}
           onCreated={({ camera }) => { camera.lookAt(0, 0.5, 0); camera.updateProjectionMatrix() }}
         >
           <AdaptiveDpr pixelated />
-          <PerformanceMonitor>
+          <PerformanceMonitor onDecline={() => setQuality('low')} onIncline={() => setQuality('high')} flipflops={2}>
             <Suspense fallback={null}>
-              <Scene goals={goals} stage={stage} weather={weather}
-                onSelectGoal={onSelectGoal} onAddGoal={onAddGoal} />
+              <Scene groupedGoals={groupedGoals} stage={stage} momentum={momentum} sceneTone={sceneTone}
+                onSelectGoal={onSelectGoal} onSelectOverflow={onSelectOverflow} onSelectLegacy={onSelectLegacy}
+                reducedMotion={reducedMotion} quality={quality} />
             </Suspense>
           </PerformanceMonitor>
         </Canvas>

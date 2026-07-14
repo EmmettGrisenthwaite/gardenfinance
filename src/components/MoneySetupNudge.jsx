@@ -26,7 +26,7 @@ const PIECES = [
   { id: 'invest',   label: 'Investments' },   // only if they said they invest
 ]
 
-export default function MoneySetupNudge({ profile, accounts, debts, goals }) {
+export default function MoneySetupNudge({ profile, accounts, debts, goals = [], cashFlowItems = null }) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const SNOOZE_KEY    = `money-nudge-snooze-${user.id}`
@@ -35,11 +35,14 @@ export default function MoneySetupNudge({ profile, accounts, debts, goals }) {
 
   // Income/expenses may live in detailed cash-flow items rather than the
   // profile lump sums — the dashboard doesn't load those, so fetch them here.
-  const [flowItems, setFlowItems] = useState(null)   // null = still loading
+  const [fetchedFlowItems, setFetchedFlowItems] = useState(null)
   useEffect(() => {
+    if (cashFlowItems !== null) return undefined
     supabase.from('cash_flow_items').select('kind, amount, monthly_amount, frequency').eq('user_id', user.id)
-      .then(({ data, error }) => setFlowItems(error ? [] : (data ?? [])))
-  }, [user.id])
+      .then(({ data, error }) => setFetchedFlowItems(error ? [] : (data ?? [])))
+    return undefined
+  }, [cashFlowItems, user.id])
+  const flowItems = cashFlowItems ?? fetchedFlowItems
 
   const [snoozedAt, setSnoozedAt] = useState(() => Number(localStorage.getItem(SNOOZE_KEY)) || 0)
   const [celebrated, setCelebrated] = useState(() => localStorage.getItem(CELEBRATE_KEY) === '1')

@@ -5,6 +5,8 @@ import { ClipboardList, Target, Plus, Sprout, MoreHorizontal, Trash2 } from 'luc
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden, milestonesToStage } from '@/context/GardenContext'
+import { milestoneEventForGoal, milestoneEventForStep, milestoneEventsFromState } from '@/lib/gardenModel'
+import { reconcileGardenMilestones, recordGardenMilestone } from '@/lib/gardenProgress'
 import { getPlan, updatePlanSteps, deletePlan, applyStep, appendSteps, normalizeSteps } from '@/lib/advisorPlans'
 import { orderSteps } from '@/lib/planOrder'
 import { requestPlan, chatConfigured } from '@/lib/claude'
@@ -54,6 +56,8 @@ export default function Plan() {
   const [showAllSteps, setShowAllSteps] = useState(false)
   const [manageOpen, setManageOpen] = useState(false)
   const [savingStep, setSavingStep] = useState(false)
+  const [gardenTotal, setGardenTotal] = useState(0)
+  const [gardenMilestones, setGardenMilestones] = useState([])
   const [nextChapter, setNextChapter] = useState(null)
   const [nextStatus, setNextStatus] = useState('idle')
   const [nextError, setNextError] = useState(null)
@@ -64,10 +68,14 @@ export default function Plan() {
   // detail page passes the crossing back so the celebration fires right here.
   useEffect(() => {
     const grew = location.state?.grew
-    if (!grew) return
+    const syncError = location.state?.gardenSyncError
+    if (!grew && !syncError) return
     window.history.replaceState({}, '')
-    setGrowth(grew)
-    triggerBurst()
+    if (grew) {
+      setGrowth(grew)
+      triggerBurst()
+    }
+    if (syncError) setError(syncError)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -106,6 +114,19 @@ export default function Plan() {
       setAccounts(loadedAccounts)
       setCashFlowItems(loadedFlow)
       setBudgetLimits(loadedLimits)
+      try {
+        const garden = await reconcileGardenMilestones(user.id, {
+          plans: pl ? [pl] : [],
+          goals: g.data ?? [],
+        })
+        setGardenTotal(garden.total)
+        setGardenMilestones(garden.milestones)
+      } catch {
+        const fallback = milestoneEventsFromState({ plans: pl ? [pl] : [], goals: g.data ?? [] })
+        setGardenTotal(fallback.length)
+        setGardenMilestones(fallback)
+        setError('Your plan loaded, but permanent garden progress could not sync yet.')
+      }
       setMoney({
         income: loadedSnapshot.income,
         expenses: loadedSnapshot.expenses,
@@ -134,11 +155,8 @@ export default function Plan() {
 
   // ── Derived milestone counts ─────────────────────────────────────────────────
   const steps          = useMemo(() => plan?.steps ?? [], [plan])
-  const completedSteps = steps.filter(s => s.done).length
   const totalSteps     = steps.length
   const goalsReached   = goals.filter(g => Number(g.target_amount) > 0 && Number(g.current_amount) >= Number(g.target_amount)).length
-  const surplusRatio   = money.income > 0 ? (money.income - money.expenses) / money.income : 0
-  const stage          = milestonesToStage(completedSteps + goalsReached)
 
   // The one shared ordering — the Up-next card, this list, and the Dashboard
   // peek all agree on what's next.
@@ -164,8 +182,14 @@ export default function Plan() {
   // Keep the garden in sync with live state.
   useEffect(() => {
     if (loading) return
-    updateGarden({ completedSteps, totalSteps, goalsReached, surplusRatio, netWorth, goals, debts })
-  }, [completedSteps, totalSteps, goalsReached, surplusRatio, netWorth, loading]) // eslint-disable-line react-hooks/exhaustive-deps
+    updateGarden({
+      milestones: gardenMilestones,
+      milestoneTotal: gardenTotal,
+      goals,
+      income: money.income,
+      expenses: money.expenses,
+    })
+  }, [gardenMilestones, gardenTotal, goals, money.income, money.expenses, loading, updateGarden])
 
   // Persist the derived net worth so the dashboard, advisor, and trend snapshots
   // all read one consistent number (no manual drift).
@@ -179,12 +203,25 @@ export default function Plan() {
       })
   }, [netWorth, loading]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fire the celebration synchronously when an action crosses a stage boundary.
-  function celebrate(deltaMilestones, stepText) {
-    const newStage = milestonesToStage(completedSteps + goalsReached + deltaMilestones)
-    if (newStage > stage) {
-      setGrowth({ stage: newStage, stepText })
-      triggerBurst()
+  function acceptGardenResult(result, label) {
+    setGardenTotal(result.total)
+    if (result.inserted) {
+      const newStage = milestonesToStage(result.total)
+      if (newStage > milestonesToStage(result.previousTotal)) {
+        setGrowth({ stage: newStage, stepText: label })
+        triggerBurst()
+      }
+    }
+  }
+
+  async function recordEarnedMilestone(event, label) {
+    try {
+      const result = await recordGardenMilestone(event)
+      acceptGardenResult(result, label)
+      return result
+    } catch {
+      setError('Your change was saved. Permanent garden progress will catch up automatically when you return.')
+      return null
     }
   }
 
@@ -214,7 +251,14 @@ export default function Plan() {
       }
       await updatePlanSteps(plan.id, next, user.id)
       setPlan(previous => previous ? { ...previous, steps: next, updated_at: new Date().toISOString() } : previous)
-      if (completing) celebrate(1, step.text)
+      if (completing) {
+        const stepIndex = steps.findIndex(item => item.id === step.id)
+        await recordEarnedMilestone(milestoneEventForStep(
+          plan,
+          { ...step, done: true, completedAt: next.find(item => item.id === step.id)?.completedAt },
+          stepIndex >= 0 ? stepIndex : 0,
+        ), step.text)
+      }
     } catch (err) {
       setError(err.message ?? 'Could not save that completed step.')
     } finally {
@@ -452,14 +496,21 @@ export default function Plan() {
   // ── Goal handlers ────────────────────────────────────────────────────────────
   async function saveGoal(payload) {
     try {
+      const previousGoal = modal && modal !== 'new' ? goals.find(goal => goal.id === modal.id) : null
+      const savedPayload = { ...payload, updated_at: new Date().toISOString() }
       const result = modal && modal !== 'new'
-        ? await supabase.from('goals').update(payload).eq('id', modal.id).eq('user_id', user.id).select().single()
-        : await supabase.from('goals').insert({ ...payload, user_id: user.id }).select().single()
+        ? await supabase.from('goals').update(savedPayload).eq('id', modal.id).eq('user_id', user.id).select().single()
+        : await supabase.from('goals').insert({ ...savedPayload, user_id: user.id }).select().single()
       if (result.error) throw result.error
       if (result.data) {
         setGoals(prev => modal && modal !== 'new'
           ? prev.map(g => g.id === result.data.id ? result.data : g)
           : [...prev, result.data])
+        const wasReached = previousGoal && Number(previousGoal.target_amount) > 0 && Number(previousGoal.current_amount) >= Number(previousGoal.target_amount)
+        const isReached = Number(result.data.target_amount) > 0 && Number(result.data.current_amount) >= Number(result.data.target_amount)
+        if (!wasReached && isReached) {
+          await recordEarnedMilestone(milestoneEventForGoal(result.data), `Reached ${result.data.name}`)
+        }
       }
       setModal(null)
     } catch (err) {
@@ -478,17 +529,18 @@ export default function Plan() {
   }
   async function updateProgress(id, amount) {
     const goal = goals.find(g => g.id === id)
-    if (goal && Number(goal.target_amount) > 0) {
-      const wasReached = Number(goal.current_amount) >= Number(goal.target_amount)
-      if (!wasReached && amount >= Number(goal.target_amount)) celebrate(1, `Reached ${goal.name}`)
-    }
-    const previous = goals
-    setGoals(gs => gs.map(g => g.id === id ? { ...g, current_amount: amount } : g))
-    const { error } = await supabase.from('goals').update({ current_amount: amount })
-      .eq('id', id).eq('user_id', user.id)
+    if (!goal) return
+    const { data, error } = await supabase.from('goals').update({ current_amount: amount, updated_at: new Date().toISOString() })
+      .eq('id', id).eq('user_id', user.id).select().single()
     if (error) {
-      setGoals(previous)
       setError(error.message ?? 'Could not update that goal.')
+      return
+    }
+    setGoals(gs => gs.map(g => g.id === id ? data : g))
+    const wasReached = Number(goal.target_amount) > 0 && Number(goal.current_amount) >= Number(goal.target_amount)
+    const isReached = Number(data.target_amount) > 0 && Number(data.current_amount) >= Number(data.target_amount)
+    if (!wasReached && isReached) {
+      await recordEarnedMilestone(milestoneEventForGoal(data), `Reached ${data.name}`)
     }
   }
   function contribute(goalId, amount) {
@@ -577,7 +629,7 @@ export default function Plan() {
             <>
               {/* THE emphasized element — the one thing to do next */}
               <UpNextCard step={upNext} onToggle={toggleStep} onApply={applyAndMark} onOpen={openStep}
-                progress={<GardenMeter done={completedSteps + goalsReached} embedded />} />
+                progress={<GardenMeter total={gardenTotal} embedded />} />
 
               {/* Everything else stays quiet — tap a row for its own page */}
               <StepList steps={visibleRestSteps} onToggle={toggleStep} onOpen={openStep} />
@@ -607,7 +659,7 @@ export default function Plan() {
           ) : totalSteps > 0 ? (
             /* Every step done — celebrate + point forward */
             <>
-              <GardenMeter done={completedSteps + goalsReached} />
+              <GardenMeter total={gardenTotal} />
               <div className="bg-emerald-500/[0.08] rounded-2xl border border-emerald-400/25 p-6 text-center">
                 <div className="w-11 h-11 mx-auto mb-3 rounded-full bg-emerald-500/20 flex items-center justify-center">
                   <Sprout className="w-5 h-5 text-emerald-300" />
