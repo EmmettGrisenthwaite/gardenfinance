@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { Wallet, X, ArrowRight, Sparkles } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -42,6 +43,18 @@ export default function MoneySetupNudge({ profile, accounts, debts, goals }) {
 
   const [snoozedAt, setSnoozedAt] = useState(() => Number(localStorage.getItem(SNOOZE_KEY)) || 0)
   const [celebrated, setCelebrated] = useState(() => localStorage.getItem(CELEBRATE_KEY) === '1')
+
+  // Right after onboarding, this row is the natural next thing — greet that
+  // one landing warmly (acknowledge the setup they just finished, brief pulse),
+  // then settle into the normal quiet row forever after. Consumed on read.
+  const [fresh] = useState(() => {
+    try {
+      const key = `money-nudge-fresh-${user.id}`
+      const isFresh = sessionStorage.getItem(key) === '1'
+      if (isFresh) sessionStorage.removeItem(key)
+      return isFresh
+    } catch { return false }
+  })
 
   const state = useMemo(() => {
     if (flowItems === null) return null   // don't flash before we know
@@ -104,11 +117,25 @@ export default function MoneySetupNudge({ profile, accounts, debts, goals }) {
   }
 
   return (
+    <motion.div className="relative"
+      initial={fresh ? { opacity: 0, y: 10 } : false}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: fresh ? 0.25 : 0 }}>
+      {/* A few gentle pulses on the post-onboarding landing, then quiet */}
+      {fresh && (
+        <motion.span aria-hidden className="absolute inset-0 rounded-xl bg-emerald-400/25 -z-10"
+          animate={{ opacity: [0.4, 0.75, 0.4], scale: [1, 1.025, 1] }}
+          transition={{ duration: 1.8, repeat: 2, ease: 'easeInOut' }} />
+      )}
     <button onClick={open}
-      className="w-full px-3 py-2 bg-white/[0.075] rounded-xl border border-white/[0.11] hover:bg-white/[0.11] transition-colors text-left">
+      className={`w-full px-3 py-2 rounded-xl border transition-colors text-left ${
+        fresh ? 'bg-emerald-500/[0.12] border-emerald-400/30 hover:bg-emerald-500/[0.18]'
+              : 'bg-white/[0.075] border-white/[0.11] hover:bg-white/[0.11]'}`}>
       <div className="flex items-center gap-2.5">
         <Wallet className="w-4 h-4 text-emerald-300 flex-shrink-0" />
-        <span className="text-[11px] font-semibold text-white/55 whitespace-nowrap">Your money picture</span>
+        <span className="text-[11px] font-semibold text-white/55 whitespace-nowrap">
+          {fresh ? 'Nice work — your money picture' : 'Your money picture'}
+        </span>
         <span className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
           <span className="block h-full rounded-full bg-emerald-400/80 transition-all duration-500"
             style={{ width: `${Math.round((state.done / state.total) * 100)}%` }} />
@@ -126,5 +153,6 @@ export default function MoneySetupNudge({ profile, accounts, debts, goals }) {
         </span>
       </div>
     </button>
+    </motion.div>
   )
 }

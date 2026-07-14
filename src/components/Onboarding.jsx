@@ -480,6 +480,9 @@ export default function Onboarding({ onClose, profileOnly = false }) {
       }
       savedProfile = monthlyPlan?.profile || data
     }
+    // The dashboard's money-picture row greets them warmly on this first
+    // landing (see MoneySetupNudge) — acknowledge the setup they just did.
+    try { sessionStorage.setItem(`money-nudge-fresh-${user.id}`, '1') } catch { /* private mode */ }
     setProfile(savedProfile)
     setSaving(false)
     onClose?.()
@@ -496,6 +499,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
       setError(profileError.message ?? 'Could not skip setup.')
       return
     }
+    try { sessionStorage.setItem(`money-nudge-fresh-${user.id}`, '1') } catch { /* private mode */ }
     setProfile(data)
     onClose?.()
   }
