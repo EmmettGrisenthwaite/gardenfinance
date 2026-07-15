@@ -281,8 +281,8 @@ function GltfToon({ url, position = [0,0,0], rotation = [0,0,0], scale = 1,
   useFrame(({ clock }) => {
     if (!groupRef.current || windStrength === 0) return
     const t = clock.elapsedTime
-    groupRef.current.rotation.x = Math.sin(t * 0.55 + windPhase) * windStrength * 0.013
-    groupRef.current.rotation.z = Math.cos(t * 0.45 + windPhase) * windStrength * 0.010
+    groupRef.current.rotation.x = Math.sin(t * 0.72 + windPhase) * windStrength * 0.060
+    groupRef.current.rotation.z = Math.cos(t * 0.58 + windPhase) * windStrength * 0.045
   })
 
   return (
@@ -508,7 +508,42 @@ function FoamTuft({ position, t0 = 0 }) {
   )
 }
 
-function Stream() {
+const CURRENT_STREAKS = Array.from({ length: 10 }, (_, index) => ({
+  side: index < 5 ? -1 : 1,
+  offset: (index % 5) / 5,
+  zOffset: ((index % 3) - 1) * 0.13,
+  length: 0.42 + (index % 4) * 0.09,
+}))
+function StreamCurrent({ reducedMotion = false }) {
+  const refs = useRef([])
+  useFrame(({ clock }) => {
+    refs.current.forEach((streak, index) => {
+      if (!streak) return
+      const config = CURRENT_STREAKS[index]
+      const speed = reducedMotion ? 0.055 : 0.16
+      const progress = (clock.elapsedTime * speed + config.offset) % 1
+      const x = config.side * (0.9 + progress * 7.35)
+      streak.position.set(x, 1.006, streamZAt(x) + config.zOffset)
+      streak.material.opacity = Math.sin(progress * Math.PI) * (reducedMotion ? 0.16 : 0.34)
+      streak.scale.x = 0.85 + Math.sin(progress * Math.PI) * 0.45
+    })
+  })
+  return (
+    <group>
+      {CURRENT_STREAKS.map((streak, index) => (
+        <mesh key={index} ref={node => { refs.current[index] = node }}
+          position={[streak.side * (0.9 + streak.offset * 7.35), 1.006, streak.zOffset]}
+          rotation={[-Math.PI / 2, 0, 0]} renderOrder={5}>
+          <planeGeometry args={[streak.length, 0.045]} />
+          <meshBasicMaterial color="#b7d9d2" transparent opacity={0.22}
+            depthWrite={false} toneMapped={false} side={THREE.DoubleSide} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+function Stream({ reducedMotion = false }) {
   // NB: island top surface sits at y≈0.95 — every layer must clear it or it's buried.
   const bankGeo = useMemo(() => makeRibbonGeo(STREAM_CTRL, 2.85), [])
   const sandGeo = useMemo(() => makeRibbonGeo(STREAM_CTRL, 2.42), [])
@@ -564,6 +599,7 @@ function Stream() {
       {/* Foam / ripple sparkle drifting along the water */}
       <Sparkles count={10} scale={[15.5, 0.22, 1.25]} position={[0, 1.04, 0]}
         size={1.0} speed={0.28} color="#dcebe5" opacity={0.28} />
+      <StreamCurrent reducedMotion={reducedMotion} />
     </group>
   )
 }
@@ -590,14 +626,15 @@ const WATERFALL_FRAGMENT = `
   void main() {
     float edge = smoothstep(0.02, 0.15, vUv.x) * smoothstep(0.02, 0.15, 1.0 - vUv.x);
     float bottom = smoothstep(0.0, 0.14, vUv.y);
-    float strands = 0.5 + 0.5 * sin(vUv.x * 32.0 + sin(vUv.y * 7.0) - uTime * 0.45 + uPhase);
-    float flow = pow(0.5 + 0.5 * sin(vUv.y * 38.0 + uTime * 3.2 + vUv.x * 6.0 + uPhase), 7.0);
+    float strands = 0.5 + 0.5 * sin(vUv.x * 32.0 + sin(vUv.y * 7.0) - uTime * 0.72 + uPhase);
+    float flow = pow(0.5 + 0.5 * sin(vUv.y * 34.0 + uTime * 4.6 + vUv.x * 6.0 + uPhase), 6.0);
+    float flowFine = pow(0.5 + 0.5 * sin(vUv.y * 58.0 + uTime * 6.8 - vUv.x * 9.0 + uPhase), 9.0);
     float crest = smoothstep(0.84, 1.0, vUv.y);
     vec3 deepWater = vec3(0.075, 0.275, 0.300);
     vec3 softLight = vec3(0.520, 0.690, 0.660);
-    float detail = 0.15 + strands * 0.16 + flow * 0.18 + crest * 0.20;
+    float detail = 0.15 + strands * 0.15 + flow * 0.26 + flowFine * 0.12 + crest * 0.20;
     vec3 color = mix(deepWater, softLight, detail);
-    float alpha = edge * bottom * (0.48 + strands * 0.09 + flow * 0.07 + crest * 0.10);
+    float alpha = edge * bottom * (0.50 + strands * 0.08 + flow * 0.10 + flowFine * 0.05 + crest * 0.10);
     gl_FragColor = vec4(color, alpha);
   }
 `
@@ -611,9 +648,9 @@ function WaterfallSheet({ side, phase = 0, reducedMotion = false }) {
   }), [phase])
 
   useFrame((_, delta) => {
-    if (!materialRef.current || reducedMotion) return
+    if (!materialRef.current) return
     // Clamp long background-tab frames so the water resumes without jumping.
-    animationTime.current += Math.min(delta, 0.05)
+    animationTime.current += Math.min(delta, 0.05) * (reducedMotion ? 0.35 : 1)
     materialRef.current.uniforms.uTime.value = animationTime.current
   })
 
@@ -636,6 +673,42 @@ function WaterfallSheet({ side, phase = 0, reducedMotion = false }) {
   )
 }
 
+const FALL_STREAKS = [
+  { z: -0.46, offset: 0.05, speed: 0.31, width: 0.045, length: 0.52 },
+  { z: -0.28, offset: 0.42, speed: 0.36, width: 0.035, length: 0.38 },
+  { z: -0.08, offset: 0.76, speed: 0.29, width: 0.055, length: 0.62 },
+  { z:  0.13, offset: 0.22, speed: 0.34, width: 0.040, length: 0.44 },
+  { z:  0.32, offset: 0.60, speed: 0.30, width: 0.050, length: 0.56 },
+  { z:  0.48, offset: 0.88, speed: 0.38, width: 0.032, length: 0.34 },
+]
+function WaterfallStreaks({ side, reducedMotion = false }) {
+  const refs = useRef([])
+  useFrame(({ clock }) => {
+    refs.current.forEach((streak, index) => {
+      if (!streak) return
+      const config = FALL_STREAKS[index]
+      const motionScale = reducedMotion ? 0.35 : 1
+      const progress = (clock.elapsedTime * config.speed * motionScale + config.offset) % 1
+      streak.position.y = 0.70 - progress * 3.02
+      streak.material.opacity = Math.sin(progress * Math.PI) * (reducedMotion ? 0.12 : 0.30)
+      streak.scale.y = 0.78 + Math.sin(progress * Math.PI) * 0.48
+    })
+  })
+  return (
+    <group>
+      {FALL_STREAKS.map((streak, index) => (
+        <mesh key={index} ref={node => { refs.current[index] = node }}
+          position={[side * 8.595, 0.70 - streak.offset * 3.02, streak.z]}
+          rotation={[0, Math.PI / 2, 0]} renderOrder={7}>
+          <planeGeometry args={[streak.width, streak.length]} />
+          <meshBasicMaterial color="#d4e8e1" transparent opacity={0.18}
+            depthWrite={false} depthTest toneMapped={false} side={THREE.DoubleSide} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
 const MIST_PUFFS = [
   [-0.04, 0.02, -0.56, 0.68],
   [ 0.03, 0.12,  0.02, 0.86],
@@ -643,18 +716,30 @@ const MIST_PUFFS = [
   [ 0.07, 0.22,  0.30, 0.44],
 ]
 function WaterfallMist({ side, reducedMotion = false }) {
-  const mistRef = useRef()
+  const puffRefs = useRef([])
   const animationTime = useRef(0)
   useFrame((_, delta) => {
-    if (!mistRef.current || reducedMotion) return
+    if (reducedMotion) return
     animationTime.current += Math.min(delta, 0.05)
-    const pulse = 1 + Math.sin(animationTime.current * 1.2 + side) * 0.05
-    mistRef.current.scale.set(pulse, pulse, pulse)
+    puffRefs.current.forEach((puff, index) => {
+      if (!puff) return
+      const base = MIST_PUFFS[index]
+      const progress = (animationTime.current * 0.15 + index * 0.24) % 1
+      const size = base[3] * (0.72 + progress * 0.50)
+      puff.position.set(
+        base[0] + side * progress * 0.22,
+        base[1] + progress * 0.30,
+        base[2] + Math.sin(animationTime.current * 1.1 + index) * 0.055,
+      )
+      puff.scale.set(size * 0.55, size * 0.20, size)
+      puff.material.opacity = (1 - progress) * 0.16
+    })
   })
   return (
-    <group ref={mistRef} position={[side * 8.60, -2.48, 0]}>
+    <group position={[side * 8.60, -2.48, 0]}>
       {MIST_PUFFS.map((p, index) => (
-        <mesh key={index} position={[p[0], p[1], p[2]]} scale={[p[3] * 0.55, p[3] * 0.20, p[3]]}>
+        <mesh key={index} ref={node => { puffRefs.current[index] = node }}
+          position={[p[0], p[1], p[2]]} scale={[p[3] * 0.55, p[3] * 0.20, p[3]]}>
           <sphereGeometry args={[1, 10, 8]} />
           <meshBasicMaterial color="#c5d8d1" transparent opacity={0.13} depthWrite={false} />
         </mesh>
@@ -670,6 +755,8 @@ function Waterfalls({ reducedMotion = false }) {
     <group>
       <WaterfallSheet side={-1} phase={1.7} reducedMotion={reducedMotion} />
       <WaterfallSheet side={1} phase={0} reducedMotion={reducedMotion} />
+      <WaterfallStreaks side={-1} reducedMotion={reducedMotion} />
+      <WaterfallStreaks side={1} reducedMotion={reducedMotion} />
       <WaterfallMist side={-1} reducedMotion={reducedMotion} />
       <WaterfallMist side={1} reducedMotion={reducedMotion} />
     </group>
@@ -1206,7 +1293,7 @@ function CementedBase({ animateIn = false }) {
 }
 
 // ─── Unified goal plot — one growing plant per goal, cemented when reached ────
-function GoalSlot({ position, goal, onSelect, yOffset = 0 }) {
+function GoalSlot({ position, goal, onSelect, yOffset = 0, windStrength = 0 }) {
   const p = goalPct(goal), st = plantStage(p), done = p >= 100
   const isInv = goal.goal_type === 'investment'
   const nm = goal.name.length > 22 ? `${goal.name.slice(0, 21)}…` : goal.name
@@ -1228,22 +1315,26 @@ function GoalSlot({ position, goal, onSelect, yOffset = 0 }) {
         <meshToonMaterial color="#7c4a22" gradientMap={getToonGrad()} />
       </mesh>
       {done && <CementedBase animateIn={animateIn} />}
-      {isInv ? <InvestPlant stage={st} /> : <SavingsPlant stage={st} />}
+      {isInv
+        ? <InvestPlant stage={st} windStrength={windStrength} />
+        : <SavingsPlant stage={st} windStrength={windStrength} />}
       <Signpost name={nm} progress={p} type={isInv ? 'investment' : 'savings'} yOffset={yOffset}
         onSelect={onSelect} accessibleLabel={`Open ${goal.name}, ${p}% complete`} />
     </InteractivePlot>
   )
 }
 
-function CollectionGrove({ position, name, count, legacy = false, onSelect, yOffset = 0 }) {
+function CollectionGrove({ position, name, count, legacy = false, onSelect, yOffset = 0, windStrength = 0 }) {
   return (
     <InteractivePlot position={position} onSelect={onSelect}>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]} receiveShadow>
         <circleGeometry args={[1.28, 40]} />
         <meshToonMaterial color={legacy ? '#75633d' : '#5c4930'} gradientMap={getToonGrad()} />
       </mesh>
-      <LushTree position={[-0.45, 0.02, 0.08]} scale={0.72} palette={legacy ? 'gold' : 'green'} fruit={legacy} rotation={0.5} />
-      <LushTree position={[0.38, 0.02, -0.18]} scale={0.62} palette={legacy ? 'orange' : 'lime'} fruit={legacy} rotation={-0.7} />
+      <LushTree position={[-0.45, 0.02, 0.08]} scale={0.72} palette={legacy ? 'gold' : 'green'}
+        fruit={legacy} rotation={0.5} windStrength={windStrength} windPhase={0.4} />
+      <LushTree position={[0.38, 0.02, -0.18]} scale={0.62} palette={legacy ? 'orange' : 'lime'}
+        fruit={legacy} rotation={-0.7} windStrength={windStrength} windPhase={2.1} />
       <Signpost name={name} progress={legacy ? 100 : null} markerText={legacy ? '✓' : `${count}`} persistentLabel showProgressText={false}
         yOffset={yOffset} onSelect={onSelect}
         accessibleLabel={`Open ${name}, ${count} ${count === 1 ? 'goal' : 'goals'}`} />
@@ -1252,15 +1343,16 @@ function CollectionGrove({ position, name, count, legacy = false, onSelect, yOff
 }
 
 // ─── Savings plants ───────────────────────────────────────────────────────────
-function SavingsPlant({ stage }) {
-  if (stage === 0) return <GltfToon url="/models/plant-flat.glb"    position={[0,0.95,0]} scale={0.90} leafColor="#4ade80" trunkColor="#15803d" />
-  if (stage === 1) return <GltfToon url="/models/tree-thin.glb"     position={[0,0.95,0]} scale={1.00} leafColor="#4ade80" trunkColor="#7c3410" />
-  if (stage === 2) return <GltfToon url="/models/tree-small.glb"    position={[0,0.95,0]} scale={1.15} leafColor="#22c55e" trunkColor="#7c3410" />
-  if (stage === 3) return <GltfToon url="/models/tree-round.glb"    position={[0,0.95,0]} scale={1.30} leafColor="#16a34a" trunkColor="#7c3410" />
-  if (stage === 4) return <GltfToon url="/models/tree-detailed.glb" position={[0,0.95,0]} scale={1.45} leafColor="#15803d" trunkColor="#5a2a08" />
+function SavingsPlant({ stage, windStrength = 0 }) {
+  const wind = { windStrength, windPhase: stage * 0.7 }
+  if (stage === 0) return <GltfToon url="/models/plant-flat.glb"    position={[0,0.95,0]} scale={0.90} leafColor="#4ade80" trunkColor="#15803d" {...wind} />
+  if (stage === 1) return <GltfToon url="/models/tree-thin.glb"     position={[0,0.95,0]} scale={1.00} leafColor="#4ade80" trunkColor="#7c3410" {...wind} />
+  if (stage === 2) return <GltfToon url="/models/tree-small.glb"    position={[0,0.95,0]} scale={1.15} leafColor="#22c55e" trunkColor="#7c3410" {...wind} />
+  if (stage === 3) return <GltfToon url="/models/tree-round.glb"    position={[0,0.95,0]} scale={1.30} leafColor="#16a34a" trunkColor="#7c3410" {...wind} />
+  if (stage === 4) return <GltfToon url="/models/tree-detailed.glb" position={[0,0.95,0]} scale={1.45} leafColor="#15803d" trunkColor="#5a2a08" {...wind} />
   return (
     <group>
-      <GltfToon url="/models/tree-oak.glb" position={[0,0.95,0]} scale={1.60} leafColor="#166534" trunkColor="#4a1e04" />
+      <GltfToon url="/models/tree-oak.glb" position={[0,0.95,0]} scale={1.60} leafColor="#166534" trunkColor="#4a1e04" {...wind} />
       <GoldStarGlow y={3.8} color="#86efac" emissive="#4ade80" />
       <pointLight position={[0,3.0,0]} intensity={1.2} color="#4ade80" distance={4} decay={2} />
     </group>
@@ -1268,15 +1360,16 @@ function SavingsPlant({ stage }) {
 }
 
 // ─── Investment plants ────────────────────────────────────────────────────────
-function InvestPlant({ stage }) {
+function InvestPlant({ stage, windStrength = 0 }) {
+  const wind = { windStrength, windPhase: 1.2 + stage * 0.65 }
   if (stage === 0) return <InvestmentStake />
-  if (stage === 1) return <GltfToon url="/models/tree-thin.glb"     position={[0,0.95,0]} scale={1.00} leafColor="#fbbf24" trunkColor="#92400e" />
-  if (stage === 2) return <GltfToon url="/models/tree-fat.glb"      position={[0,0.95,0]} scale={1.10} leafColor="#f59e0b" trunkColor="#78350f" />
-  if (stage === 3) return <GltfToon url="/models/tree-round.glb"    position={[0,0.95,0]} scale={1.28} leafColor="#d97706" trunkColor="#78350f" />
-  if (stage === 4) return <GltfToon url="/models/tree-detailed.glb" position={[0,0.95,0]} scale={1.42} leafColor="#b45309" trunkColor="#5a2800" />
+  if (stage === 1) return <GltfToon url="/models/tree-thin.glb"     position={[0,0.95,0]} scale={1.00} leafColor="#fbbf24" trunkColor="#92400e" {...wind} />
+  if (stage === 2) return <GltfToon url="/models/tree-fat.glb"      position={[0,0.95,0]} scale={1.10} leafColor="#f59e0b" trunkColor="#78350f" {...wind} />
+  if (stage === 3) return <GltfToon url="/models/tree-round.glb"    position={[0,0.95,0]} scale={1.28} leafColor="#d97706" trunkColor="#78350f" {...wind} />
+  if (stage === 4) return <GltfToon url="/models/tree-detailed.glb" position={[0,0.95,0]} scale={1.42} leafColor="#b45309" trunkColor="#5a2800" {...wind} />
   return (
     <group>
-      <GltfToon url="/models/tree-oak.glb" position={[0,0.95,0]} scale={1.58} leafColor="#92400e" trunkColor="#4a1e00" />
+      <GltfToon url="/models/tree-oak.glb" position={[0,0.95,0]} scale={1.58} leafColor="#92400e" trunkColor="#4a1e00" {...wind} />
       <GoldStarGlow y={3.8} color="#fde68a" emissive="#fbbf24" />
       <pointLight position={[0,3.0,0]} intensity={2.0} color="#fbbf24" distance={5} decay={2} />
     </group>
@@ -1493,10 +1586,18 @@ const LUSH_PALETTES = {
   autumn: ['#c97a2a', '#d99030', '#b5562a', '#cc8a3a'], // stage 1 — turning
   bare:   ['#7a6240', '#6b5436', '#5c4830', '#736040'], // stage 0 — dormant/dead
 }
-function LushTree({ position, scale = 1, palette = 'green', fruit = false, rotation = 0 }) {
+function LushTree({ position, scale = 1, palette = 'green', fruit = false, rotation = 0,
+                    windStrength = 0, windPhase = 0 }) {
   const c = LUSH_PALETTES[palette] ?? LUSH_PALETTES.green
+  const ref = useRef()
+  useFrame(({ clock }) => {
+    if (!ref.current || windStrength === 0) return
+    const t = clock.elapsedTime
+    ref.current.rotation.x = Math.sin(t * 0.66 + windPhase) * windStrength * 0.045
+    ref.current.rotation.z = Math.cos(t * 0.54 + windPhase) * windStrength * 0.038
+  })
   return (
-    <group position={position} scale={scale} rotation={[0, rotation, 0]}>
+    <group ref={ref} position={position} scale={scale} rotation={[0, rotation, 0]}>
       <mesh position={[0, 0.46, 0]} castShadow>
         <cylinderGeometry args={[0.13, 0.17, 0.94, 7]} />
         <meshToonMaterial color="#7c4a22" gradientMap={getToonGrad()} />
@@ -1640,7 +1741,7 @@ function CelebrationBurst() {
 
 // ─── Island group ─────────────────────────────────────────────────────────────
 function IslandGroup({ groupedGoals, stage, momentum, onSelectGoal, onSelectOverflow, onSelectLegacy, reducedMotion }) {
-  const windStrength = reducedMotion ? 0 : momentum === 'lively' ? 0.24 : momentum === 'gentle' ? 0.14 : 0.07
+  const windStrength = reducedMotion ? 0 : momentum === 'lively' ? 0.36 : momentum === 'gentle' ? 0.24 : 0.14
   const bedCount = stage < 4 ? 0 : stage < 6 ? 1 : FLOWER_BEDS.length
   const mushCount = stage < 5 ? 0 : stage < 7 ? 2 : MUSHROOM_DEFS.length
   const birdCount = reducedMotion || stage < 4 ? 0 : momentum === 'lively' ? Math.min(6, stage) : momentum === 'gentle' ? 2 : 0
@@ -1649,7 +1750,7 @@ function IslandGroup({ groupedGoals, stage, momentum, onSelectGoal, onSelectOver
     <group>
       <FloatingIsland stage={stage} />
       <GrassBlades stage={stage} windStrength={windStrength} />
-      <Stream />
+      <Stream reducedMotion={reducedMotion} />
       <StreamRipples />
       <StreamDecor />
       <StreamBridge />
@@ -1663,15 +1764,17 @@ function IslandGroup({ groupedGoals, stage, momentum, onSelectGoal, onSelectOver
 
       {groupedGoals.visible.map((g, i) => (
         <GoalSlot key={g.id} position={QUADRANT_SLOTS[i]} goal={g} yOffset={SLOT_SIGN_OFFSET[i]}
-          onSelect={onSelectGoal ? () => onSelectGoal(g) : undefined} />
+          windStrength={windStrength} onSelect={onSelectGoal ? () => onSelectGoal(g) : undefined} />
       ))}
       {groupedGoals.overflow.length > 0 && (
         <CollectionGrove position={QUADRANT_SLOTS[7]} name={`More · ${groupedGoals.overflow.length}`}
-          count={groupedGoals.overflow.length} onSelect={onSelectOverflow} yOffset={SLOT_SIGN_OFFSET[7]} />
+          count={groupedGoals.overflow.length} onSelect={onSelectOverflow} yOffset={SLOT_SIGN_OFFSET[7]}
+          windStrength={windStrength} />
       )}
       {groupedGoals.legacy.length > 0 && (
         <CollectionGrove position={QUADRANT_SLOTS[6]} name={`Legacy · ${groupedGoals.legacy.length}`}
-          count={groupedGoals.legacy.length} legacy onSelect={onSelectLegacy} yOffset={SLOT_SIGN_OFFSET[6]} />
+          count={groupedGoals.legacy.length} legacy onSelect={onSelectLegacy} yOffset={SLOT_SIGN_OFFSET[6]}
+          windStrength={windStrength} />
       )}
       {FLOWER_BEDS.slice(0, bedCount).map((p, i) => (
         <FlowerBed key={`fb${i}`} position={p} rotation={i * 0.8} windStrength={windStrength} />
@@ -1689,7 +1792,7 @@ function IslandGroup({ groupedGoals, stage, momentum, onSelectGoal, onSelectOver
 // ─── Scene ────────────────────────────────────────────────────────────────────
 function Scene({ groupedGoals, stage, momentum, sceneTone, onSelectGoal, onSelectOverflow, onSelectLegacy, reducedMotion, quality }) {
   const cloudCount = sceneTone === 'strained' ? 2 : 0
-  const windStrength = reducedMotion ? 0 : momentum === 'lively' ? 0.22 : momentum === 'gentle' ? 0.12 : 0.05
+  const windStrength = reducedMotion ? 0 : momentum === 'lively' ? 0.30 : momentum === 'gentle' ? 0.20 : 0.11
   const butterflyCount = reducedMotion || momentum !== 'lively' || stage < 4 ? 0 : Math.min(4, stage - 2)
   return (
     <>
@@ -1721,13 +1824,18 @@ function Scene({ groupedGoals, stage, momentum, sceneTone, onSelectGoal, onSelec
         <IslandGroup groupedGoals={groupedGoals} stage={stage} momentum={momentum} reducedMotion
           onSelectGoal={onSelectGoal} onSelectOverflow={onSelectOverflow} onSelectLegacy={onSelectLegacy} />
       ) : (
-        <Float speed={0.55} rotationIntensity={0.018} floatIntensity={0.32} floatingRange={[-0.08, 0.08]}>
+        <Float speed={0.72} rotationIntensity={0.028} floatIntensity={0.46} floatingRange={[-0.12, 0.12]}>
           <IslandGroup groupedGoals={groupedGoals} stage={stage} momentum={momentum}
             onSelectGoal={onSelectGoal} onSelectOverflow={onSelectOverflow} onSelectLegacy={onSelectLegacy} />
         </Float>
       )}
 
       <CelebrationBurst />
+
+      {!reducedMotion && (
+        <Sparkles count={stage >= 4 ? 10 : 6} scale={[13, 3.5, 13]} position={[0, 2.1, 0]}
+          size={1.35} speed={0.18} color="#b8d5a3" opacity={0.22} />
+      )}
 
       {!reducedMotion && momentum === 'lively' && stage >= 4 && (
         <Sparkles count={TOD.isNight ? 20 : 8} scale={[14, 6, 14]} position={[0, 1.8, 0]}
@@ -1866,7 +1974,7 @@ const Garden3D = memo(function Garden3D({ onSelectGoal, onSelectOverflow, onSele
       <GardenErrorBoundary stage={stage}>
         <Canvas
           orthographic
-          frameloop={reducedMotion ? 'demand' : 'always'}
+          frameloop="always"
           shadows={quality === 'high' ? { type: THREE.PCFSoftShadowMap } : false}
           dpr={quality === 'high' ? [1, 1.5] : [1, 1]}
           gl={{ antialias: true, powerPreference: 'high-performance',
