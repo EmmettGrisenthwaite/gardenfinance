@@ -7,11 +7,39 @@
   overflow: hidden;
 }
 .illustrated-garden-status { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.1rem 0.85rem; }
-.illustrated-garden-art { position: relative; display: block; width: 100%; height: clamp(220px, 56vw, 280px); overflow: hidden; border-block: 1px solid rgba(255,255,255,.07); background: #092129; cursor: pointer; text-align: left; isolation: isolate; }
+.illustrated-garden-art { position: relative; display: block; width: 100%; height: clamp(220px, 56vw, 280px); overflow: hidden; border-block: 1px solid rgba(255,255,255,.07); background: #0a2731; cursor: pointer; text-align: left; isolation: isolate; }
 .illustrated-garden-art:focus-visible { outline: 2px solid rgba(110, 231, 183, .9); outline-offset: -3px; }
-.illustrated-garden-art picture, .illustrated-garden-art img { display: block; width: 100%; height: 100%; }
-.illustrated-garden-art img { object-fit: cover; object-position: center; filter: saturate(.84) brightness(.84) contrast(1.04); transition: filter 220ms ease; }
-.illustrated-garden-art:hover img { filter: saturate(.9) brightness(.88) contrast(1.04); }
+
+/* ── The hand-drawn scene ── */
+.garden-scene { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; transition: filter 260ms ease; }
+.illustrated-garden-art:hover .garden-scene { filter: brightness(1.05); }
+/* A tight month reads as overcast — dimmer sun, cooler scene */
+.tone-strained .garden-scene { filter: saturate(.78) brightness(.86); }
+.tone-strained .scene-sun { opacity: .35; }
+
+/* Sun breathes */
+.is-moving .scene-sun-halo { animation: garden-sun-breathe 8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+
+/* Clouds drift endlessly at three depths */
+.is-moving .garden-cloud--far  { animation: garden-cloud-drift 120s linear -40s infinite; }
+.is-moving .garden-cloud--mid  { animation: garden-cloud-drift 85s  linear -30s infinite; }
+.is-moving .garden-cloud--near { animation: garden-cloud-drift 65s  linear -55s infinite; }
+
+/* The stream flows */
+.is-moving .garden-stream-flow { animation: garden-stream 3.6s linear infinite; }
+
+/* Fireflies rise and fade; momentum sets how alive the air feels */
+.garden-firefly { opacity: 0; }
+.is-moving .garden-firefly { animation: garden-firefly 7s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.is-moving .garden-firefly:nth-of-type(2) { animation-delay: 1.4s; animation-duration: 8s; }
+.is-moving .garden-firefly:nth-of-type(3) { animation-delay: 3s; }
+.is-moving .garden-firefly:nth-of-type(4) { animation-delay: 2.2s; animation-duration: 9s; }
+.is-moving .garden-firefly:nth-of-type(5) { animation-delay: 4.6s; }
+.is-moving .garden-firefly:nth-of-type(6) { animation-delay: .8s; animation-duration: 8.5s; }
+.is-moving .garden-firefly:nth-of-type(7) { animation-delay: 5.4s; }
+.momentum-resting .garden-firefly:nth-of-type(n+4) { display: none; }
+.momentum-lively .garden-firefly { animation-duration: 5.5s; }
+
 .garden-sky-softener { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(to bottom, rgba(3,18,22,.08), transparent 50%, rgba(4,13,9,.1)); }
 .tone-strained .garden-sky-softener { background: linear-gradient(to bottom, rgba(19,28,33,.36), rgba(9,25,23,.1) 58%, transparent); }
 .garden-drifting-light { position: absolute; z-index: 2; top: -25%; left: -15%; width: 50%; height: 115%; transform: rotate(12deg); background: linear-gradient(90deg, transparent, rgba(255,225,166,.09), transparent); filter: blur(12px); pointer-events: none; }
@@ -42,6 +70,14 @@
 @keyframes garden-sway { 0%,100% { transform: rotate(-.45deg); } 50% { transform: rotate(.55deg); } }
 @keyframes garden-goal-breathe { 0%,100% { filter: drop-shadow(0 9px 9px rgba(0,0,0,.25)); } 50% { filter: drop-shadow(0 11px 12px rgba(0,0,0,.32)) brightness(1.035); } }
 @keyframes garden-light { 0%,100% { transform: translateX(-20%) rotate(12deg); opacity: .1; } 45%,60% { opacity: .75; } 50% { transform: translateX(245%) rotate(12deg); } }
+@keyframes garden-sun-breathe { 0%,100% { opacity: .75; transform: scale(1); } 50% { opacity: 1; transform: scale(1.08); } }
+@keyframes garden-cloud-drift { from { transform: translateX(-320px); } to { transform: translateX(1320px); } }
+@keyframes garden-stream { to { stroke-dashoffset: -84; } }
+@keyframes garden-firefly { 0% { opacity: 0; transform: translateY(0); } 18% { opacity: .95; } 55% { opacity: .55; } 100% { opacity: 0; transform: translateY(-30px); } }
 @media (min-width: 768px) { .illustrated-garden-art { height: 280px; } .illustrated-garden-status { padding-inline: 1.25rem; } }
-.is-reduced-motion .garden-reveal, .is-reduced-motion .garden-drifting-light, .is-reduced-motion .garden-water-light, .is-reduced-motion .garden-sprouts, .is-reduced-motion .garden-flowers, .is-reduced-motion .garden-young-trees, .is-reduced-motion .garden-mature-trees, .is-reduced-motion .illustrated-goal-plant { animation: none !important; }
-@media (prefers-reduced-motion: reduce) { .garden-reveal, .garden-drifting-light, .garden-water-light, .garden-sprouts, .garden-flowers, .garden-young-trees, .garden-mature-trees, .illustrated-goal-plant { animation: none !important; } }
+.is-reduced-motion .garden-reveal, .is-reduced-motion .garden-drifting-light, .is-reduced-motion .garden-water-light, .is-reduced-motion .garden-sprouts, .is-reduced-motion .garden-flowers, .is-reduced-motion .garden-young-trees, .is-reduced-motion .garden-mature-trees, .is-reduced-motion .illustrated-goal-plant, .is-reduced-motion .garden-cloud--far, .is-reduced-motion .garden-cloud--mid, .is-reduced-motion .garden-cloud--near, .is-reduced-motion .scene-sun-halo, .is-reduced-motion .garden-stream-flow, .is-reduced-motion .garden-firefly { animation: none !important; }
+.is-reduced-motion .garden-firefly { opacity: .5; }
+@media (prefers-reduced-motion: reduce) {
+  .garden-reveal, .garden-drifting-light, .garden-water-light, .garden-sprouts, .garden-flowers, .garden-young-trees, .garden-mature-trees, .illustrated-goal-plant, .garden-cloud--far, .garden-cloud--mid, .garden-cloud--near, .scene-sun-halo, .garden-stream-flow, .garden-firefly { animation: none !important; }
+  .garden-firefly { opacity: .5; }
+}

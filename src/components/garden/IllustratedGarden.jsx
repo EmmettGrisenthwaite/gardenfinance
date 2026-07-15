@@ -44,18 +44,111 @@ function GoalPlant({ placement }) {
   )
 }
 
+// ─── The scene itself — fully hand-drawn, no photography ───────────────────────
+// A flat, storybook dusk landscape painted in the app's emerald language. Drawn
+// on the same 1000×563 canvas as the stage layers, so every sprout, tree, and
+// goal plant keeps its coordinates. Clouds drift, the sun breathes, the stream
+// flows, fireflies rise — all CSS-driven and silenced by reduced motion.
+function SceneBase() {
+  return (
+    <svg className="garden-scene" viewBox="0 0 1000 563" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <linearGradient id="gf-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#0a2731" />
+          <stop offset="48%" stopColor="#143f3a" />
+          <stop offset="78%" stopColor="#2a5c48" />
+          <stop offset="100%" stopColor="#3c6b4b" />
+        </linearGradient>
+        <radialGradient id="gf-sun-halo" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#f6d992" stopOpacity=".5" />
+          <stop offset="55%" stopColor="#f0c778" stopOpacity=".16" />
+          <stop offset="100%" stopColor="#f0c778" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="gf-stream" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#4c9aa0" />
+          <stop offset="100%" stopColor="#2c6f7c" />
+        </linearGradient>
+      </defs>
+
+      {/* Sky */}
+      <rect width="1000" height="563" fill="url(#gf-sky)" />
+
+      {/* Sun, low and warm */}
+      <g className="scene-sun">
+        <circle className="scene-sun-halo" cx="712" cy="196" r="105" fill="url(#gf-sun-halo)" />
+        <circle cx="712" cy="196" r="30" fill="#f4d38a" />
+        <circle cx="712" cy="196" r="30" fill="#f9e7b5" opacity=".45" />
+      </g>
+
+      {/* Drifting clouds — group opacity keeps overlaps seamless (translucent
+          children would double up where the puffs intersect) */}
+      <g className="garden-cloud garden-cloud--far" opacity=".1" fill="#e2f3ec">
+        <ellipse cx="180" cy="88" rx="74" ry="15" /><ellipse cx="222" cy="76" rx="44" ry="15" /><ellipse cx="146" cy="78" rx="34" ry="12" />
+      </g>
+      <g className="garden-cloud garden-cloud--mid" opacity=".13" fill="#e2f3ec">
+        <ellipse cx="560" cy="120" rx="88" ry="16" /><ellipse cx="602" cy="107" rx="50" ry="15" /><ellipse cx="518" cy="110" rx="38" ry="12" />
+      </g>
+      <g className="garden-cloud garden-cloud--near" opacity=".11" fill="#e2f3ec">
+        <ellipse cx="852" cy="66" rx="58" ry="12" /><ellipse cx="886" cy="56" rx="34" ry="10" />
+      </g>
+
+      {/* Distant hills */}
+      <path d="M0 262C120 216 258 204 400 236C512 260 610 258 706 232C806 206 908 210 1000 240V320H0Z" fill="#11362c" />
+      <path d="M0 292C150 258 300 252 452 278C596 302 740 296 872 268C918 258 962 256 1000 262V352H0Z" fill="#164434" />
+
+      {/* Meadow */}
+      <path d="M0 322C160 296 330 292 500 306C670 320 840 316 1000 296V563H0Z" fill="#1d5a3e" />
+      <path d="M0 388C180 366 380 362 560 376C724 388 872 386 1000 370V563H0Z" fill="#236747" />
+      {/* soft hummock shading */}
+      <path d="M60 430c90-22 200-24 292-8M640 442c96-18 196-18 288 0" fill="none" stroke="#1b5138" strokeWidth="10" strokeLinecap="round" opacity=".55" />
+
+      {/* Winding stream — a ribbon from the horizon dip down to the seedbed,
+          narrow at the back, widening as it nears the viewer */}
+      <path d="M556 302
+               C544 332 524 356 492 376
+               C458 396 424 412 396 432
+               C374 448 358 462 350 478
+               L488 478
+               C486 458 496 438 516 418
+               C538 396 554 372 562 348
+               C568 330 570 314 568 302 Z"
+        fill="url(#gf-stream)" opacity=".92" />
+      <path d="M560 306
+               C550 334 532 358 502 378
+               C472 398 442 414 418 434
+               C402 448 392 460 386 472
+               L444 472
+               C446 454 456 436 474 418
+               C496 396 516 372 528 348
+               C536 332 540 316 540 306 Z"
+        fill="#63b3b7" opacity=".26" />
+      <path className="garden-stream-flow" d="M562 308C552 336 532 360 502 380C472 400 442 418 418 438C404 450 394 462 388 472"
+        fill="none" stroke="rgba(219,248,255,.42)" strokeWidth="5" strokeLinecap="round" strokeDasharray="12 30" />
+
+      {/* Foreground tilled seedbed */}
+      <path d="M0 470C140 452 320 446 500 452C690 458 860 456 1000 444V563H0Z" fill="#38281a" />
+      <path d="M0 500c170-14 360-18 520-12 180 6 330 6 480-4" fill="none" stroke="#2a1e12" strokeWidth="7" strokeLinecap="round" opacity=".8" />
+      <path d="M20 532c180-12 380-16 540-10 170 6 300 6 430-2" fill="none" stroke="#2a1e12" strokeWidth="7" strokeLinecap="round" opacity=".6" />
+      {/* grassy lip where meadow meets the bed */}
+      <path d="M0 470c150-18 330-24 510-18 190 7 350 5 490-8" fill="none" stroke="#2c7550" strokeWidth="9" strokeLinecap="round" opacity=".7" />
+
+      {/* Fireflies — quiet sparks of life; count/speed follow momentum via CSS */}
+      {[[168, 396], [318, 358], [452, 318], [608, 372], [742, 340], [860, 392], [530, 262]].map(([x, y], i) => (
+        <circle key={i} className="garden-firefly" cx={x} cy={y} r="2.6" fill="#ffe9a8" />
+      ))}
+    </svg>
+  )
+}
+
 function LandscapeLayers({ layers, legacyFlowerCount }) {
   const has = layer => layers.includes(layer)
   return (
     <svg className="illustrated-garden-layers" viewBox="0 0 1000 563" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-      <g className="garden-water-light">
-        <path d="M424 324c48 10 83 6 126-13M451 350c46 8 83 3 121-15M485 390c34 5 57 1 84-12" fill="none" stroke="rgba(179,248,236,.38)" strokeWidth="4" strokeLinecap="round" />
-      </g>
       {has('groundCover') && <g className="garden-reveal garden-ground-cover">
-        <path d="M126 382c68-18 134-19 196-4M668 379c65-16 128-14 188 4M370 261c83-18 171-18 254 0" fill="none" stroke="#6e9a54" strokeWidth="12" strokeLinecap="round" strokeDasharray="2 20" />
+        <path d="M126 382c68-18 134-19 196-4M668 379c65-16 128-14 188 4M380 332c83-14 171-14 254 0" fill="none" stroke="#6e9a54" strokeWidth="12" strokeLinecap="round" strokeDasharray="2 20" />
       </g>}
       {has('sprouts') && <g className="garden-reveal garden-sprouts" fill="none" strokeLinecap="round" strokeLinejoin="round">
-        {[[186,368],[258,395],[766,384],[825,357],[454,276],[562,270]].map(([x,y]) => <g key={`${x}-${y}`} transform={`translate(${x} ${y})`}>
+        {[[186,368],[258,395],[766,384],[825,357],[462,322],[614,326]].map(([x,y]) => <g key={`${x}-${y}`} transform={`translate(${x} ${y})`}>
           <path d="M0 14V0M0 7C-9 7-14 2-14-5C-5-6 1-1 0 7M0 5C8 5 13 0 13-7C5-8-1-2 0 5" stroke="#91bf6a" strokeWidth="4" fill="#668f52" />
         </g>)}
       </g>}
@@ -64,7 +157,7 @@ function LandscapeLayers({ layers, legacyFlowerCount }) {
         <g transform="translate(807 307)"><path d="M0 72l8-53h8l8 53" fill="#7c5b3c"/><circle cx="12" cy="18" r="33" fill="#386b4d"/><circle cx="30" cy="29" r="21" fill="#4a8258"/></g>
       </g>}
       {has('flowers') && <g className="garden-reveal garden-flowers">
-        {[[118,401],[144,419],[335,398],[650,395],[858,413],[891,394],[397,286],[612,285]].map(([x,y], index) => <g key={`${x}-${y}`} transform={`translate(${x} ${y})`}>
+        {[[118,401],[144,419],[335,398],[650,395],[858,413],[891,394],[398,330],[640,338]].map(([x,y], index) => <g key={`${x}-${y}`} transform={`translate(${x} ${y})`}>
           <path d="M0 13V2" stroke="#73a45e" strokeWidth="3" />
           <circle cy="0" r="7" fill={index % 2 ? '#e9c47b' : '#e6a9a2'} /><circle r="2.5" fill="#f7e5a5" />
         </g>)}
@@ -81,7 +174,7 @@ function LandscapeLayers({ layers, legacyFlowerCount }) {
           return <g key={index} transform={`translate(${x} ${y})`}><circle r="8" fill={index % 2 ? '#f0bf8d' : '#eab1b1'} /><circle r="3" fill="#fff0b6" /></g>
         })}
       </g>}
-      {has('sanctuary') && <g className="garden-reveal garden-sanctuary" transform="translate(426 184)">
+      {has('sanctuary') && <g className="garden-reveal garden-sanctuary" transform="translate(426 208)">
         <path d="M0 81h148v12H0z" fill="#6e5a43"/><path d="M18 38h112v48H18z" fill="#c4b28d"/><path d="M4 42L74 0l70 42" fill="#365f49"/><path d="M58 52h32v34H58z" fill="#5b4637"/><path d="M27 52h20v18H27zm74 0h20v18h-20z" fill="#d5c891"/>
       </g>}
     </svg>
@@ -122,8 +215,8 @@ export default function IllustratedGarden({
       <div className="illustrated-garden-status">
         <div className="min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/80">Your permanent garden</p>
-          <div className="mt-1 flex items-baseline gap-2">
-            <h2 className="truncate text-[20px] font-semibold tracking-[-0.02em] text-white">{manifest.name}</h2>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
+            <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-white">{manifest.name}</h2>
             <span className="shrink-0 text-[13px] font-semibold tabular-nums text-readable-secondary">{milestoneTotal} milestones</span>
           </div>
         </div>
@@ -132,10 +225,7 @@ export default function IllustratedGarden({
 
       <button type="button" onClick={onOpenStory} aria-label={`Open Garden Story. ${summary}`}
         className={`illustrated-garden-art ${moving ? 'is-moving' : ''} tone-${sceneTone} momentum-${momentum}`}>
-        <picture>
-          <source type="image/webp" srcSet="/illustrations/garden-seedbed-960.webp 960w, /illustrations/garden-seedbed-1600.webp 1600w" sizes="(min-width: 768px) 55vw, 100vw" />
-          <img src="/illustrations/garden-seedbed-1600.webp" width="1672" height="941" alt="" decoding="async" fetchPriority="high" />
-        </picture>
+        <SceneBase />
         <span className="garden-sky-softener" aria-hidden="true" />
         <span className="garden-drifting-light" aria-hidden="true" />
         <LandscapeLayers layers={manifest.layers} legacyFlowerCount={layout.legacyFlowerCount} />
