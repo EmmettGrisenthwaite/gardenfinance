@@ -153,8 +153,20 @@ function LandscapeLayers({ layers, legacyFlowerCount }) {
         </g>)}
       </g>}
       {has('youngTrees') && <g className="garden-reveal garden-young-trees">
-        <g transform="translate(150 304)"><path d="M0 74l8-56h8l8 56" fill="#7c5b3c"/><circle cx="12" cy="17" r="34" fill="#3d7652"/><circle cx="-4" cy="27" r="22" fill="#4b875b"/></g>
-        <g transform="translate(807 307)"><path d="M0 72l8-53h8l8 53" fill="#7c5b3c"/><circle cx="12" cy="18" r="33" fill="#386b4d"/><circle cx="30" cy="29" r="21" fill="#4a8258"/></g>
+        <g transform="translate(150 304)">
+          <path d="M0 74l8-56h8l8 56" fill="#6d4b32"/>
+          <circle cx="12" cy="16" r="32" fill="#25573f"/>
+          <circle cx="-6" cy="28" r="20" fill="#2f6a4b"/>
+          <circle cx="28" cy="30" r="18" fill="#398057"/>
+          <circle cx="8" cy="8" r="16" fill="#438f60"/>
+        </g>
+        <g transform="translate(807 307)">
+          <path d="M0 72l8-53h8l8 53" fill="#6d4b32"/>
+          <circle cx="12" cy="17" r="31" fill="#22503a"/>
+          <circle cx="30" cy="30" r="18" fill="#2e6747"/>
+          <circle cx="-4" cy="28" r="17" fill="#377a53"/>
+          <circle cx="16" cy="8" r="15" fill="#418a5d"/>
+        </g>
       </g>}
       {has('flowers') && <g className="garden-reveal garden-flowers">
         {[[118,401],[144,419],[335,398],[650,395],[858,413],[891,394],[398,330],[640,338]].map(([x,y], index) => <g key={`${x}-${y}`} transform={`translate(${x} ${y})`}>
@@ -167,11 +179,12 @@ function LandscapeLayers({ layers, legacyFlowerCount }) {
         <g transform="translate(846 267)"><path d="M16 116l12-82h18l13 82" fill="#694936"/><circle cx="38" cy="29" r="50" fill="#204a39"/><circle cx="6" cy="52" r="34" fill="#2a6045"/><circle cx="70" cy="48" r="38" fill="#397957"/></g>
       </g>}
       {has('legacyGrove') && <g className="garden-reveal garden-legacy-grove">
-        <path d="M693 279c38-24 77-29 115-14" stroke="#356d4b" strokeWidth="12" fill="none" strokeLinecap="round" />
+        {/* a hedge of remembrance blooms rooted on the meadow, not the sky */}
+        <path d="M688 352c42-14 84-16 124-4" stroke="#2e6647" strokeWidth="14" fill="none" strokeLinecap="round" />
         {Array.from({ length: Math.max(3, legacyFlowerCount) }, (_, index) => {
-          const x = 706 + (index % 5) * 23
-          const y = 270 + Math.floor(index / 5) * 18 + (index % 2) * 7
-          return <g key={index} transform={`translate(${x} ${y})`}><circle r="8" fill={index % 2 ? '#f0bf8d' : '#eab1b1'} /><circle r="3" fill="#fff0b6" /></g>
+          const x = 702 + (index % 5) * 24
+          const y = 342 + Math.floor(index / 5) * 15 + (index % 2) * 6
+          return <g key={index} transform={`translate(${x} ${y})`}><circle r="7" fill={index % 2 ? '#f0bf8d' : '#eab1b1'} /><circle r="2.5" fill="#fff0b6" /></g>
         })}
       </g>}
       {has('sanctuary') && <g className="garden-reveal garden-sanctuary" transform="translate(426 208)">
@@ -189,7 +202,6 @@ export default function IllustratedGarden({
   momentum = 'resting',
   sceneTone = 'calm',
   reducedMotion = false,
-  onOpenStory,
   onSelectGoal,
   onSelectOverflow,
 }) {
@@ -223,15 +235,14 @@ export default function IllustratedGarden({
         <span className="h-3 w-3 shrink-0 rounded-full ring-4 ring-white/[0.06]" style={{ background: STAGE_COLORS[stage] }} />
       </div>
 
-      <button type="button" onClick={onOpenStory} aria-label={`Open Garden Story. ${summary}`}
+      <div role="img" aria-label={summary}
         className={`illustrated-garden-art ${moving ? 'is-moving' : ''} tone-${sceneTone} momentum-${momentum}`}>
         <SceneBase />
         <span className="garden-sky-softener" aria-hidden="true" />
         <span className="garden-drifting-light" aria-hidden="true" />
         <LandscapeLayers layers={manifest.layers} legacyFlowerCount={layout.legacyFlowerCount} />
         {layout.visible.map(placement => <GoalPlant key={placement.goal.id} placement={placement} />)}
-        <span className="illustrated-garden-open-cue">Open garden story</span>
-      </button>
+      </div>
 
       <div className="illustrated-garden-progress" aria-label="Progress to next garden stage">
         <span><span style={{ width: `${progress.percent}%` }} /></span>

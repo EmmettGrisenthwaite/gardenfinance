@@ -24,7 +24,7 @@ export default function GardenMeter({ total, done, embedded = false }) {
   useEffect(() => { previous.current = earned }, [earned])
 
   return (
-    <button onClick={() => navigate('/?garden=story')} aria-label={`Open the story for your ${STAGE_NAMES[stage]} garden`}
+    <button onClick={() => navigate('/')} aria-label={`See your ${STAGE_NAMES[stage]} garden`}
       className={`flex min-h-11 w-full items-center gap-2.5 rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 ${embedded ? 'px-0 py-1' : 'border px-3 py-2'} ${
         pulse
           ? embedded ? 'bg-emerald-500/[0.08]' : 'border-emerald-400/40 bg-emerald-500/[0.14]'

@@ -7,12 +7,10 @@
   overflow: hidden;
 }
 .illustrated-garden-status { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.1rem 0.85rem; }
-.illustrated-garden-art { position: relative; display: block; width: 100%; height: clamp(220px, 56vw, 280px); overflow: hidden; border-block: 1px solid rgba(255,255,255,.07); background: #0a2731; cursor: pointer; text-align: left; isolation: isolate; }
-.illustrated-garden-art:focus-visible { outline: 2px solid rgba(110, 231, 183, .9); outline-offset: -3px; }
+.illustrated-garden-art { position: relative; display: block; width: 100%; height: clamp(220px, 56vw, 280px); overflow: hidden; border-block: 1px solid rgba(255,255,255,.07); background: #0a2731; isolation: isolate; }
 
 /* ── The hand-drawn scene ── */
-.garden-scene { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; transition: filter 260ms ease; }
-.illustrated-garden-art:hover .garden-scene { filter: brightness(1.05); }
+.garden-scene { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; }
 /* A tight month reads as overcast — dimmer sun, cooler scene */
 .tone-strained .garden-scene { filter: saturate(.78) brightness(.86); }
 .tone-strained .scene-sun { opacity: .35; }
@@ -52,7 +50,6 @@
 .illustrated-goal-plant { position: absolute; z-index: 4; width: clamp(50px, 9vw, 72px); aspect-ratio: 76 / 94; transform: translate(-50%, -78%) scale(var(--goal-scale)); transform-origin: 50% 100%; filter: drop-shadow(0 9px 9px rgba(0,0,0,.25)); pointer-events: none; animation: garden-layer-arrive 650ms cubic-bezier(.22,1,.36,1) both; }
 .illustrated-goal-plant svg { display: block; width: 100%; height: 100%; }
 .is-moving .illustrated-goal-plant { animation: garden-layer-arrive 650ms cubic-bezier(.22,1,.36,1) both, garden-goal-breathe 6s ease-in-out 900ms infinite; }
-.illustrated-garden-open-cue { position: absolute; z-index: 6; right: .75rem; bottom: .7rem; min-height: 30px; display: inline-flex; align-items: center; border: 1px solid rgba(255,255,255,.15); border-radius: 999px; background: rgba(5,17,13,.76); padding: 0 .65rem; color: rgba(255,255,255,.9); font-size: 11px; font-weight: 700; backdrop-filter: blur(10px); }
 .illustrated-garden-progress { display: flex; align-items: center; gap: .75rem; padding: .8rem 1.1rem .65rem; }
 .illustrated-garden-progress > span { height: 6px; flex: 1; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.1); }
 .illustrated-garden-progress > span > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #4ade80, #6ee7b7); transition: width 500ms cubic-bezier(.22,1,.36,1); }
