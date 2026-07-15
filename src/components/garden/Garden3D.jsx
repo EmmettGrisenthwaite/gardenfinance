@@ -26,11 +26,11 @@ function getToonGrad() {
   const data = new Uint8Array(W * 4)
   // Warm shadow → warm highlight control stops (t, r, g, b)
   const stops = [
-    [0.00, 150, 128, 120],
-    [0.32, 178, 158, 138],
-    [0.55, 208, 196, 168],
-    [0.74, 232, 224, 198],
-    [1.00, 255, 252, 240],
+    [0.00,  86,  91,  82],
+    [0.30, 116, 122, 106],
+    [0.54, 151, 155, 133],
+    [0.76, 187, 186, 160],
+    [1.00, 220, 216, 194],
   ]
   const smooth = (a) => a * a * (3 - 2 * a) // smoothstep
   for (let i = 0; i < W; i++) {
@@ -68,15 +68,15 @@ function makeGroundTexture(base, light, dark, seed = 1) {
   // Deterministic scattered blobs for organic variation
   let s = seed * 9301
   const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280 }
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < 64; i++) {
     const x = rnd()*S, y = rnd()*S, r = 12 + rnd()*46
-    ctx.globalAlpha = 0.10 + rnd()*0.16
+    ctx.globalAlpha = 0.06 + rnd()*0.11
     ctx.fillStyle = rnd() > 0.5 ? dark : light
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill()
   }
   // Fine speckle
   ctx.globalAlpha = 0.5
-  for (let i = 0; i < 1400; i++) {
+  for (let i = 0; i < 760; i++) {
     const x = rnd()*S, y = rnd()*S
     ctx.fillStyle = rnd() > 0.5 ? dark : light
     ctx.fillRect(x, y, 1.6, 1.6)
@@ -104,14 +104,15 @@ function makeRibbonGeo(ctrlPts, width, N = 64) {
     const pp  = pts[Math.max(i - 1, 0)]
     const tan = np.clone().sub(pp).normalize()
     const perp = new THREE.Vector3(-tan.z, 0, tan.x)
-    // Taper to softly rounded ends, full width in the middle — keeps the
-    // stream from ending in a hard rectangular edge near the fence.
-    const w = (width * 0.5) * (0.42 + 0.66 * Math.sin(t * Math.PI))
+    // Gently narrow both ends without pinching the stream before the spillway.
+    const w = (width * 0.5) * (0.54 + 0.46 * Math.sin(t * Math.PI))
     const L = p.clone().addScaledVector(perp, -w)
     const R = p.clone().addScaledVector(perp,  w)
     verts.push(L.x, L.y, L.z, R.x, R.y, R.z)
     uvs.push(0, t * 5, 1, t * 5)
-    if (i < N) { const b = i * 2; idxs.push(b, b+2, b+1, b+1, b+2, b+3) }
+    // Wind counter-clockwise so the surface normal points up. Distortion along
+    // a downward normal pushed the animated water into the island and flickered.
+    if (i < N) { const b = i * 2; idxs.push(b, b+1, b+2, b+1, b+3, b+2) }
   }
   const geo = new THREE.BufferGeometry()
   geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3))
@@ -130,15 +131,16 @@ function getTimeOfDay() {
   return {
     isNight, isDusk, isDawn,
     // The sky stays deep and calm at every hour (harmonizes with the app's
-    // dark shell — the island reads as a bright diorama floating in it).
+    // dark shell — the island reads as a calm, dimensional sanctuary in it).
     // Time of day lives in the LIGHTING, which is where it reads best.
-    bgColor:  isNight ? '#070d17' : isDusk  ? '#170f0a' : isDawn  ? '#161109' : '#0a1d22',
-    skyTop:   isNight ? '#1a2d5a' : isDusk  ? '#cc5522' : '#aadef5',
-    skyGnd:   isNight ? '#1a1200' : isDusk  ? '#7a2d08' : '#a8d67e',
-    sunInt:   isNight ? 0.22 : isDusk ? 1.1 : isDawn ? 1.3 : 2.0,
-    sunColor: isNight ? '#8090c0' : isDusk ? '#ff8030' : '#fff0d2',
+    bgColor:  isNight ? '#050a0d' : isDusk ? '#130d0a' : isDawn ? '#0f1410' : '#071512',
+    skyTop:   isNight ? '#10223a' : isDusk ? '#6e3f2c' : isDawn ? '#58624c' : '#294b43',
+    skyGnd:   isNight ? '#0d1212' : isDusk ? '#2c1e15' : isDawn ? '#26382b' : '#284437',
+    sunInt:   isNight ? 0.20 : isDusk ? 0.78 : isDawn ? 0.92 : 1.22,
+    sunColor: isNight ? '#7788a8' : isDusk ? '#e98a55' : isDawn ? '#e5c99c' : '#f2d7b2',
     sunPos:   isNight ? [-5, 8, 5] : [9, 20, 9],
-    ambInt:   isNight ? 0.15 : 0.82,
+    ambInt:   isNight ? 0.13 : isDusk ? 0.36 : isDawn ? 0.42 : 0.50,
+    exposure: isNight ? 0.74 : isDusk ? 0.84 : isDawn ? 0.86 : 0.90,
   }
 }
 let TOD = getTimeOfDay()
@@ -291,16 +293,16 @@ function GltfToon({ url, position = [0,0,0], rotation = [0,0,0], scale = 1,
 }
 
 // ─── Floating island ──────────────────────────────────────────────────────────
-// Per-stage ground palette: barren brown (0) → deep lush green (5)
+// Per-stage ground palette: a prepared seedbed (0) → a deep sanctuary green (7)
 const STAGE_GROUND = [
-  { base: '#9d8558', light: '#c2ad7a', dark: '#77643f', lip: '#715a34' },
-  { base: '#9eaa61', light: '#c5cf82', dark: '#748247', lip: '#69763d' },
-  { base: '#82b963', light: '#b6d98b', dark: '#5f9349', lip: '#568a40' },
-  { base: '#70b957', light: '#a9d77e', dark: '#4f9340', lip: '#468a38' },
-  { base: '#62b550', light: '#9fd376', dark: '#438d38', lip: '#3d8432' },
-  { base: '#55ad48', light: '#94cf6d', dark: '#398532', lip: '#347b2d' },
-  { base: '#49a842', light: '#8bcb67', dark: '#327e2d', lip: '#2e7628' },
-  { base: '#3fa13d', light: '#82c961', dark: '#2c7829', lip: '#286f24' },
+  { base: '#776948', light: '#9c8c60', dark: '#554a33', lip: '#57462f' },
+  { base: '#73794b', light: '#949b62', dark: '#535b38', lip: '#4c5534' },
+  { base: '#657d4f', light: '#829c65', dark: '#465f3a', lip: '#415a37' },
+  { base: '#587c4c', light: '#77975f', dark: '#3c5d38', lip: '#385536' },
+  { base: '#4d7948', light: '#6b925b', dark: '#355936', lip: '#315234' },
+  { base: '#447344', light: '#628b58', dark: '#2e5434', lip: '#2b4d31' },
+  { base: '#3d6d42', light: '#598252', dark: '#294d31', lip: '#27482f' },
+  { base: '#37663f', light: '#527b4f', dark: '#25472f', lip: '#24432d' },
 ]
 function FloatingIsland({ stage }) {
   const g = STAGE_GROUND[Math.max(0, Math.min(7, stage))]
@@ -318,7 +320,7 @@ function FloatingIsland({ stage }) {
         <meshToonMaterial color={g.lip} gradientMap={getToonGrad()} />
       </mesh>
       {/* Warm earthy cliff strata */}
-      {[{y:-0.32,t:8.55,b:7.3,h:2.0,c:'#b08350'},{y:-2.10,t:7.3,b:5.6,h:1.8,c:'#946a3c'},{y:-3.60,t:5.6,b:3.6,h:1.5,c:'#74512c'}]
+      {[{y:-0.32,t:8.55,b:7.3,h:2.0,c:'#785d43'},{y:-2.10,t:7.3,b:5.6,h:1.8,c:'#604934'},{y:-3.60,t:5.6,b:3.6,h:1.5,c:'#463526'}]
         .map((cl, i) => (
           <mesh key={i} position={[0, cl.y, 0]}>
             <cylinderGeometry args={[cl.t, cl.b, cl.h, 48]} />
@@ -327,7 +329,7 @@ function FloatingIsland({ stage }) {
         ))}
       <mesh position={[0, -5.1, 0]}>
         <coneGeometry args={[3.6, 3.6, 32]} />
-        <meshToonMaterial color="#5a3416" gradientMap={getToonGrad()} />
+        <meshToonMaterial color="#32231b" gradientMap={getToonGrad()} />
       </mesh>
       <HangingRoots />
       <FloatingRocks />
@@ -395,7 +397,7 @@ function FloatingRocks() {
 // ─── Grass tufts — lush multi-tone clumps ─────────────────────────────────────
 const GRASS_COUNT = 760
 // Approx stream centreline z at a given x (matches STREAM_CTRL slope)
-const streamZAt = () => 0   // river now runs straight across the middle (z = 0)
+const streamZAt = (x) => Math.sin(x * 0.9) * 0.12
 // Grass per stage: dead/dry & sparse at 0 → lush, dense, deep-green at 5.
 const STAGE_GRASS = [
   { count: 180, h: [0.40, 0.76], tones: ['#899456', '#9da365', '#788449', '#b2aa70'] },
@@ -468,17 +470,18 @@ function GrassBlades({ stage, windStrength }) {
 }
 
 // ─── Stream ───────────────────────────────────────────────────────────────────
-// Runs straight across the MIDDLE (z = 0) along the x-axis. Together with the
-// path (x = 0) it forms a centred cross dividing the island into 4 quadrants.
-// Tapered ends keep the water inside the fence (r 7.65).
+// A gently meandering stream crosses the island along the x-axis and meets the
+// path at the central bridge. Its ends now reach the rim and feed both falls.
 const STREAM_CTRL = [
-  new THREE.Vector3(-6.4, 0, 0),
-  new THREE.Vector3(-4.3, 0, 0),
-  new THREE.Vector3(-2.1, 0, 0),
+  new THREE.Vector3(-8.48, 0,  0.00),
+  new THREE.Vector3(-6.40, 0, -0.12),
+  new THREE.Vector3(-4.20, 0,  0.14),
+  new THREE.Vector3(-2.10, 0, -0.08),
   new THREE.Vector3( 0.0, 0, 0),   // bridge crossing — dead centre
-  new THREE.Vector3( 2.1, 0, 0),
-  new THREE.Vector3( 4.3, 0, 0),
-  new THREE.Vector3( 6.4, 0, 0),
+  new THREE.Vector3( 2.10, 0,  0.10),
+  new THREE.Vector3( 4.20, 0, -0.14),
+  new THREE.Vector3( 6.40, 0,  0.10),
+  new THREE.Vector3( 8.48, 0,  0.00),
 ]
 
 // Pulsing foam cluster where water meets the bridge / rocks
@@ -498,7 +501,7 @@ function FoamTuft({ position, t0 = 0 }) {
       {[[0,0,0.12],[0.12,0.05,0.08],[-0.10,0.06,0.09],[0.04,-0.10,0.07]].map((b, i) => (
         <mesh key={i} position={[b[0], 0, b[1]]} scale={[1, 0.4, 1]}>
           <sphereGeometry args={[b[2], 7, 7]} />
-          <meshToonMaterial color="#f2ffff" gradientMap={getToonGrad()} transparent opacity={0.7} />
+          <meshToonMaterial color="#dce9e2" gradientMap={getToonGrad()} transparent opacity={0.5} />
         </mesh>
       ))}
     </group>
@@ -507,52 +510,51 @@ function FoamTuft({ position, t0 = 0 }) {
 
 function Stream() {
   // NB: island top surface sits at y≈0.95 — every layer must clear it or it's buried.
-  const bankGeo = useMemo(() => makeRibbonGeo(STREAM_CTRL, 3.0), [])
-  const sandGeo = useMemo(() => makeRibbonGeo(STREAM_CTRL, 2.5), [])
-  const foamGeo = useMemo(() => makeRibbonGeo(STREAM_CTRL, 2.34), [])
-  const deepGeo = useMemo(() => makeRibbonGeo(STREAM_CTRL, 1.5), [])
-  const watGeo  = useMemo(() => makeRibbonGeo(STREAM_CTRL, 2.15), [])
-  const coreGeo = useMemo(() => makeRibbonGeo(STREAM_CTRL, 0.95), [])
+  const bankGeo = useMemo(() => makeRibbonGeo(STREAM_CTRL, 2.85), [])
+  const sandGeo = useMemo(() => makeRibbonGeo(STREAM_CTRL, 2.42), [])
+  const foamGeo = useMemo(() => makeRibbonGeo(STREAM_CTRL, 2.26), [])
+  const deepGeo = useMemo(() => makeRibbonGeo(STREAM_CTRL, 1.45), [])
+  const watGeo  = useMemo(() => makeRibbonGeo(STREAM_CTRL, 2.08), [])
+  const coreGeo = useMemo(() => makeRibbonGeo(STREAM_CTRL, 0.72), [])
 
   return (
     <group>
-      {/* Earthen bank — frames the channel, just above ground.
-          NB: ribbon normals point down, so every layer needs DoubleSide. */}
+      {/* Earthen bank — frames the channel just above the island surface. */}
       <mesh position={[0, 0.956, 0]} receiveShadow>
         <primitive object={bankGeo} attach="geometry" />
-        <meshToonMaterial color="#5a3a1c" gradientMap={getToonGrad()} side={THREE.DoubleSide} />
+        <meshToonMaterial color="#49372a" gradientMap={getToonGrad()} side={THREE.DoubleSide} />
       </mesh>
       {/* Sandy / pebbly shallows */}
       <mesh position={[0, 0.965, 0]} receiveShadow>
         <primitive object={sandGeo} attach="geometry" />
-        <meshToonMaterial color="#d8c298" gradientMap={getToonGrad()} side={THREE.DoubleSide} />
+        <meshToonMaterial color="#9a8b70" gradientMap={getToonGrad()} side={THREE.DoubleSide} />
       </mesh>
       {/* Deep channel — darker teal centre, gives the water depth */}
       <mesh position={[0, 0.971, 0]}>
         <primitive object={deepGeo} attach="geometry" />
-        <meshToonMaterial color="#117a98" gradientMap={getToonGrad()} side={THREE.DoubleSide} />
+        <meshToonMaterial color="#174d5a" gradientMap={getToonGrad()} side={THREE.DoubleSide} />
       </mesh>
       {/* White foam rim at the water's edge */}
       <mesh position={[0, 0.974, 0]}>
         <primitive object={foamGeo} attach="geometry" />
-        <meshToonMaterial color="#eafdff" gradientMap={getToonGrad()} transparent opacity={0.85} side={THREE.DoubleSide} />
+        <meshToonMaterial color="#cbd8d1" gradientMap={getToonGrad()} transparent opacity={0.62} side={THREE.DoubleSide} />
       </mesh>
-      {/* Water surface — bright Hay Day turquoise (transparent so depth shows) */}
+      {/* Water surface — restrained teal with a soft moving current */}
       <mesh position={[0, 0.981, 0]}>
         <primitive object={watGeo} attach="geometry" />
         <MeshDistortMaterial
-          color="#2fc6dc" emissive="#0e8fb0" emissiveIntensity={0.38}
-          roughness={0.10} metalness={0.20} transparent opacity={0.82}
-          distort={0.16} speed={1.2} side={THREE.DoubleSide}
+          color="#2b7c84" emissive="#163f46" emissiveIntensity={0.12}
+          roughness={0.32} metalness={0.04} transparent opacity={0.84}
+          distort={0.10} speed={0.75} side={THREE.DoubleSide}
         />
       </mesh>
       {/* Brighter central current — sun glint + flow read */}
       <mesh position={[0, 0.988, 0]}>
         <primitive object={coreGeo} attach="geometry" />
         <MeshDistortMaterial
-          color="#bdf1f8" emissive="#5cccde" emissiveIntensity={0.32}
-          roughness={0.06} metalness={0.15} transparent opacity={0.55}
-          distort={0.30} speed={1.9} side={THREE.DoubleSide}
+          color="#a8cbc6" emissive="#35666a" emissiveIntensity={0.10}
+          roughness={0.22} metalness={0.03} transparent opacity={0.34}
+          distort={0.16} speed={1.1} side={THREE.DoubleSide}
         />
       </mesh>
       {/* Foam crescents where the water meets the bridge piers + bank rocks */}
@@ -560,52 +562,122 @@ function Stream() {
         <FoamTuft key={i} position={[p[0], 0.99, p[1]]} t0={i * 1.3} />
       ))}
       {/* Foam / ripple sparkle drifting along the water */}
-      <Sparkles count={26} scale={[13, 0.3, 1.4]} position={[0, 1.04, 0]}
-        size={1.4} speed={0.5} color="#eaffff" opacity={0.75} />
+      <Sparkles count={10} scale={[15.5, 0.22, 1.25]} position={[0, 1.04, 0]}
+        size={1.0} speed={0.28} color="#dcebe5" opacity={0.28} />
     </group>
   )
 }
 
 // ─── Waterfalls off the stream ends ───────────────────────────────────────────
-const FALL_COLOR = '#7df9ff'
-function WaterfallPlane({ x, phase = 0 }) {
-  const ref = useRef(), matRef = useRef()
-  useFrame(({ clock }) => {
-    if (!ref.current || !matRef.current) return
-    const t = clock.elapsedTime + phase
-    matRef.current.opacity = 0.60 + Math.sin(t * 2.4) * 0.22
-    // A gentle vertical undulation sells downward motion without extra textures.
-    ref.current.scale.y = 1 + Math.sin(t * 3.0) * 0.04
+const WATERFALL_VERTEX = `
+  varying vec2 vUv;
+  uniform float uTime;
+  uniform float uPhase;
+  void main() {
+    vUv = uv;
+    vec3 p = position;
+    float seamLock = 1.0 - smoothstep(0.72, 1.0, uv.y);
+    float ripple = sin(uv.y * 16.0 + uTime * 2.2 + uv.x * 7.0 + uPhase) * 0.022;
+    p.z += ripple * seamLock;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  }
+`
+
+const WATERFALL_FRAGMENT = `
+  varying vec2 vUv;
+  uniform float uTime;
+  uniform float uPhase;
+  void main() {
+    float edge = smoothstep(0.02, 0.15, vUv.x) * smoothstep(0.02, 0.15, 1.0 - vUv.x);
+    float bottom = smoothstep(0.0, 0.14, vUv.y);
+    float strands = 0.5 + 0.5 * sin(vUv.x * 32.0 + sin(vUv.y * 7.0) - uTime * 0.45 + uPhase);
+    float flow = pow(0.5 + 0.5 * sin(vUv.y * 38.0 + uTime * 3.2 + vUv.x * 6.0 + uPhase), 7.0);
+    float crest = smoothstep(0.84, 1.0, vUv.y);
+    vec3 deepWater = vec3(0.075, 0.275, 0.300);
+    vec3 softLight = vec3(0.520, 0.690, 0.660);
+    float detail = 0.15 + strands * 0.16 + flow * 0.18 + crest * 0.20;
+    vec3 color = mix(deepWater, softLight, detail);
+    float alpha = edge * bottom * (0.48 + strands * 0.09 + flow * 0.07 + crest * 0.10);
+    gl_FragColor = vec4(color, alpha);
+  }
+`
+
+function WaterfallSheet({ side, phase = 0, reducedMotion = false }) {
+  const materialRef = useRef()
+  const animationTime = useRef(0)
+  const uniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uPhase: { value: phase },
+  }), [phase])
+
+  useFrame((_, delta) => {
+    if (!materialRef.current || reducedMotion) return
+    // Clamp long background-tab frames so the water resumes without jumping.
+    animationTime.current += Math.min(delta, 0.05)
+    materialRef.current.uniforms.uTime.value = animationTime.current
   })
-  return (
-    <mesh ref={ref} position={[x, -0.35, 0]}>
-      <planeGeometry args={[0.32, 2.6, 1, 10]} />
-      <meshBasicMaterial ref={matRef} color={FALL_COLOR} transparent opacity={0.7} side={THREE.DoubleSide} depthWrite={false} />
-    </mesh>
-  )
-}
-function Waterfalls() {
+
   return (
     <group>
-      {/* East end — placed at the actual island rim, past the stream end */}
-      {[-0.28, 0, 0.28].map((o, i) => (
-        <WaterfallPlane key={`wfe${i}`} x={8.05 + o} phase={i * 0.9} />
+      {/* A short chute bridges the horizontal stream over the grassy lip. */}
+      <mesh position={[side * 8.43, 0.967, 0]}>
+        <boxGeometry args={[0.5, 0.075, 1.24]} />
+        <meshStandardMaterial color="#2a6d73" emissive="#14383d" emissiveIntensity={0.08}
+          roughness={0.30} metalness={0.02} />
+      </mesh>
+      {/* The sheet sits just outside the 8.55-radius cliff instead of clipping through it. */}
+      <mesh position={[side * 8.58, -0.78, 0]} rotation={[0, Math.PI / 2, 0]} renderOrder={6}>
+        <planeGeometry args={[1.3, 3.52, 18, 30]} />
+        <shaderMaterial ref={materialRef} uniforms={uniforms}
+          vertexShader={WATERFALL_VERTEX} fragmentShader={WATERFALL_FRAGMENT}
+          transparent side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
+      </mesh>
+    </group>
+  )
+}
+
+const MIST_PUFFS = [
+  [-0.04, 0.02, -0.56, 0.68],
+  [ 0.03, 0.12,  0.02, 0.86],
+  [-0.02, 0.00,  0.58, 0.62],
+  [ 0.07, 0.22,  0.30, 0.44],
+]
+function WaterfallMist({ side, reducedMotion = false }) {
+  const mistRef = useRef()
+  const animationTime = useRef(0)
+  useFrame((_, delta) => {
+    if (!mistRef.current || reducedMotion) return
+    animationTime.current += Math.min(delta, 0.05)
+    const pulse = 1 + Math.sin(animationTime.current * 1.2 + side) * 0.05
+    mistRef.current.scale.set(pulse, pulse, pulse)
+  })
+  return (
+    <group ref={mistRef} position={[side * 8.60, -2.48, 0]}>
+      {MIST_PUFFS.map((p, index) => (
+        <mesh key={index} position={[p[0], p[1], p[2]]} scale={[p[3] * 0.55, p[3] * 0.20, p[3]]}>
+          <sphereGeometry args={[1, 10, 8]} />
+          <meshBasicMaterial color="#c5d8d1" transparent opacity={0.13} depthWrite={false} />
+        </mesh>
       ))}
-      {/* West end */}
-      {[-0.28, 0, 0.28].map((o, i) => (
-        <WaterfallPlane key={`wfw${i}`} x={-8.05 + o} phase={i * 0.9 + 1.5} />
-      ))}
-      {/* Mist puffs at the bases */}
-      <Sparkles count={14} scale={[2.0, 1.0, 1.6]} position={[-8.05, -1.65, 0]}
-        size={2.6} speed={0.45} color="#c8fbff" opacity={0.75} />
-      <Sparkles count={14} scale={[2.0, 1.0, 1.6]} position={[8.05, -1.65, 0]}
-        size={2.6} speed={0.45} color="#c8fbff" opacity={0.75} />
+      {!reducedMotion && <Sparkles count={5} scale={[0.45, 0.48, 1.8]} position={[0, 0.14, 0]}
+        size={1.0} speed={0.22} color="#d8e7e1" opacity={0.24} />}
+    </group>
+  )
+}
+
+function Waterfalls({ reducedMotion = false }) {
+  return (
+    <group>
+      <WaterfallSheet side={-1} phase={1.7} reducedMotion={reducedMotion} />
+      <WaterfallSheet side={1} phase={0} reducedMotion={reducedMotion} />
+      <WaterfallMist side={-1} reducedMotion={reducedMotion} />
+      <WaterfallMist side={1} reducedMotion={reducedMotion} />
     </group>
   )
 }
 
 // ─── Stone bridge over the stream ─────────────────────────────────────────────
-// Spans the stream at x=0, z≈-2.1. Bridge runs along Z axis (path direction).
+// Spans the stream at the centre. The bridge runs along the Z axis (the path).
 function StreamBridge() {
   return (
     <group position={[0, 0.96, 0]}>
@@ -836,6 +908,7 @@ function SceneRocks() {
 // ─── Fence ring ───────────────────────────────────────────────────────────────
 // Connected picket fence: ground-anchored posts joined by two horizontal rails.
 const POST_COUNT = 30, FENCE_R = 7.65
+const isFenceOpening = (angle) => Math.min(Math.abs(Math.sin(angle)), Math.abs(Math.cos(angle))) * FENCE_R < 1.15
 function Fence() {
   const postRef = useRef(), railTopRef = useRef(), railBotRef = useRef()
   const capRef  = useRef()
@@ -850,15 +923,17 @@ function Fence() {
       const ma = ((i+0.5)/POST_COUNT)*Math.PI*2    // mid-span angle (rail centre)
       const rr = -ma + Math.PI/2                    // align rail tangent to ring
       // Post — anchored into the ground, facing centre
+      const postScale = isFenceOpening(pa) ? 0 : 1
       dummy.position.set(Math.cos(pa)*FENCE_R, 1.16, Math.sin(pa)*FENCE_R)
-      dummy.rotation.set(0, -pa, 0); dummy.scale.set(1,1,1); dummy.updateMatrix()
+      dummy.rotation.set(0, -pa, 0); dummy.scale.setScalar(postScale); dummy.updateMatrix()
       postRef.current.setMatrixAt(i, dummy.matrix)
       // Post cap
       dummy.position.set(Math.cos(pa)*FENCE_R, 1.47, Math.sin(pa)*FENCE_R)
       dummy.updateMatrix(); capRef.current.setMatrixAt(i, dummy.matrix)
       // Top rail
+      const railScale = isFenceOpening(ma) ? 0 : 1
       dummy.position.set(Math.cos(ma)*FENCE_R, 1.32, Math.sin(ma)*FENCE_R)
-      dummy.rotation.set(0, rr, 0); dummy.updateMatrix()
+      dummy.rotation.set(0, rr, 0); dummy.scale.setScalar(railScale); dummy.updateMatrix()
       railTopRef.current.setMatrixAt(i, dummy.matrix)
       // Bottom rail
       dummy.position.set(Math.cos(ma)*FENCE_R, 1.07, Math.sin(ma)*FENCE_R)
@@ -1300,7 +1375,8 @@ function CloudShape({ position, scale = 1, dark = false, speed = 1, opacity = 1,
         .map((s,i) => (
           <mesh key={i} position={s.p}>
             <sphereGeometry args={[s.r,10,10]} />
-            <meshToonMaterial color={dark?'#5e6c7c':'#cfdde6'} gradientMap={getToonGrad()} transparent opacity={(dark?0.72:0.45)*opacity} />
+            <meshToonMaterial color={dark ? '#455258' : '#6e817b'} gradientMap={getToonGrad()}
+              transparent opacity={(dark ? 0.42 : 0.28) * opacity} depthWrite={false} />
           </mesh>
         ))}
     </group>
@@ -1309,7 +1385,7 @@ function CloudShape({ position, scale = 1, dark = false, speed = 1, opacity = 1,
 
 // ─── Cloud framing — high, large clouds for tall phone viewports ──────────────
 function CloudFraming({ dark = false, windStrength = 0 }) {
-  const opacity = TOD.isNight ? 0.06 : 0.22
+  const opacity = TOD.isNight ? 0.18 : 0.50
   return (
     <group>
       <CloudShape position={[-14, 13, -22]} scale={1.2} dark={dark} speed={0.35} opacity={opacity} windStrength={windStrength} />
@@ -1577,7 +1653,7 @@ function IslandGroup({ groupedGoals, stage, momentum, onSelectGoal, onSelectOver
       <StreamRipples />
       <StreamDecor />
       <StreamBridge />
-      <Waterfalls />
+      <Waterfalls reducedMotion={reducedMotion} />
       <PathStones />
       <SceneRocks />
       <Fence />
@@ -1634,10 +1710,10 @@ function Scene({ groupedGoals, stage, momentum, sceneTone, onSelectGoal, onSelec
         shadow-camera-bottom={-16}
         shadow-bias={-0.0005}
       />
-      <directionalLight position={[-8, 4, -10]} intensity={TOD.isNight ? 0.10 : 0.38} color="#b8d4ff" />
+      <directionalLight position={[-8, 4, -10]} intensity={TOD.isNight ? 0.08 : 0.18} color="#9fb6ac" />
       {/* Stream glow — soft cool fill near the water (river runs along z = 0) */}
-      <pointLight position={[0, 1.05, 0]} intensity={TOD.isNight ? 1.6 : 0.55} color="#5cc6f0" distance={9} decay={2.2} />
-      <fog attach="fog" args={[TOD.isNight ? '#050d18' : '#0f2a30', 42, 115]} />
+      <pointLight position={[0, 1.05, 0]} intensity={TOD.isNight ? 0.75 : 0.22} color="#4f8f91" distance={8} decay={2.2} />
+      <fog attach="fog" args={[TOD.bgColor, 38, 105]} />
 
       <ContactShadows position={[0, 0.97, 0]} opacity={0.50} width={24} height={24} blur={2.2} far={4.5} color="#1a3808" />
 
@@ -1663,18 +1739,16 @@ function Scene({ groupedGoals, stage, momentum, sceneTone, onSelectGoal, onSelec
       ))}
       {!reducedMotion && TOD.isNight && momentum !== 'resting' && stage >= 2 && <Fireflies />}
       <CloudFraming dark={false} windStrength={windStrength} />
-      <CloudShape position={[-23, 12, -15]} scale={1.5} dark={false} speed={reducedMotion ? 0 : 0.35} windStrength={windStrength} />
-      <CloudShape position={[ 22, 14, -18]} scale={1.2} dark={false} speed={reducedMotion ? 0 : 0.42} windStrength={windStrength} />
       {cloudCount > 0 && (
         <>
-          <CloudShape position={[-16, 10, -6]} scale={1.2} dark={false} speed={reducedMotion ? 0 : 0.45} windStrength={windStrength} />
-          <CloudShape position={[14, 8, -10]} scale={1.0} dark={false} speed={reducedMotion ? 0 : 0.55} windStrength={windStrength} />
+          <CloudShape position={[-16, 10, -6]} scale={1.1} dark={false} speed={reducedMotion ? 0 : 0.45} opacity={0.72} windStrength={windStrength} />
+          <CloudShape position={[14, 8, -10]} scale={0.9} dark={false} speed={reducedMotion ? 0 : 0.55} opacity={0.66} windStrength={windStrength} />
         </>
       )}
       {quality === 'high' && !reducedMotion && <EffectComposer multisampling={0}>
-        <Bloom intensity={0.42} luminanceThreshold={0.60} luminanceSmoothing={0.85} mipmapBlur radius={0.66} />
-        <HueSaturation saturation={TOD.isNight ? 0.04 : 0.11} />
-        <Vignette eskil={false} offset={0.28} darkness={TOD.isNight ? 0.72 : 0.34} />
+        <Bloom intensity={0.18} luminanceThreshold={0.82} luminanceSmoothing={0.76} mipmapBlur radius={0.44} />
+        <HueSaturation saturation={TOD.isNight ? -0.02 : -0.08} />
+        <Vignette eskil={false} offset={0.24} darkness={TOD.isNight ? 0.70 : 0.46} />
       </EffectComposer>}
     </>
   )
@@ -1796,7 +1870,7 @@ const Garden3D = memo(function Garden3D({ onSelectGoal, onSelectOverflow, onSele
           shadows={quality === 'high' ? { type: THREE.PCFSoftShadowMap } : false}
           dpr={quality === 'high' ? [1, 1.5] : [1, 1]}
           gl={{ antialias: true, powerPreference: 'high-performance',
-                toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: TOD.isNight ? 0.80 : 1.13 }}
+                toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: TOD.exposure }}
           camera={{ position: [18, 28, 18], zoom: 21 }}
           onCreated={({ camera }) => { camera.lookAt(0, 0.5, 0); camera.updateProjectionMatrix() }}
         >
