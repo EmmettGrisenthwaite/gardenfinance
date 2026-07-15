@@ -29,7 +29,7 @@ export function getDataGaps({ profile, accounts = [], debts = [], goals = [], ca
         ? `What's the interest rate on ${worst.name}?`
         : `What are the interest rates on your debts? (${unrated.length} missing)`,
       sub: 'Changes the payoff order and how urgent it is.',
-      cta: 'Add rate', href: '/money', sheet: 'debts',
+      cta: 'Add rate', href: '/?sheet=debts', sheet: 'debts',
     })
   }
 
@@ -42,7 +42,7 @@ export function getDataGaps({ profile, accounts = [], debts = [], goals = [], ca
         ? `What's the minimum payment on ${largest.name}?`
         : `Add minimum payments for ${missingMinimums.length} debts`,
       sub: 'Needed before the app can show an honest debt-free date.',
-      cta: 'Add payment', href: '/money', sheet: 'debts',
+      cta: 'Add payment', href: '/?sheet=debts', sheet: 'debts',
     })
   }
 
@@ -52,7 +52,7 @@ export function getDataGaps({ profile, accounts = [], debts = [], goals = [], ca
       id: 'account_subtype',
       label: `What kind of account is ${missingSubtype.name}?`,
       sub: 'Improves liquidity, tax, and contribution guidance.',
-      cta: 'Add type', href: '/money', sheet: 'cash',
+      cta: 'Add type', href: '/?sheet=cash', sheet: 'cash',
     })
   }
 
@@ -63,7 +63,7 @@ export function getDataGaps({ profile, accounts = [], debts = [], goals = [], ca
       id: 'cash_apy',
       label: `Add the APY for ${missingApy.name}`,
       sub: `${subtypeLabel(missingApy)} rates reveal whether idle cash could earn more.`,
-      cta: 'Add APY', href: '/money', sheet: 'cash',
+      cta: 'Add APY', href: '/?sheet=cash', sheet: 'cash',
     })
   }
 
@@ -76,7 +76,7 @@ export function getDataGaps({ profile, accounts = [], debts = [], goals = [], ca
       id: 'invest_amount',
       label: 'How much do you have invested so far?',
       sub: 'So your advisor stops suggesting you start from zero.',
-      cta: 'Add amount', href: '/money', sheet: 'investment',
+      cta: 'Add amount', href: '/?sheet=investment', sheet: 'investment',
     })
   }
 
@@ -87,7 +87,7 @@ export function getDataGaps({ profile, accounts = [], debts = [], goals = [], ca
       id: 'income',
       label: 'What do you take home each month?',
       sub: 'Every recommendation starts from your real cash flow.',
-      cta: 'Add income', href: '/money', sheet: 'plan',
+      cta: 'Add income', href: '/?sheet=plan', sheet: 'plan',
     })
   }
 
@@ -98,7 +98,7 @@ export function getDataGaps({ profile, accounts = [], debts = [], goals = [], ca
       id: 'expenses',
       label: "What's your monthly spending — rent, food, bills, subscriptions?",
       sub: 'Unlocks your savings rate and emergency-fund target.',
-      cta: 'Add expenses', href: '/money', sheet: 'plan',
+      cta: 'Add expenses', href: '/?sheet=plan', sheet: 'plan',
     })
   }
 

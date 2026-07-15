@@ -1,0 +1,47 @@
+.illustrated-garden {
+  min-width: 0;
+  border: 1px solid rgba(167, 243, 208, 0.13);
+  border-radius: 28px;
+  background: linear-gradient(160deg, rgba(18, 38, 30, 0.92), rgba(7, 18, 14, 0.97));
+  box-shadow: 0 24px 65px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+.illustrated-garden-status { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.1rem 0.85rem; }
+.illustrated-garden-art { position: relative; display: block; width: 100%; height: clamp(220px, 56vw, 280px); overflow: hidden; border-block: 1px solid rgba(255,255,255,.07); background: #092129; cursor: pointer; text-align: left; isolation: isolate; }
+.illustrated-garden-art:focus-visible { outline: 2px solid rgba(110, 231, 183, .9); outline-offset: -3px; }
+.illustrated-garden-art picture, .illustrated-garden-art img { display: block; width: 100%; height: 100%; }
+.illustrated-garden-art img { object-fit: cover; object-position: center; filter: saturate(.84) brightness(.84) contrast(1.04); transition: filter 220ms ease; }
+.illustrated-garden-art:hover img { filter: saturate(.9) brightness(.88) contrast(1.04); }
+.garden-sky-softener { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(to bottom, rgba(3,18,22,.08), transparent 50%, rgba(4,13,9,.1)); }
+.tone-strained .garden-sky-softener { background: linear-gradient(to bottom, rgba(19,28,33,.36), rgba(9,25,23,.1) 58%, transparent); }
+.garden-drifting-light { position: absolute; z-index: 2; top: -25%; left: -15%; width: 50%; height: 115%; transform: rotate(12deg); background: linear-gradient(90deg, transparent, rgba(255,225,166,.09), transparent); filter: blur(12px); pointer-events: none; }
+.is-moving .garden-drifting-light { animation: garden-light 14s ease-in-out infinite; }
+.illustrated-garden-layers { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; pointer-events: none; }
+.garden-reveal { transform-box: fill-box; transform-origin: bottom center; animation: garden-layer-arrive 650ms cubic-bezier(.22,1,.36,1) both; }
+.is-moving .garden-water-light { animation: garden-water 4.5s ease-in-out infinite; }
+.is-moving .garden-sprouts, .is-moving .garden-flowers { animation: garden-layer-arrive 650ms cubic-bezier(.22,1,.36,1) both, garden-sway 5.5s ease-in-out 700ms infinite; }
+.is-moving .garden-young-trees, .is-moving .garden-mature-trees { animation: garden-layer-arrive 650ms cubic-bezier(.22,1,.36,1) both, garden-sway 7s ease-in-out 800ms infinite; }
+.illustrated-goal-plant { position: absolute; z-index: 4; width: clamp(50px, 9vw, 72px); aspect-ratio: 76 / 94; transform: translate(-50%, -78%) scale(var(--goal-scale)); transform-origin: 50% 100%; filter: drop-shadow(0 9px 9px rgba(0,0,0,.25)); pointer-events: none; animation: garden-layer-arrive 650ms cubic-bezier(.22,1,.36,1) both; }
+.illustrated-goal-plant svg { display: block; width: 100%; height: 100%; }
+.is-moving .illustrated-goal-plant { animation: garden-layer-arrive 650ms cubic-bezier(.22,1,.36,1) both, garden-goal-breathe 6s ease-in-out 900ms infinite; }
+.illustrated-garden-open-cue { position: absolute; z-index: 6; right: .75rem; bottom: .7rem; min-height: 30px; display: inline-flex; align-items: center; border: 1px solid rgba(255,255,255,.15); border-radius: 999px; background: rgba(5,17,13,.76); padding: 0 .65rem; color: rgba(255,255,255,.9); font-size: 11px; font-weight: 700; backdrop-filter: blur(10px); }
+.illustrated-garden-progress { display: flex; align-items: center; gap: .75rem; padding: .8rem 1.1rem .65rem; }
+.illustrated-garden-progress > span { height: 6px; flex: 1; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.1); }
+.illustrated-garden-progress > span > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #4ade80, #6ee7b7); transition: width 500ms cubic-bezier(.22,1,.36,1); }
+.illustrated-garden-progress p { flex: none; color: var(--gf-text-secondary); font-size: 12px; font-weight: 650; }
+.illustrated-goal-controls { display: flex; gap: .45rem; overflow-x: auto; padding: 0 1.1rem 1rem; scrollbar-width: none; }
+.illustrated-goal-controls::-webkit-scrollbar { display: none; }
+.illustrated-goal-control { min-height: 44px; max-width: 220px; display: inline-flex; flex: none; align-items: center; gap: .4rem; border: 1px solid rgba(255,255,255,.1); border-radius: 13px; background: rgba(255,255,255,.045); padding: 0 .7rem; color: #d1fae5; font-size: 12px; font-weight: 650; }
+.illustrated-goal-control:hover { background: rgba(255,255,255,.08); }
+.illustrated-goal-control:focus-visible { outline: 2px solid rgba(110,231,183,.75); outline-offset: 2px; }
+.illustrated-goal-control span { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #f4f7f5; }
+.illustrated-goal-control strong { color: #a7f3d0; font-variant-numeric: tabular-nums; }
+.illustrated-goal-control--overflow { color: #f4f7f5; }
+@keyframes garden-layer-arrive { from { opacity: 0; transform: translateY(9px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes garden-water { 0%,100% { opacity: .38; transform: translateX(-4px); } 50% { opacity: .8; transform: translateX(5px); } }
+@keyframes garden-sway { 0%,100% { transform: rotate(-.45deg); } 50% { transform: rotate(.55deg); } }
+@keyframes garden-goal-breathe { 0%,100% { filter: drop-shadow(0 9px 9px rgba(0,0,0,.25)); } 50% { filter: drop-shadow(0 11px 12px rgba(0,0,0,.32)) brightness(1.035); } }
+@keyframes garden-light { 0%,100% { transform: translateX(-20%) rotate(12deg); opacity: .1; } 45%,60% { opacity: .75; } 50% { transform: translateX(245%) rotate(12deg); } }
+@media (min-width: 768px) { .illustrated-garden-art { height: 280px; } .illustrated-garden-status { padding-inline: 1.25rem; } }
+.is-reduced-motion .garden-reveal, .is-reduced-motion .garden-drifting-light, .is-reduced-motion .garden-water-light, .is-reduced-motion .garden-sprouts, .is-reduced-motion .garden-flowers, .is-reduced-motion .garden-young-trees, .is-reduced-motion .garden-mature-trees, .is-reduced-motion .illustrated-goal-plant { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .garden-reveal, .garden-drifting-light, .garden-water-light, .garden-sprouts, .garden-flowers, .garden-young-trees, .garden-mature-trees, .illustrated-goal-plant { animation: none !important; } }

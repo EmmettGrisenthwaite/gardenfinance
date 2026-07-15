@@ -160,7 +160,7 @@ function SaveFooter({ onCancel, onSave, saving, saveLabel = 'Save', disabled = f
   )
 }
 
-export default function Money() {
+export default function Money({ homeMode = false, renderHomeHero = null }) {
   const { user, profile, setProfile } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -213,11 +213,16 @@ export default function Money() {
   // open the exact sheet that resolves it — one less tap between "I was asked"
   // and "I'm typing the number".
   useEffect(() => {
-    const sheet = location.state?.sheet
+    const sheet = new URLSearchParams(location.search).get('sheet') || location.state?.sheet
     if (!sheet || loading) return
-    window.history.replaceState({}, '')   // don't re-open on back/refresh
     openSheet(sheet)
-  }, [loading]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loading, location.search, location.state]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!homeMode || loading || new URLSearchParams(location.search).get('section') !== 'money') return undefined
+    const frame = requestAnimationFrame(() => document.getElementById('home-money')?.scrollIntoView({ block: 'start' }))
+    return () => cancelAnimationFrame(frame)
+  }, [homeMode, loading, location.search])
 
   const snapshot = useMemo(() => computeSnapshot({
     profile, accounts, debts, goals, cashFlowItems, budgetLimits,
@@ -279,6 +284,15 @@ export default function Money() {
   function closeSheet() {
     setActiveSheet(null)
     resetSheetState()
+    if (homeMode) {
+      const params = new URLSearchParams(location.search)
+      if (params.has('sheet')) {
+        params.delete('sheet')
+        navigate({ pathname: '/', search: params.toString() ? `?${params}` : '' }, { replace: true })
+      }
+    } else if (location.state?.sheet) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
   }
 
   function updateDraft(field, value) {
@@ -909,32 +923,39 @@ export default function Money() {
 
   if (loading) return <div className="flex min-h-[55vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-emerald-300" /><span className="sr-only">Loading money data</span></div>
 
+  const renderNetWorth = () => (
+    <section className="overflow-hidden rounded-[28px] border border-emerald-200/15 bg-[radial-gradient(circle_at_top_right,rgba(52,211,153,0.13),transparent_42%),linear-gradient(145deg,rgba(14,31,24,0.98),rgba(7,17,13,0.98))] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.24)] sm:p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/75">Net worth</p>
+          <p className="mt-2 text-[34px] font-semibold leading-none tracking-[-0.04em] text-white sm:text-[42px]">{fmt(snapshot.netWorth)}</p>
+        </div>
+        <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-200/15 bg-emerald-300/[0.08] text-emerald-100"><Gauge className="h-5 w-5" /></span>
+      </div>
+      <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-readable-secondary">
+        <span><strong className="font-semibold text-white">{fmt(snapshot.assets)}</strong> assets</span>
+        <span><strong className="font-semibold text-white">{fmt(snapshot.totalDebt)}</strong> liabilities</span>
+        <span className={trend.has && trend.delta < 0 ? 'text-rose-100' : 'text-emerald-100'}>{trend.has ? `${trend.delta >= 0 ? '+' : ''}${fmt(trend.delta)} over ${trend.days} days` : '30-day change starts after your next snapshot'}</span>
+      </div>
+    </section>
+  )
+
   return (
-    <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className="mx-auto w-full max-w-3xl px-4 pb-10 md:px-6">
-      <PageHeader title="Money" subtitle="A clear plan first. Detail when you need it." actions={
+    <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className={`mx-auto w-full px-4 pb-10 md:px-6 ${homeMode ? 'max-w-6xl' : 'max-w-3xl'}`}>
+      <PageHeader title={homeMode ? 'Home' : 'Money'} subtitle={homeMode ? 'A calm view of what is growing and what matters next.' : 'A clear plan first. Detail when you need it.'} actions={
         <button type="button" onClick={() => openSheet('balances')} className="btn-ghost min-h-11 px-3" aria-label="Update balances"><RefreshCw className="h-4 w-4" /><span className="hidden sm:inline">Update</span></button>
       } />
 
       {error && <div role="alert" className="mb-4 flex gap-3 rounded-2xl border border-rose-300/20 bg-rose-400/[0.08] p-4 text-[13px] leading-5 text-rose-100"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>}
 
-      <div className="mb-4">
-        <MoneySetupNudge profile={profile} accounts={accounts} debts={debts} goals={goals} cashFlowItems={cashFlowItems} />
-      </div>
+      {!homeMode && <div className="mb-4">
+        <MoneySetupNudge profile={profile} accounts={accounts} debts={debts} goals={goals} cashFlowItems={cashFlowItems} onOpenGap={openSheet} />
+      </div>}
 
-      <section className="overflow-hidden rounded-[28px] border border-emerald-200/15 bg-[radial-gradient(circle_at_top_right,rgba(52,211,153,0.13),transparent_42%),linear-gradient(145deg,rgba(14,31,24,0.98),rgba(7,17,13,0.98))] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.24)] sm:p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/75">Net worth</p>
-            <p className="mt-2 text-[34px] font-semibold leading-none tracking-[-0.04em] text-white sm:text-[42px]">{fmt(snapshot.netWorth)}</p>
-          </div>
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-200/15 bg-emerald-300/[0.08] text-emerald-100"><Gauge className="h-5 w-5" /></span>
-        </div>
-        <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-readable-secondary">
-          <span><strong className="font-semibold text-white">{fmt(snapshot.assets)}</strong> assets</span>
-          <span><strong className="font-semibold text-white">{fmt(snapshot.totalDebt)}</strong> liabilities</span>
-          <span className={trend.has && trend.delta < 0 ? 'text-rose-100' : 'text-emerald-100'}>{trend.has ? `${trend.delta >= 0 ? '+' : ''}${fmt(trend.delta)} over ${trend.days} days` : '30-day change starts after your next snapshot'}</span>
-        </div>
-      </section>
+      {homeMode && renderHomeHero?.({
+        profile, accounts, debts, goals, cashFlowItems, budgetLimits, snapshot, trend, openSheet, renderNetWorth,
+      })}
+      {!homeMode && renderNetWorth()}
 
       <section aria-label="Financial health" className="mt-4 grid grid-cols-2 gap-2.5">
         <Metric label="Cash-flow margin" value={fmt(snapshot.cashFlowMargin)} note={`${Math.round(snapshot.savingsRate * 100)}% of typical income`} tone={snapshot.cashFlowMargin < 0 ? 'text-rose-100' : 'text-white'} />
@@ -943,7 +964,7 @@ export default function Money() {
         <Metric label="Left to assign" value={fmt(snapshot.unallocated)} note={`${fmt(snapshot.futureAllocations)} planned for future`} tone={snapshot.unallocated < 0 ? 'text-rose-100' : 'text-emerald-100'} />
       </section>
 
-      <section className={`mt-4 rounded-2xl border p-4 ${snapshot.next.urgent ? 'border-amber-300/20 bg-amber-300/[0.055]' : 'border-emerald-300/15 bg-emerald-300/[0.045]'}`}>
+      {!homeMode && <section className={`mt-4 rounded-2xl border p-4 ${snapshot.next.urgent ? 'border-amber-300/20 bg-amber-300/[0.055]' : 'border-emerald-300/15 bg-emerald-300/[0.045]'}`}>
         <div className="flex gap-3">
           <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${snapshot.next.urgent ? 'bg-amber-300/10 text-amber-100' : 'bg-emerald-300/10 text-emerald-100'}`}><ShieldCheck className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
@@ -956,11 +977,11 @@ export default function Money() {
             </button>
           </div>
         </div>
-      </section>
+      </section>}
 
-      <section className="mt-6">
+      <section id={homeMode ? 'home-money' : undefined} className="mt-6 scroll-mt-4">
         <div className="mb-3 flex items-end justify-between gap-3">
-          <div><h2 className="text-[18px] font-semibold text-readable-primary">Your money, organized</h2><p className="mt-1 text-[13px] text-readable-secondary">Tap a section only when you want the detail.</p></div>
+          <div><h2 className="text-[18px] font-semibold text-readable-primary">{homeMode ? 'Your money' : 'Your money, organized'}</h2><p className="mt-1 text-[13px] text-readable-secondary">Tap a section only when you want the detail.</p></div>
         </div>
         <div className="grid gap-2.5 md:grid-cols-2">
           <SummaryCard icon={CalendarDays} title="Monthly plan" total={`${fmt(planOutflow)}/mo`} meta={`${cashFlowItems.length} populated ${cashFlowItems.length === 1 ? 'category' : 'categories'}`} detail={`${fmt(snapshot.income)} income · ${fmt(snapshot.unallocated)} left to assign`} onClick={() => openSheet('plan')} />

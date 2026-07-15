@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { Sprout, LayoutDashboard, Target, Bot, Settings, Wallet } from 'lucide-react'
+import { Sprout, House, Target, Bot, Settings } from 'lucide-react'
 import Onboarding from '@/components/Onboarding'
 
-// Four focused tabs. Money is a first-class part of setup because the Plan and
-// Advisor both become more useful once the user's real numbers are entered.
+// Home combines the permanent garden, next action, and detailed money workspace.
 const NAV_ITEMS = [
-  { to: '/',        label: 'Garden',  icon: LayoutDashboard },
-  { to: '/money',   label: 'Money',   icon: Wallet },
+  { to: '/',        label: 'Home',    icon: House },
   { to: '/advisor', label: 'Advisor', icon: Bot },
   { to: '/plan',    label: 'Plan',    icon: Target },
 ]
@@ -20,7 +18,7 @@ export default function Layout({ children }) {
   const needsOnboarding = profile === null && !loading && !profileError
   // Immersive, full-height pages manage their own scroll and run edge-to-edge
   // (no main padding): the garden dashboard and the advisor chat.
-  const isGarden    = pathname === '/'
+  const isGarden    = pathname === '/' && import.meta.env.VITE_GARDEN_EXPERIENCE === '3d'
   const isImmersive = isGarden || pathname === '/advisor'
   // Secondary pages reached from the gear / links — back-button navigation, so
   // the floating tab bar is hidden (it would imply they're top-level tabs).
@@ -195,7 +193,7 @@ export default function Layout({ children }) {
           (typing || hideNav) ? 'opacity-0 translate-y-8 pointer-events-none' : 'translate-y-0'}`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <div className="mx-auto grid w-full max-w-sm grid-cols-4 items-center gap-1 rounded-[20px] border border-white/[0.11] bg-[#09110e]/92 p-1.5 backdrop-blur-2xl"
+        <div className="mx-auto grid w-full max-w-sm grid-cols-3 items-center gap-1 rounded-[20px] border border-white/[0.11] bg-[#09110e]/92 p-1.5 backdrop-blur-2xl"
           style={{ boxShadow: '0 14px 42px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.06)' }}>
           {HUD_ITEMS.map(({ to, label, icon: Icon }) => (
             <NavLink

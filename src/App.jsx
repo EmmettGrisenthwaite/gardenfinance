@@ -1,16 +1,20 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { GardenProvider } from '@/context/GardenContext'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import Layout from '@/components/Layout'
 import Login from '@/pages/Login'
-import Dashboard from '@/pages/Dashboard'
+import Home from '@/pages/Home'
 import AIAdvisor from '@/pages/AIAdvisor'
 import Plan from '@/pages/Plan'
 import StepDetail from '@/pages/StepDetail'
-import Money from '@/pages/Money'
 import Settings from '@/pages/Settings'
 import { Sprout, Compass } from 'lucide-react'
+import { HOME_MONEY_REDIRECTS } from '@/lib/routes'
+
+const gardenExperience = import.meta.env.VITE_GARDEN_EXPERIENCE === '3d' ? '3d' : 'illustrated'
+const LegacyDashboard = lazy(() => import('@/pages/Dashboard'))
 
 function AppLoader() {
   return (
@@ -83,16 +87,17 @@ export default function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-              <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="/" element={<ProtectedRoute>{gardenExperience === '3d'
+                ? <Suspense fallback={<AppLoader />}><LegacyDashboard /></Suspense>
+                : <Home />}</ProtectedRoute>} />
               <Route path="/advisor" element={<ProtectedRoute><AIAdvisor /></ProtectedRoute>} />
               <Route path="/plan" element={<ProtectedRoute><Plan /></ProtectedRoute>} />
               <Route path="/plan/step/:stepId" element={<ProtectedRoute><StepDetail /></ProtectedRoute>} />
-              <Route path="/money" element={<ProtectedRoute><Money /></ProtectedRoute>} />
+              <Route path="/money" element={<Navigate to={HOME_MONEY_REDIRECTS['/money']} replace />} />
               <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-              {/* Money lives on its own page; goals on the Plan */}
-              <Route path="/budget"   element={<Navigate to="/money" replace />} />
-              <Route path="/debt"     element={<Navigate to="/money" replace />} />
-              <Route path="/accounts" element={<Navigate to="/money" replace />} />
+              <Route path="/budget"   element={<Navigate to={HOME_MONEY_REDIRECTS['/budget']} replace />} />
+              <Route path="/debt"     element={<Navigate to={HOME_MONEY_REDIRECTS['/debt']} replace />} />
+              <Route path="/accounts" element={<Navigate to={HOME_MONEY_REDIRECTS['/accounts']} replace />} />
               <Route path="/goals"    element={<Navigate to="/plan#goals" replace />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
