@@ -18,9 +18,13 @@ function sanitizeMessages(messages) {
 
 // Calls Claude via the Supabase Edge Function proxy (`supabase/functions/chat`).
 // The Anthropic key lives only on the server — never in the browser bundle.
-// Pass `onDelta(fullTextSoFar)` to stream the reply token-by-token; without it
-// (or if the server replies with plain JSON) the full text resolves at the end.
-export async function callClaude(messages, systemPrompt, { maxTokens = 1024, onDelta } = {}) {
+// - `systemPrompt` may be a string or an array of system blocks (the advisor
+//   sends [cached static instructions, dynamic user context]).
+// - Pass `onDelta(fullTextSoFar)` to stream the reply token-by-token.
+// - Pass `onSources(sources)` to receive web-search citations — [{label, url}]
+//   deduped by URL — once the reply finishes. Only real searched sources are
+//   reported; the model can't fabricate these.
+export async function callClaude(messages, systemPrompt, { maxTokens = 4000, onDelta, onSources } = {}) {
   if (!CHAT_ENDPOINT) {
     throw new Error('Advisor is not configured (missing VITE_SUPABASE_URL).')
   }
@@ -54,12 +58,16 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 1024, onD
   const ctype = res.headers.get('content-type') ?? ''
   if (!onDelta || ctype.includes('application/json')) {
     const data = await res.json()
+    if (Array.isArray(data?.sources) && data.sources.length) onSources?.(data.sources)
     return data?.text ?? ''
   }
 
-  // SSE stream — accumulate text deltas and surface progress via onDelta
+  // SSE stream — accumulate text deltas and surface progress via onDelta.
+  // Web-search citations arrive as citations_delta events; collect the unique
+  // source URLs so the UI can render them as tappable chips.
   const reader  = res.body.getReader()
   const decoder = new TextDecoder()
+  const sources = new Map()   // url → {label, url}
   let buf = '', full = ''
   for (;;) {
     const { done, value } = await reader.read()
@@ -73,7 +81,10 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 1024, onD
       if (!dataStr) continue
       let evt
       try { evt = JSON.parse(dataStr) } catch { continue }
-      if (evt.type === 'content_block_delta' && evt.delta?.text) {
+      if (evt.type === 'content_block_delta' && evt.delta?.type === 'citations_delta') {
+        const c = evt.delta.citation
+        if (c?.url && !sources.has(c.url)) sources.set(c.url, { label: c.title || c.url, url: c.url })
+      } else if (evt.type === 'content_block_delta' && evt.delta?.text) {
         full += evt.delta.text
         onDelta(full)
       } else if (evt.type === 'error') {
@@ -81,6 +92,7 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 1024, onD
       }
     }
   }
+  if (sources.size) onSources?.([...sources.values()])
   return full
 }
 
@@ -101,7 +113,9 @@ export async function fetchHowTo(subject, context = '') {
     role: 'user',
     content: `${context ? `My situation:\n${context}\n\n` : ''}Show me exactly how to: ${subject}`,
   }]
-  return callClaude(messages, system, { maxTokens: 450 })
+  // Sonnet 5's adaptive thinking counts against max_tokens — leave headroom so
+  // the visible steps never get truncated by the model's own reasoning.
+  return callClaude(messages, system, { maxTokens: 1500 })
 }
 
 // Asks Claude to produce a structured action plan via tool-use (non-streaming).
@@ -116,7 +130,7 @@ export async function requestPlan(messages, systemPrompt) {
   const res = await fetch(CHAT_ENDPOINT, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ messages: sanitizeMessages(messages), system: systemPrompt, maxTokens: 1536, tool: 'action_plan' }),
+    body: JSON.stringify({ messages: sanitizeMessages(messages), system: systemPrompt, maxTokens: 4000, tool: 'action_plan' }),
   })
 
   if (!res.ok) {
@@ -150,7 +164,7 @@ export async function requestGuide(messages, systemPrompt) {
     const res = await fetch(CHAT_ENDPOINT, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ messages: probe, system: systemPrompt, maxTokens: 1536, tool: 'guide' }),
+      body: JSON.stringify({ messages: probe, system: systemPrompt, maxTokens: 4000, tool: 'guide' }),
     })
     if (!res.ok) return null
     const data = await res.json()
@@ -179,7 +193,7 @@ export async function suggestGoal(messages, systemPrompt) {
     const res = await fetch(CHAT_ENDPOINT, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ messages: probe, system: systemPrompt, maxTokens: 512, tool: 'suggest_goal' }),
+      body: JSON.stringify({ messages: probe, system: systemPrompt, maxTokens: 1500, tool: 'suggest_goal' }),
     })
     if (!res.ok) return null
     const data = await res.json()

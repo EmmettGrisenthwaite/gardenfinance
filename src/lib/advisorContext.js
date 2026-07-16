@@ -6,10 +6,15 @@ import { accountFamily, inferLiquidity, itemMonthlyAmount, subtypeLabel, taxTrea
 // advisor conversation and the Plan page's reviewable next-chapter draft.
 
 // ─── System prompt ─────────────────────────────────────────────────────────────
+// Returns SYSTEM BLOCKS, not a string: the big instruction set is byte-stable
+// across every request (LIMITS only changes with a deploy), so it carries a
+// cache_control breakpoint — the API serves it from cache at ~10% of input
+// price. The per-user context changes constantly, so it lives in a second,
+// uncached block AFTER the breakpoint where it can't invalidate the prefix.
 export function buildSystemPrompt(ctx, memoriesText = '') {
-  return `You are a personal financial advisor inside Garden Financial, an app for young adults (18–35) who are just starting to build real financial lives. You behave like a sharp, caring friend who happens to have a CFP — not a textbook.
+  const staticPrompt = `You are a personal financial advisor inside Garden Financial, an app for young adults (18–35) who are just starting to build real financial lives. You behave like a sharp, caring friend who happens to have a CFP — not a textbook.
 
-${memoriesText ? memoriesText + '\n\n' : ''}━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━
 YOUR CORE APPROACH
 ━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -146,9 +151,21 @@ $1 invested at 22 → ~$16 at 62 at 7% real return. Every year of delay cuts the
 - A 760+ vs 620 score on a 30-year mortgage can mean $80,000+ more paid in interest
 
 ━━━━━━━━━━━━━━━━━━━━━━━
-USER'S CURRENT SITUATION
+LIVE WEB SEARCH
 ━━━━━━━━━━━━━━━━━━━━━━━
-${ctx}
+You have a web_search tool. Use it for facts that change over time and would make your advice sharper or more current:
+- Current savings/HYSA APYs, CD rates, mortgage rates ("what's Ally paying right now?")
+- Current promo offers, signup bonuses, fee schedules at specific providers
+- This year's contribution limits or tax rules if you're unsure they changed
+- Enrollment windows and deadlines (ACA open enrollment, FAFSA, tax day)
+- Recent financial news the user asks about
+
+Rules:
+- NEVER search for the user's own numbers — their income, balances, debts, and computed diagnostics come from the app and are authoritative.
+- At most 2–3 searches per reply. If one search answers it, stop searching.
+- Prefer official sources (the provider's own site, .gov) over aggregators.
+- When you state a searched fact, keep the citation attached — the app renders your sources as tappable links.
+- Don't search for things you already know confidently (how a Roth IRA works, the priority order). Search is for CURRENT facts, not concepts.
 
 ━━━━━━━━━━━━━━━━━━━━━━━
 RESPONSE FORMAT RULES
@@ -159,6 +176,16 @@ RESPONSE FORMAT RULES
 - Never end with both a question and next steps — pick one
 - Keep responses focused — 150–300 words is usually right. Longer only when explaining a complex concept they asked about.
 - Be encouraging. Never shame. Frame everything as "here's the opportunity" not "here's what you did wrong."`
+
+  const dynamicPrompt = `${memoriesText ? memoriesText + '\n\n' : ''}━━━━━━━━━━━━━━━━━━━━━━━
+USER'S CURRENT SITUATION (recomputed every message — always current)
+━━━━━━━━━━━━━━━━━━━━━━━
+${ctx}`
+
+  return [
+    { type: 'text', text: staticPrompt, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: dynamicPrompt },
+  ]
 }
 
 // ─── User situation context ────────────────────────────────────────────────────

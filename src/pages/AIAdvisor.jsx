@@ -13,6 +13,7 @@ import {
   formatMemoriesForContext, distillConversation,
 } from '@/lib/memory'
 import PlanCard from '@/components/PlanCard'
+import ResourceLinks from '@/components/ResourceLinks'
 import GuideCard from '@/components/GuideCard'
 import GoalSuggestionCard from '@/components/GoalSuggestionCard'
 import ArtifactRenderer from '@/components/ai/artifacts/ArtifactRenderer'
@@ -174,6 +175,14 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
         <div className="pr-1 text-[14px] leading-[1.7] text-white/78 [&_strong]:font-semibold [&_strong]:text-white">
           {renderContent(msg.content)}
         </div>
+
+        {/* Web-search sources — real URLs from real search results, tappable */}
+        {msg.sources?.length > 0 && (
+          <div>
+            <div className="text-[10px] font-semibold text-white/35 uppercase tracking-wider pl-1 mb-1">Sources</div>
+            <ResourceLinks resources={msg.sources} />
+          </div>
+        )}
 
         {/* Artifacts */}
         {hasArtifacts && (
@@ -521,10 +530,13 @@ export default function AIAdvisor() {
 
     try {
       // Stream the reply — strip artifact/options markup (including half-received
-      // tag fragments) so raw tags never flash in the bubble mid-stream.
+      // tag fragments) so raw tags never flash in the bubble mid-stream. Web
+      // search citations arrive on the same stream; they become source chips.
+      let sources = []
       const reply = await callClaude(next, systemPrompt, {
-        maxTokens: 1024,
+        maxTokens: 4000,
         onDelta: (text) => setMessages([...next, { role: 'assistant', content: stripForStreaming(text) }]),
+        onSources: (s) => { sources = s },
       })
 
       // Parse artifacts, tappable answer options, and the plannable marker
@@ -539,6 +551,7 @@ export default function AIAdvisor() {
         artifacts: artifacts.length > 0 ? artifacts : undefined,
         options: options.length > 0 ? options : undefined,
         plannable: plannable || undefined,
+        sources: sources.length > 0 ? sources : undefined,
       }]
       setMessages(convo)
 

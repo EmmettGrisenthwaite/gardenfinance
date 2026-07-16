@@ -9,7 +9,9 @@ import { getPlan, updatePlanSteps, applyStep } from '@/lib/advisorPlans'
 import { milestoneEventForStep } from '@/lib/gardenModel'
 import { recordGardenMilestone } from '@/lib/gardenProgress'
 import { buildHowToContext } from '@/lib/howToContext'
+import { mergeResources } from '@/lib/providerLinks'
 import { StepGuide, DueChip, ApplyAction, dueMeta } from '@/components/PlanSteps'
+import ResourceLinks from '@/components/ResourceLinks'
 import PageHeader from '@/components/ui/PageHeader'
 
 // One step, one page: the title, why it matters, and the full "how to do this"
@@ -178,6 +180,15 @@ export default function StepDetail() {
           <StepGuide step={step} context={howToCtx} onSave={saveGuide} />
         )}
       </div>
+
+      {/* Official links — hand-verified registry pages first, then any the
+          model attached. Tap → the real signup/info page in a new tab. */}
+      {!step.done && mergeResources(step.text, step.resources).length > 0 && (
+        <div className="mt-4">
+          <div className="text-[10px] font-semibold text-white/40 uppercase tracking-wider mb-1.5">Open the official page</div>
+          <ResourceLinks resources={mergeResources(step.text, step.resources)} />
+        </div>
+      )}
 
       {/* Actions */}
       {!step.done && (
