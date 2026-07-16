@@ -213,6 +213,24 @@ Deno.serve(async (req) => {
     },
   }
 
+  const HOW_TO_TOOL = {
+    name: 'create_how_to',
+    description: 'Write the fast, decisive instructions for one existing Plan step. Return 3–6 short imperative steps grounded in the supplied user context. Pick one clear path, build on accounts the user already has, and do not browse, quote live rates, or add a preamble.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        steps: {
+          type: 'array',
+          description: 'Three to six ordered, single-sentence actions. The first must be startable today.',
+          items: { type: 'string' },
+        },
+      },
+      required: ['steps'],
+    },
+  }
+
   const CREATE_GUIDE_TOOL = {
     name: 'create_guide',
     description: 'Use when the user wants to TAKE A CONCRETE SETUP ACTION — e.g. open a Roth IRA, open a high-yield savings account, start investing in index funds, roll over an old 401(k), open an HSA, get term life insurance, freeze their credit, set up automatic transfers. Produce a short do-it-today walkthrough: 3–6 ordered steps. Include links only when the user must leave the app to complete an action, placing no more than 3 links total on the relevant step. Use reputable official sites you are confident about (e.g. fidelity.com, vanguard.com, schwab.com, ally.com, marcus.com, sofi.com, wealthfront.com, irs.gov). Never add links to explanatory steps and never invent URLs. Ground the recommendations in the user’s real situation (age, income, existing accounts). If the latest message is NOT a request to actually set something up, set should_guide=false and leave the rest blank.',
@@ -281,7 +299,13 @@ Deno.serve(async (req) => {
     },
   }
 
-  const TOOLS: Record<string, unknown> = { action_plan: ACTION_PLAN_TOOL, suggest_goal: SUGGEST_GOAL_TOOL, guide: CREATE_GUIDE_TOOL, extract_memories: EXTRACT_MEMORIES_TOOL }
+  const TOOLS: Record<string, unknown> = {
+    action_plan: ACTION_PLAN_TOOL,
+    suggest_goal: SUGGEST_GOAL_TOOL,
+    guide: CREATE_GUIDE_TOOL,
+    how_to: HOW_TO_TOOL,
+    extract_memories: EXTRACT_MEMORIES_TOOL,
+  }
 
   const body: Record<string, unknown> = { model, max_tokens, system: systemBlocks, messages }
   if (tool && TOOLS[tool]) {
@@ -308,6 +332,7 @@ Deno.serve(async (req) => {
         'content-type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: req.signal,
     })
   }
 
@@ -424,6 +449,7 @@ Deno.serve(async (req) => {
         'content-type': 'application/json',
       },
       body: JSON.stringify(contBody),
+      signal: req.signal,
     })
     if (!contRes.ok) break
     data = await contRes.json()

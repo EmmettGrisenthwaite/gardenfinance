@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { LIMITS } from '@/lib/finance'
+import { formatHowToResult, HOW_TO_TIMEOUT_MS } from '@/lib/howToGuide'
 import {
   collectWebSources,
   compactWebSources,
@@ -111,21 +112,58 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 4000, onD
 // commits to one provider, one account type, one sequence — a user who tapped
 // "how do I do this" wants marching orders, not a menu.
 // Returns plain text: 3–6 numbered steps.
-export async function fetchHowTo(subject, context = '') {
+export async function fetchHowTo(subject, context = '', { signal, timeoutMs = HOW_TO_TIMEOUT_MS } = {}) {
+  if (!CHAT_ENDPOINT) throw new Error('Advisor is not configured (missing VITE_SUPABASE_URL).')
+
   const system = `You are the financial advisor inside Garden Financial. The user tapped a step in their plan and wants to know EXACTLY how to do it. Produce the definitive way — decide for them. Rules:
 - BE DECISIVE. Pick exactly ONE provider, ONE account type, ONE sequence — the best fit for their situation below. Never offer alternatives, never say "consider", "you could", "or", "such as". If a choice depends on something unknown, make the sensible default call for a young adult and just state it.
 - BUILD ON WHAT EXISTS. If the situation says they ALREADY HAVE an account (Roth IRA, 401(k), brokerage, HSA…), never tell them to open one — the steps are about contributing to / increasing / automating the account they have.
 - 3–6 numbered steps, each a single short imperative sentence. Step 1 must be startable today, on their phone.
 - Use their real numbers from the situation below for every dollar amount — computed, not generic.
-- Ground picks in current reality: Roth IRA limit $${LIMITS.rothIra.toLocaleString()} and 401(k) limit $${LIMITS.k401.toLocaleString()} for ${LIMITS.year}; top HYSAs (Ally, Marcus, SoFi) pay ~4–5% APY. Default brokerage pick: Fidelity (no minimums, no fees, best app for beginners).
+- Use the app's verified ${LIMITS.year} limits when relevant: Roth IRA $${LIMITS.rothIra.toLocaleString()} and 401(k) $${LIMITS.k401.toLocaleString()}. Do not quote live rates, promotions, or deadlines in this fast guide. If an exact current fact is required, tell the user which official page or account field to verify.
+- Default brokerage pick: Fidelity (no minimums, no account fees, strong beginner experience).
 - No preamble, no closing remarks, no headings, no hedging — just the numbered steps.`
   const messages = [{
     role: 'user',
     content: `${context ? `My situation:\n${context}\n\n` : ''}Show me exactly how to: ${subject}`,
   }]
-  // Sonnet 5's adaptive thinking counts against max_tokens — leave headroom so
-  // the visible steps never get truncated by the model's own reasoning.
-  return callClaude(messages, system, { maxTokens: 1500 })
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) throw new Error('Please sign in to generate this guide.')
+
+  const controller = new AbortController()
+  let timedOut = false
+  const abortFromCaller = () => controller.abort(signal?.reason)
+  if (signal?.aborted) abortFromCaller()
+  else signal?.addEventListener('abort', abortFromCaller, { once: true })
+  const timeout = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
+
+  try {
+    const res = await fetch(CHAT_ENDPOINT, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ messages, system, maxTokens: 900, tool: 'how_to' }),
+      signal: controller.signal,
+    })
+    if (!res.ok) {
+      let message = `Could not generate this guide (${res.status}).`
+      try { const body = await res.json(); if (body?.error) message = body.error } catch { /* noop */ }
+      throw new Error(message)
+    }
+    const data = await res.json()
+    const guide = formatHowToResult(data?.result)
+    if (!guide) throw new Error('The guide came back empty. Please try again.')
+    return guide
+  } catch (error) {
+    if (timedOut) throw new Error('The guide took too long to generate. Please try again.')
+    throw error
+  } finally {
+    clearTimeout(timeout)
+    signal?.removeEventListener('abort', abortFromCaller)
+  }
 }
 
 // Asks Claude to produce a structured action plan via tool-use (non-streaming).

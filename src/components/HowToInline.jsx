@@ -48,7 +48,7 @@ export default function HowToInline({ subject, context }) {
               <Loader2 className="w-3.5 h-3.5 animate-spin" /> Writing your steps…
             </div>
           ) : error ? (
-            <div className="text-xs text-white/55 py-1">
+            <div className="text-xs text-readable-secondary py-1">
               Couldn't load this right now.{' '}
               <button onClick={() => { setText(null); setError(false); loadGuide() }}
                 className="font-semibold text-emerald-300 hover:text-emerald-200">Try again</button>

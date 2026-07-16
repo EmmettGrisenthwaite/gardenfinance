@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Check, Plus, Loader2, Calendar, X, ChevronDown, ChevronRight, Sparkles, RefreshCw } from 'lucide-react'
 import { applyLabel } from '@/lib/advisorPlans'
 import { fetchHowTo } from '@/lib/claude'
+import { HOW_TO_SLOW_MS } from '@/lib/howToGuide'
 
 // ── Due-date helpers ────────────────────────────────────────────────────────────
 export function dueMeta(due) {
@@ -68,24 +69,37 @@ export function StepGuide({ step, context, onSave }) {
   const [loading, setLoading] = useState(!cached)
   const [error, setError]     = useState(false)
   const [attempt, setAttempt] = useState(0)
+  const [slow, setSlow]       = useState(false)
 
   useEffect(() => {
     if (text) return
     let alive = true
+    const controller = new AbortController()
+    const slowTimer = setTimeout(() => { if (alive) setSlow(true) }, HOW_TO_SLOW_MS)
     setLoading(true)
     setError(false)
-    fetchHowTo(step.text, context)
+    setSlow(false)
+    fetchHowTo(step.text, context, { signal: controller.signal })
       .then(t => {
         if (!alive) return
         const clean = t?.trim()
-        if (!clean) { setError(true); return }
+        if (!clean) { setError('The guide came back empty. Please try again.'); return }
         guideCache.set(step.id, clean)
         setText(clean)
         onSave?.(step.id, clean)
       })
-      .catch(() => { if (alive) setError(true) })
-      .finally(() => { if (alive) setLoading(false) })
-    return () => { alive = false }
+      .catch(err => {
+        if (alive && err?.name !== 'AbortError') setError(err?.message || 'Could not load this guide.')
+      })
+      .finally(() => {
+        clearTimeout(slowTimer)
+        if (alive) setLoading(false)
+      })
+    return () => {
+      alive = false
+      clearTimeout(slowTimer)
+      controller.abort()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step.id, attempt])
 
@@ -97,6 +111,7 @@ export function StepGuide({ step, context, onSave }) {
     guideCache.delete(step.id)
     setText(null)
     setLoading(true)
+    setSlow(false)
     setAttempt(a => a + 1)
   }
 
@@ -115,18 +130,19 @@ export function StepGuide({ step, context, onSave }) {
       {text ? (
         <div className="space-y-1.5">
           {text.split('\n').filter(l => l.trim()).map((line, i) => (
-            <p key={i} className="text-[13px] text-white/85 leading-relaxed">{line.trim()}</p>
+            <p key={i} className="text-[13px] text-readable-secondary leading-relaxed">{line.trim()}</p>
           ))}
         </div>
       ) : error ? (
-        <div className="text-xs text-white/55 py-1">
-          Couldn't load this right now.{' '}
-          <button onClick={() => { setLoading(true); setAttempt(a => a + 1) }}
+        <div className="text-xs text-readable-secondary py-1" role="alert">
+          {typeof error === 'string' ? error : "Couldn't load this right now."}{' '}
+          <button onClick={() => { setLoading(true); setSlow(false); setAttempt(a => a + 1) }}
             className="font-semibold text-emerald-300 hover:text-emerald-200">Try again</button>
         </div>
       ) : (
-        <div className="flex items-center gap-2 text-xs text-emerald-200/80 py-1">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Working out your best move…
+        <div className="flex items-center gap-2 text-xs text-emerald-200 py-1" role="status" aria-live="polite">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          {slow ? 'Finishing your personalized steps…' : 'Checking this step against your numbers…'}
         </div>
       )}
     </div>
