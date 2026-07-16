@@ -496,6 +496,25 @@ export function buildContext(money, goals = [], debts = [], profile, extras = {}
     context += '\n'
   }
 
+  const recentActivities = (extras.activities || [])
+    .filter(activity => !activity.exclude_from_advisor)
+    .slice(0, 20)
+  if (recentActivities.length) {
+    context += 'RECENT FINANCIAL PROGRESS (structured history; build forward from it and do not claim pending updates changed balances):\n'
+    recentActivities.forEach(activity => {
+      const amount = Number(activity.amount) > 0 ? ` $${Number(activity.amount).toLocaleString()}` : ''
+      const state = activity.status === 'applied'
+        ? 'records updated'
+        : activity.status === 'recorded'
+          ? 'action remembered; no balance change recorded'
+          : activity.status === 'dismissed'
+            ? 'dismissed by user'
+            : 'completed action; financial update still unconfirmed'
+      context += `  ${activity.label || activity.intent_key || activity.kind}${amount} — ${state}\n`
+    })
+    context += 'Treat applied activities and current structured records as stronger evidence than conversation memory.\n\n'
+  }
+
   if (profile) {
     const investmentEvidence = snap.hasInvestmentAccount
       ? `Detailed records confirm ${snap.investmentAccounts.length} investment account(s); trust this over onboarding.`

@@ -151,7 +151,7 @@ Deno.serve(async (req) => {
   // ── Tool definitions (structured outputs the client can save/apply) ──────────
   const ACTION_PLAN_TOOL = {
     name: 'create_action_plan',
-    description: 'Create a short, personalized financial action plan for the user based on their real numbers. 3–5 concrete, ordered steps. Where a step naturally maps to adding a savings/investment goal or a recurring budget line, fill in its `apply` object so the user can act in one tap.',
+    description: 'Create a short, personalized financial action plan for the user based on their real numbers. 3–5 concrete, ordered steps. Give each step a stable intentKey. When completing a step would move money, pay debt, set up a recurring transfer, or open an account, include a structured outcome so the app can offer a reviewable record update without guessing. Where a step maps to adding a goal or recurring budget line, also fill in its apply object.',
     strict: true,
     input_schema: {
       type: 'object',
@@ -168,6 +168,24 @@ Deno.serve(async (req) => {
               detail: { type: 'string', description: 'Why this matters for THIS user, referencing their real numbers — one short sentence' },
               impact: { type: 'string', description: 'Quantified benefit, ultra-short, e.g. "≈ $43/mo saved" or "+$1,000 cushion". Omit rather than invent a number.' },
               due:    { type: 'string', description: 'YYYY-MM-DD, only for genuinely time-sensitive steps (enrollment windows, promo APR expirations). Usually omit.' },
+              intentKey: { type: 'string', description: 'Stable dotted purpose, e.g. open.roth_ira, setup.recurring_emergency_savings, pay.visa, or fund.emergency_goal.' },
+              completionPolicy: { type: 'string', enum: ['once', 'repeatable'], description: 'once for setup/opening/coverage work; repeatable for contributions, transfers, and debt payments.' },
+              outcome: {
+                type: 'object',
+                description: 'Optional real-world result to review after completion. Omit for information-only work.',
+                additionalProperties: false,
+                properties: {
+                  kind: { type: 'string', enum: ['transfer', 'contribution', 'debt_payment', 'recurring_setup', 'account_opening'] },
+                  amount: { type: 'number', description: 'Suggested positive dollar amount only when grounded in the user context.' },
+                  sourceAccountHint: { type: 'string', description: 'Existing account name or type money comes from.' },
+                  destinationAccountHint: { type: 'string', description: 'Existing account name or type money goes to.' },
+                  debtHint: { type: 'string', description: 'Existing debt name for a payment.' },
+                  goalHint: { type: 'string', description: 'Existing goal name when progress should increase too.' },
+                  accountSubtypeHint: { type: 'string', description: 'Detailed subtype for account-opening or destination matching.' },
+                  recurrence: { type: 'string', description: 'payday, weekly, biweekly, twice_monthly, monthly, quarterly, or annual.' },
+                },
+                required: ['kind'],
+              },
               apply: {
                 type: 'object',
                 description: 'Optional one-tap action this step enables',
@@ -185,7 +203,7 @@ Deno.serve(async (req) => {
                 required: ['type'],
               },
             },
-            required: ['text', 'detail'],
+            required: ['text', 'detail', 'intentKey', 'completionPolicy'],
           },
         },
       },
@@ -290,8 +308,10 @@ Deno.serve(async (req) => {
             properties: {
               fact:     { type: 'string', description: 'One durable fact, phrased in third person, e.g. "Employer matches 401k up to 4%"' },
               category: { type: 'string', enum: ['income', 'employment', 'life_event', 'risk_preference', 'goal', 'debt', 'family', 'health', 'investment', 'other'] },
+              memory_key: { type: 'string', enum: ['income.context', 'employment.context', 'life_event.current', 'risk.preference', 'goal.context', 'debt.context', 'family.context', 'health.context', 'investment.context', 'other.context'] },
+              subject_key: { type: 'string', description: 'Stable short subject, e.g. primary, visa, house, or oldest_child.' },
             },
-            required: ['fact', 'category'],
+            required: ['fact', 'category', 'memory_key', 'subject_key'],
           },
         },
       },

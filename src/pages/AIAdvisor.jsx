@@ -12,6 +12,7 @@ import {
   createMemory, getMemories, findSimilarMemory,
   formatMemoriesForContext, distillConversation,
 } from '@/lib/memory'
+import { listFinancialActivities } from '@/lib/financialActivities'
 import PlanCard from '@/components/PlanCard'
 import ResourceLinks from '@/components/ResourceLinks'
 import GuideCard from '@/components/GuideCard'
@@ -324,6 +325,7 @@ export default function AIAdvisor() {
   const [cashFlowItems, setCashFlowItems] = useState([])
   const [budgetLimits, setBudgetLimits] = useState([])
   const [memories, setMemories]         = useState([])
+  const [activities, setActivities]     = useState([])
   const [error, setError]               = useState(null)
   const [atBottom, setAtBottom]         = useState(true)
   const [pendingPlan, setPendingPlan]   = useState(null)
@@ -349,7 +351,7 @@ export default function AIAdvisor() {
   // ── Load data ───────────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const [g, d, conv, pl, ac, flow, limits, mems] = await Promise.all([
+      const [g, d, conv, pl, ac, flow, limits, mems, activityRows] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
         supabase.from('conversations').select('messages').eq('user_id', user.id).single(),
@@ -358,6 +360,7 @@ export default function AIAdvisor() {
         supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order'),
         supabase.from('budget_limits').select('*').eq('user_id', user.id),
         getMemories(),
+        listFinancialActivities(user.id, { limit: 20 }),
       ])
       if (g.error) throw g.error
       if (d.error) throw d.error
@@ -386,6 +389,7 @@ export default function AIAdvisor() {
       setCashFlowItems(loadedFlow)
       setBudgetLimits(loadedLimits)
       setMemories(mems ?? [])
+      setActivities(activityRows ?? [])
 
       // Calculate progress delta since last visit
       const lastVisit = localStorage.getItem(LAST_VISIT_KEY)
@@ -475,10 +479,10 @@ export default function AIAdvisor() {
   }), [profile, accounts, debts])
 
   const systemPrompt = useMemo(() => {
-    const ctx = buildContext(money, goals, debts, profile, { plans, accounts, cashFlowItems, budgetLimits })
+    const ctx = buildContext(money, goals, debts, profile, { plans, accounts, cashFlowItems, budgetLimits, activities })
     const memoriesText = formatMemoriesForContext(memories)
     return buildSystemPrompt(ctx, memoriesText)
-  }, [money, goals, debts, profile, plans, accounts, cashFlowItems, budgetLimits, memories])
+  }, [money, goals, debts, profile, plans, accounts, cashFlowItems, budgetLimits, activities, memories])
 
   const noKey  = !chatConfigured
   const hasData = goals.length > 0 || debts.length > 0 || plans.length > 0 || money.income > 0 || money.expenses > 0 || money.netWorth !== 0
@@ -633,8 +637,15 @@ export default function AIAdvisor() {
       const distilled = await distillConversation(convo)
       let added = 0
       for (const fact of distilled) {
-        if (!findSimilarMemory(fact.fact, memories)) {
-          const row = await createMemory(fact.fact, fact.category)
+        const sameKey = fact.memory_key && memories.find(memory =>
+          memory.memory_key === fact.memory_key && (memory.subject_key || '') === (fact.subject_key || 'primary'))
+        if (sameKey || !findSimilarMemory(fact.fact, memories)) {
+          const row = await createMemory(fact.fact, fact.category, {
+            memoryKey: fact.memory_key || `${fact.category || 'other'}.context`,
+            subjectKey: fact.subject_key || 'primary',
+            source: 'conversation',
+            confidence: 0.8,
+          })
           if (row) added++
         }
       }

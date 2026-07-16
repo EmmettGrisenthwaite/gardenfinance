@@ -120,3 +120,26 @@ test('completed insurance and investment work is excluded from replenishment', (
   ])
   assert.equal(replenishment.skipped, 2)
 })
+
+test('stable intents dedupe permanent work and gate repeatable work by financial state', () => {
+  const permanent = filterFreshPlanSteps([
+    { text: 'Open a Roth IRA', done: true, intentKey: 'open.roth_ira', completionPolicy: 'once' },
+  ], [
+    { text: 'Create your Roth account', intentKey: 'open.roth_ira', completionPolicy: 'once' },
+  ], { dedupeCompleted: true })
+  assert.equal(permanent.fresh.length, 0)
+
+  const repeatableSameState = filterFreshPlanSteps([
+    { text: 'Move $500 to savings', done: true, intentKey: 'fund.emergency', completionPolicy: 'repeatable', outcome: { stateFingerprint: 'cash-a' } },
+  ], [
+    { text: 'Add $600 to the emergency fund', intentKey: 'fund.emergency', completionPolicy: 'repeatable', outcome: { stateFingerprint: 'cash-a' } },
+  ], { dedupeCompleted: true })
+  assert.equal(repeatableSameState.fresh.length, 0)
+
+  const repeatableChangedState = filterFreshPlanSteps([
+    { text: 'Move $500 to savings', done: true, intentKey: 'fund.emergency', completionPolicy: 'repeatable', outcome: { stateFingerprint: 'cash-a' } },
+  ], [
+    { text: 'Add $600 to the emergency fund', intentKey: 'fund.emergency', completionPolicy: 'repeatable', outcome: { stateFingerprint: 'cash-b' } },
+  ], { dedupeCompleted: true })
+  assert.equal(repeatableChangedState.fresh.length, 1)
+})

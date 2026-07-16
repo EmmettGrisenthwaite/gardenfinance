@@ -25,6 +25,9 @@ export function normalizeSteps(steps = []) {
       : null,
     due:     s.due ?? null,          // optional YYYY-MM-DD target date
     guide:   s.guide ?? null,        // the fetched "how to do this" text — cached on the step
+    intentKey: s.intentKey ?? s.intent_key ?? null,
+    completionPolicy: (s.completionPolicy ?? s.completion_policy) === 'repeatable' ? 'repeatable' : 'once',
+    outcome: s.outcome && typeof s.outcome === 'object' ? { ...s.outcome } : null,
     source:  s.source ?? null,       // 'advisor' | 'guide' | 'suggestion' | 'user'
     group:   s.group ?? null,        // where it came from, e.g. a guide's title
     addedAt: s.addedAt ?? null,

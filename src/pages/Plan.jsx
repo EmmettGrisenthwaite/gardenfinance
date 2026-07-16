@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ClipboardList, Target, Plus, Sprout, MoreHorizontal, Trash2 } from 'lucide-react'
+import { ClipboardList, Target, Plus, Sprout, MoreHorizontal, Trash2, History } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden, milestonesToStage } from '@/context/GardenContext'
@@ -18,6 +18,9 @@ import { UpNextCard, StepList, DoneAccordion, AddStepRow, NextChapterCard } from
 import GardenMeter from '@/components/GardenMeter'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
 import PageHeader from '@/components/ui/PageHeader'
+import ProgressActivitySheet from '@/components/ProgressActivitySheet'
+import { listFinancialActivities, recordStepActivity } from '@/lib/financialActivities'
+import { isPromptableActivity } from '@/lib/progressOutcome'
 import {
   filterFreshPlanSteps,
   isCurrentNextChapter,
@@ -38,7 +41,7 @@ function removeStorage(storage, key) {
 }
 
 export default function Plan() {
-  const { user, profile, setProfile, rememberCompletedStep } = useAuth()
+  const { user, profile, setProfile, refreshProfile, rememberCompletedStep } = useAuth()
   const { updateGarden, triggerBurst } = useGarden()
   const navigate = useNavigate()
   const location = useLocation()
@@ -62,7 +65,18 @@ export default function Plan() {
   const [nextStatus, setNextStatus] = useState('idle')
   const [nextError, setNextError] = useState(null)
   const [attemptedFingerprint, setAttemptedFingerprint] = useState(null)
+  const [activities, setActivities] = useState([])
+  const [activitySheetOpen, setActivitySheetOpen] = useState(false)
+  const [promptActivity, setPromptActivity] = useState(null)
+  const [queuedActivity, setQueuedActivity] = useState(null)
   const dismissGrowth = useCallback(() => setGrowth(null), [])
+
+  useEffect(() => {
+    if (!queuedActivity || growth || loading) return
+    setPromptActivity(queuedActivity)
+    setActivitySheetOpen(true)
+    setQueuedActivity(null)
+  }, [growth, loading, queuedActivity])
 
   // A step completed on its detail page may have crossed a garden stage — the
   // detail page passes the crossing back so the celebration fires right here.
@@ -87,13 +101,14 @@ export default function Plan() {
 
   useEffect(() => {
     async function load() {
-      const [g, d, pl, ac, flow, limits] = await Promise.all([
+      const [g, d, pl, ac, flow, limits, activityRows] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id).order('created_at'),
         supabase.from('debts').select('*').eq('user_id', user.id),
         getPlan(user.id),
         supabase.from('accounts').select('*').eq('user_id', user.id),
         supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order'),
         supabase.from('budget_limits').select('*').eq('user_id', user.id),
+        listFinancialActivities(user.id),
       ])
       if (g.error) throw g.error
       if (d.error) throw d.error
@@ -114,6 +129,9 @@ export default function Plan() {
       setAccounts(loadedAccounts)
       setCashFlowItems(loadedFlow)
       setBudgetLimits(loadedLimits)
+      setActivities(activityRows)
+      const unseen = activityRows.find(activity => isPromptableActivity(activity) && !activity.prompt_seen_at)
+      if (unseen) setQueuedActivity(unseen)
       try {
         const garden = await reconcileGardenMilestones(user.id, {
           plans: pl ? [pl] : [],
@@ -166,8 +184,8 @@ export default function Plan() {
   const visibleRestSteps = showAllSteps ? restSteps : restSteps.slice(0, 3)
   const doneSteps   = steps.filter(s => s.done)
   const currentFingerprint = useMemo(() => nextChapterFingerprint({
-    userId: user.id, profile, steps, goals, debts, accounts, cashFlowItems, budgetLimits,
-  }), [user.id, profile, steps, goals, debts, accounts, cashFlowItems, budgetLimits])
+    userId: user.id, profile, steps, goals, debts, accounts, cashFlowItems, budgetLimits, activities,
+  }), [user.id, profile, steps, goals, debts, accounts, cashFlowItems, budgetLimits, activities])
   const fingerprintRef = useRef(currentFingerprint)
   useEffect(() => { fingerprintRef.current = currentFingerprint }, [currentFingerprint])
   const dismissedKey = `next-chapter-dismissed-${user.id}`
@@ -246,18 +264,30 @@ export default function Plan() {
       : s)
     setSavingStep(true)
     try {
-      if (completing) {
-        await rememberCompletedStep(step.text)
-      }
       await updatePlanSteps(plan.id, next, user.id)
       setPlan(previous => previous ? { ...previous, steps: next, updated_at: new Date().toISOString() } : previous)
       if (completing) {
+        try {
+          await rememberCompletedStep(step.text)
+        } catch {
+          setError('Step completed. Advisor memory will reconcile automatically the next time your profile loads.')
+        }
         const stepIndex = steps.findIndex(item => item.id === step.id)
         await recordEarnedMilestone(milestoneEventForStep(
           plan,
           { ...step, done: true, completedAt: next.find(item => item.id === step.id)?.completedAt },
           stepIndex >= 0 ? stepIndex : 0,
         ), step.text)
+        try {
+          const completedStep = next.find(item => item.id === step.id)
+          const activity = await recordStepActivity({ plan, step: completedStep, accounts, debts, goals })
+          if (activity) {
+            setActivities(current => [activity, ...current.filter(item => item.id !== activity.id)])
+            if (isPromptableActivity(activity) && !activity.prompt_seen_at) setQueuedActivity(activity)
+          }
+        } catch {
+          setError('Step completed. You can update any resulting balance from Home; progress memory will retry later.')
+        }
       }
     } catch (err) {
       setError(err.message ?? 'Could not save that completed step.')
@@ -331,6 +361,53 @@ export default function Plan() {
     }
   }
 
+  async function refreshActivityFinancials() {
+    const [accountResult, debtResult, goalResult, activityRows] = await Promise.all([
+      supabase.from('accounts').select('*').eq('user_id', user.id),
+      supabase.from('debts').select('*').eq('user_id', user.id),
+      supabase.from('goals').select('*').eq('user_id', user.id).order('created_at'),
+      listFinancialActivities(user.id),
+    ])
+    if (accountResult.error) throw accountResult.error
+    if (debtResult.error) throw debtResult.error
+    if (goalResult.error) throw goalResult.error
+    setAccounts(accountResult.data ?? [])
+    setDebts(debtResult.data ?? [])
+    setGoals(goalResult.data ?? [])
+    setActivities(activityRows)
+    await refreshProfile()
+    return { accounts: accountResult.data ?? [], debts: debtResult.data ?? [], goals: goalResult.data ?? [] }
+  }
+
+  async function handleActivityApplied(result) {
+    const nextAccounts = result?.accounts ?? accounts
+    const nextDebts = result?.debts ?? debts
+    const nextGoals = result?.goals ?? goals
+    setAccounts(nextAccounts)
+    setDebts(nextDebts)
+    setGoals(nextGoals)
+    if (result?.activity) setActivities(current => [result.activity, ...current.filter(item => item.id !== result.activity.id)])
+    for (const nextGoal of nextGoals) {
+      const previous = goals.find(goal => goal.id === nextGoal.id)
+      const wasReached = previous && Number(previous.target_amount) > 0 && Number(previous.current_amount) >= Number(previous.target_amount)
+      const isReached = Number(nextGoal.target_amount) > 0 && Number(nextGoal.current_amount) >= Number(nextGoal.target_amount)
+      if (!wasReached && isReached) await recordEarnedMilestone(milestoneEventForGoal(nextGoal), `Reached ${nextGoal.name}`)
+    }
+    await refreshProfile()
+    setPromptActivity(null)
+  }
+
+  function handleActivityChanged(changed) {
+    if (!changed) return
+    setActivities(current => [changed, ...current.filter(item => item.id !== changed.id)])
+    setPromptActivity(null)
+  }
+
+  function closeActivitySheet() {
+    setActivitySheetOpen(false)
+    setPromptActivity(null)
+  }
+
   const generateNextChapter = useCallback(async ({ force = false } = {}) => {
     const requestFingerprint = currentFingerprint
     if (!force && (nextStatus === 'loading' || nextStatus === 'saving')) return
@@ -355,6 +432,7 @@ export default function Plan() {
         accounts,
         cashFlowItems,
         budgetLimits,
+        activities,
       })
       const system = buildSystemPrompt(ctx)
       const generated = await requestPlan([{
@@ -362,7 +440,11 @@ export default function Plan() {
         content: `Build the next chapter of my financial action plan. Return exactly 5 concise, ordered, practical steps based on my current finances, goals, debts, accounts, ${activeSteps.length} unfinished plan steps, and completed history. Do not repeat anything already active or completed. Avoid recommending insurance, investing, emergency-fund, or debt work when the profile and completed history show it is already handled. Include apply actions only when they are safe and immediately useful.`,
       }], system)
 
-      const { fresh } = filterFreshPlanSteps(steps, generated.steps, { dedupeCompleted: true })
+      const generatedSteps = generated.steps.map(step => ({
+        ...step,
+        outcome: step.outcome ? { ...step.outcome, stateFingerprint: requestFingerprint } : null,
+      }))
+      const { fresh } = filterFreshPlanSteps(steps, generatedSteps, { dedupeCompleted: true })
       const proposed = fresh.slice(0, 5)
       if (proposed.length < 3) {
         throw new Error('The advisor could not find enough new steps yet. You can try again when your finances change.')
@@ -385,7 +467,7 @@ export default function Plan() {
       setNextError(err.message ?? 'Could not prepare your next chapter.')
       setNextStatus('error')
     }
-  }, [accounts, activeSteps.length, budgetLimits, cacheKey, cashFlowItems, currentFingerprint, debts, dismissedKey, goals, money, nextStatus, plan, profile, steps])
+  }, [accounts, activeSteps.length, activities, budgetLimits, cacheKey, cashFlowItems, currentFingerprint, debts, dismissedKey, goals, money, nextStatus, plan, profile, steps])
 
   useEffect(() => {
     if (loading || growth || tab !== 'steps') return
@@ -570,8 +652,13 @@ export default function Plan() {
         eyebrow="Your path"
         title="Plan"
         subtitle={tab === 'steps' ? 'One clear move at a time.' : 'Grow the goals that matter most.'}
-        actions={plan && (
-          <div className="relative">
+        actions={(
+          <>
+          <button type="button" onClick={() => { setPromptActivity(null); setActivitySheetOpen(true) }} aria-label="Recent progress"
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.1] text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
+            <History className="h-5 w-5" />
+          </button>
+          {plan && <div className="relative">
             <button onClick={() => setManageOpen(open => !open)} aria-label="Manage plan" aria-expanded={manageOpen}
               className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.1] text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
               <MoreHorizontal className="h-5 w-5" />
@@ -589,7 +676,8 @@ export default function Plan() {
                 </div>
               </>
             )}
-          </div>
+          </div>}
+          </>
         )}
       />
 
@@ -750,6 +838,20 @@ export default function Plan() {
       )}
 
       {modal && <GoalModal goal={modal === 'new' ? null : modal} onSave={saveGoal} onClose={() => setModal(null)} />}
+      <ProgressActivitySheet
+        open={activitySheetOpen}
+        initialActivity={promptActivity}
+        activities={activities}
+        accounts={accounts}
+        debts={debts}
+        goals={goals}
+        onClose={closeActivitySheet}
+        onApplied={handleActivityApplied}
+        onRefresh={refreshActivityFinancials}
+        onActivityChanged={handleActivityChanged}
+        onOpenAccount={activity => navigate(`/?section=money&sheet=accounts&accountSubtype=${encodeURIComponent(activity.metadata?.account_subtype_hint || '')}`)}
+        onCorrect={() => navigate('/?section=money&sheet=balances')}
+      />
       <GardenGrowthToast data={growth} onDismiss={dismissGrowth} />
     </motion.div>
   )

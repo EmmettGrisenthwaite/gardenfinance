@@ -33,20 +33,26 @@ export function samePlanStep(leftText, rightText) {
 }
 
 export function filterFreshPlanSteps(existingSteps = [], incomingSteps = [], { dedupeCompleted = false } = {}) {
-  const comparisonTexts = existingSteps
-    .filter(step => dedupeCompleted || !step?.done)
-    .map(step => step?.text || '')
-    .filter(Boolean)
+  const comparisonSteps = existingSteps.filter(step => dedupeCompleted || !step?.done)
   const fresh = []
   let skipped = 0
   for (const step of incomingSteps) {
     const text = step?.text || ''
-    if (!text.trim() || comparisonTexts.some(existing => samePlanStep(existing, text))) {
+    const intentKey = step?.intentKey || step?.intent_key || null
+    const duplicateIntent = intentKey && comparisonSteps.some(existing => {
+      if ((existing?.intentKey || existing?.intent_key) !== intentKey) return false
+      const policy = step?.completionPolicy || step?.completion_policy || 'once'
+      if (policy !== 'repeatable' || !existing?.done) return true
+      const previousState = existing?.outcome?.stateFingerprint
+      const nextState = step?.outcome?.stateFingerprint
+      return !previousState || !nextState || previousState === nextState
+    })
+    if (!text.trim() || duplicateIntent || comparisonSteps.some(existing => samePlanStep(existing?.text || '', text))) {
       skipped++
       continue
     }
     fresh.push(step)
-    comparisonTexts.push(text)
+    comparisonSteps.push(step)
   }
   return { fresh, skipped }
 }
@@ -66,7 +72,7 @@ function hashState(value) {
   return (hash >>> 0).toString(36)
 }
 
-export function nextChapterFingerprint({ userId, profile, steps, goals, debts, accounts, cashFlowItems = [], budgetLimits = [] }) {
+export function nextChapterFingerprint({ userId, profile, steps, goals, debts, accounts, cashFlowItems = [], budgetLimits = [], activities = [] }) {
   const state = {
     userId: userId || '',
     profile: {
@@ -84,6 +90,7 @@ export function nextChapterFingerprint({ userId, profile, steps, goals, debts, a
       id: step?.id || '', text: step?.text || '', done: Boolean(step?.done),
       detail: step?.detail || '', impact: step?.impact || '', due: step?.due || '',
       apply: step?.apply || null, completedAt: step?.completedAt || '',
+      intentKey: step?.intentKey || '', completionPolicy: step?.completionPolicy || '', outcome: step?.outcome || null,
     })),
     goals: sortedRecords(goals, goal => ({
       id: goal?.id || '', name: goal?.name || '', target: Number(goal?.target_amount) || 0,
@@ -114,6 +121,12 @@ export function nextChapterFingerprint({ userId, profile, steps, goals, debts, a
     })),
     budgetLimits: sortedRecords(budgetLimits, limit => ({
       category: limit?.category || '', monthly: Number(limit?.monthly_limit) || 0,
+    })),
+    activities: sortedRecords(activities, activity => ({
+      id: activity?.id || '', source: activity?.source_key || '', intent: activity?.intent_key || '',
+      kind: activity?.kind || '', status: activity?.status || '', amount: Number(activity?.amount) || 0,
+      sourceAccount: activity?.source_account_id || '', destinationAccount: activity?.destination_account_id || '',
+      debt: activity?.debt_id || '', goal: activity?.goal_id || '', appliedAt: activity?.applied_at || '',
     })),
   }
   return `next-v2-${hashState(JSON.stringify(state))}`

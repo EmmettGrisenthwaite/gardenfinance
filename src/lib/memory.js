@@ -27,7 +27,7 @@ function normalizeForDedup(text) {
 /**
  * Create a new memory fact. Returns the created row or throws on failure.
  */
-export async function createMemory(fact, category = 'other') {
+export async function createMemory(fact, category = 'other', options = {}) {
   if (!fact || typeof fact !== 'string') return null
   const trimmed = fact.trim()
   if (!trimmed) return null
@@ -36,17 +36,27 @@ export async function createMemory(fact, category = 'other') {
   if (!session?.user) throw new Error('Please sign in to save a memory.')
 
   try {
-    const { data, error } = await supabase
-      .from('advisor_memories')
-      .insert({
-        user_id: session.user.id,
-        fact: trimmed,
-        category: normalizeCategory(category),
-      })
-      .select()
-      .single()
+    const memoryKey = (options.memoryKey || options.memory_key || '').trim()
+    const result = memoryKey
+      ? await supabase.rpc('upsert_advisor_memory', {
+          p_fact: trimmed,
+          p_category: normalizeCategory(category),
+          p_memory_key: memoryKey,
+          p_subject_key: (options.subjectKey || options.subject_key || '').trim(),
+          p_source: options.source || 'conversation',
+          p_confidence: Number(options.confidence) || 0.8,
+          p_metadata: options.metadata || {},
+        })
+      : await supabase.from('advisor_memories').insert({
+          user_id: session.user.id,
+          fact: trimmed,
+          category: normalizeCategory(category),
+          source: options.source || 'manual',
+          last_confirmed_at: new Date().toISOString(),
+        }).select().single()
+    const { data, error } = result
     if (error) throw error
-    return data
+    return Array.isArray(data) ? data[0] : data
   } catch (err) {
     console.error('Error creating memory:', err)
     throw err
@@ -66,6 +76,7 @@ export async function getMemories() {
       .from('advisor_memories')
       .select('*')
       .eq('user_id', session.user.id)
+      .eq('status', 'active')
       .order('created_at', { ascending: false })
     if (error) throw error
     return data ?? []
@@ -135,7 +146,7 @@ export function deduplicateMemories(memories) {
 export function formatMemoriesForContext(memories) {
   if (!memories || memories.length === 0) return ''
 
-  const recent = memories.slice(0, 20)
+  const recent = memories.filter(memory => memory.status !== 'superseded').slice(0, 20)
   const grouped = recent.reduce((acc, mem) => {
     const cat = mem.category || 'other'
     if (!acc[cat]) acc[cat] = []
@@ -171,7 +182,10 @@ export async function distillConversation(messages) {
 Rules:
 - Only extract facts that are likely to remain true for months (income, employment, goals, debts, family changes, risk preferences, etc.)
 - Do NOT extract transient things like "I'm feeling stressed today" or "the market is down"
-- Return JSON only: { "memories": [{ "fact": "...", "category": "income|employment|life_event|risk_preference|goal|debt|family|health|investment|other" }] }
+- Do NOT duplicate balances, account ownership, debts, goals, insurance, or employment facts already supplied by the app's structured context.
+- Give each fact a stable memory_key from: income.context, employment.context, life_event.current, risk.preference, goal.context, debt.context, family.context, health.context, investment.context, other.context.
+- subject_key is a short stable subject such as "primary", "visa", or "house"; use "primary" when there is no named subject.
+- Return JSON only: { "memories": [{ "fact": "...", "category": "income|employment|life_event|risk_preference|goal|debt|family|health|investment|other", "memory_key": "risk.preference", "subject_key": "primary" }] }
 - If nothing durable was revealed, return { "memories": [] }
 
 Conversation:

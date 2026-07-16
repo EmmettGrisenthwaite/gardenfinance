@@ -13,6 +13,7 @@ import { mergeResources } from '@/lib/providerLinks'
 import { StepGuide, DueChip, ApplyAction, dueMeta } from '@/components/PlanSteps'
 import ResourceLinks from '@/components/ResourceLinks'
 import PageHeader from '@/components/ui/PageHeader'
+import { recordStepActivity } from '@/lib/financialActivities'
 
 // One step, one page: the title, why it matters, and the full "how to do this"
 // guide — reached by tapping the step in the Plan, exited by the back button.
@@ -27,18 +28,27 @@ export default function StepDetail() {
   const [step, setStep]   = useState(location.state?.step ?? null)
   const [plan, setPlan]   = useState(null)
   const [debts, setDebts] = useState([])
+  const [accounts, setAccounts] = useState([])
+  const [goals, setGoals] = useState([])
   const [missing, setMissing] = useState(false)
   const [error, setError] = useState(null)
   const [completing, setCompleting] = useState(false)
 
   useEffect(() => {
     async function load() {
-      const [pl, d] = await Promise.all([
+      const [pl, d, a, g] = await Promise.all([
         getPlan(user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
+        supabase.from('accounts').select('*').eq('user_id', user.id),
+        supabase.from('goals').select('*').eq('user_id', user.id),
       ])
+      if (d.error) throw d.error
+      if (a.error) throw a.error
+      if (g.error) throw g.error
       setPlan(pl)
       setDebts(d.data ?? [])
+      setAccounts(a.data ?? [])
+      setGoals(g.data ?? [])
       const found = pl?.steps.find(s => s.id === stepId)
       if (found) setStep(found)
       else if (!location.state?.step) setMissing(true)
@@ -72,15 +82,16 @@ export default function StepDetail() {
     if (!plan || !step || completing) return
     setCompleting(true)
     try {
-      // Save the durable fact before leaving so the Plan lands with every
-      // suggestion and finance surface already reading the updated profile.
-      await rememberCompletedStep(step.text)
-
       const completedAt = new Date().toISOString()
       const next = plan.steps.map(s => s.id === step.id
         ? { ...s, done: true, completedAt } : s)
       await updatePlanSteps(plan.id, next, user.id)
       setPlan(p => ({ ...p, steps: next }))
+      try {
+        await rememberCompletedStep(step.text)
+      } catch {
+        setError('Step completed. Advisor memory will reconcile automatically when your profile reloads.')
+      }
       let navigationState
       try {
         const stepIndex = plan.steps.findIndex(item => item.id === step.id)
@@ -96,6 +107,20 @@ export default function StepDetail() {
           : undefined
       } catch {
         navigationState = { gardenSyncError: 'Step saved. Permanent garden progress will catch up automatically.' }
+      }
+      try {
+        await recordStepActivity({
+          plan,
+          step: { ...step, done: true, completedAt },
+          accounts,
+          debts,
+          goals,
+        })
+      } catch {
+        navigationState = {
+          ...navigationState,
+          gardenSyncError: navigationState?.gardenSyncError || 'Step saved. You can update any resulting balance from Home.',
+        }
       }
       navigate('/plan', { state: navigationState })
     } catch (err) {

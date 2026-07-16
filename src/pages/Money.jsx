@@ -216,6 +216,12 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
     const sheet = new URLSearchParams(location.search).get('sheet') || location.state?.sheet
     if (!sheet || loading) return
     openSheet(sheet)
+    const preferredSubtype = new URLSearchParams(location.search).get('accountSubtype')
+    if (sheet === 'accounts' && preferredSubtype) {
+      const normalizedSubtype = preferredSubtype === 'savings' ? 'standard_savings' : preferredSubtype
+      const family = INVESTMENT_SUBTYPES.some(option => option.value === normalizedSubtype) ? 'investment' : 'cash'
+      beginAccount(family, null, normalizedSubtype)
+    }
   }, [loading, location.search, location.state]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -303,6 +309,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
       if (params.has('sheet')) {
         params.delete('sheet')
         params.delete('setup')
+        params.delete('accountSubtype')
         navigate({ pathname: '/', search: params.toString() ? `?${params}` : '' }, { replace: true })
       }
     } else if (location.state?.sheet) {
@@ -468,12 +475,13 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
     setDirty(true)
   }
 
-  function beginAccount(family, item = null) {
-    const defaultOption = family === 'cash' ? CASH_SUBTYPES[0] : family === 'investment' ? INVESTMENT_SUBTYPES[0] : ASSET_SUBTYPES[0]
+  function beginAccount(family, item = null, preferredSubtype = null) {
+    const options = family === 'cash' ? CASH_SUBTYPES : family === 'investment' ? INVESTMENT_SUBTYPES : ASSET_SUBTYPES
+    const defaultOption = options.find(option => option.value === preferredSubtype) || options[0]
     const subtype = item ? (item.subtype || defaultSubtype(item.type)) : defaultOption.value
     setEditor({ kind: 'account', family, id: item?.id ?? null })
     setDraft({
-      name: item?.name ?? '', institution: item?.institution ?? '', subtype,
+      name: item?.name ?? (preferredSubtype ? defaultOption.label : ''), institution: item?.institution ?? '', subtype,
       balance: item ? String(item.balance ?? 0) : '',
       interest_rate: item?.interest_rate == null ? '' : String(item.interest_rate),
       monthly_contribution: item?.monthly_contribution == null ? '' : String(item.monthly_contribution),
@@ -1011,7 +1019,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
       </div>}
 
       {homeMode && renderHomeHero?.({
-        profile, accounts, debts, goals, cashFlowItems, budgetLimits, snapshot, trend, openSheet, renderNetWorth,
+        profile, accounts, debts, goals, cashFlowItems, budgetLimits, snapshot, trend, openSheet, renderNetWorth, refreshMoney: loadData,
       })}
       {!homeMode && renderNetWorth()}
 
