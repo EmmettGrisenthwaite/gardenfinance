@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Sprout, ArrowRight, ArrowLeft, Check, X } from 'lucide-react'
+import { Sprout, ArrowRight, ArrowLeft, Check, Landmark, X } from 'lucide-react'
+import { ONBOARDING_ACCOUNTS_ROUTE } from '@/lib/routes'
 
 // ─── Step definitions ──────────────────────────────────────────────────────────
 const BASE_STEPS = [
@@ -83,8 +85,8 @@ const BASE_STEPS = [
   },
   {
     id: 'money',
-    question: 'Now the numbers — rough is fine.',
-    sub: 'Income, spending, and what\'s in your accounts. This powers your dashboard and lets your advisor give advice about the real you.',
+    question: 'Now your monthly picture — rough is fine.',
+    sub: 'Add typical income and spending here. Detailed accounts come next in the real Accounts workspace.',
     type: 'money',
   },
   {
@@ -285,6 +287,7 @@ function DebtsStep({ debts, setDebts }) {
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export default function Onboarding({ onClose, profileOnly = false }) {
   const { user, profile, setProfile } = useAuth()
+  const navigate = useNavigate()
   // profileOnly (editing from Settings) shows just the profile questions — no
   // money/debts re-entry (those live on the Plan and stay untouched).
   // When opened manually (editing profile), skip preview + intro → go straight to age
@@ -301,9 +304,6 @@ export default function Onboarding({ onClose, profileOnly = false }) {
     primary_goal:     profile?.primary_goal    ?? '',
     monthly_income:   profile?.monthly_income   ? String(profile.monthly_income)   : '',
     monthly_expenses: profile?.monthly_expenses ? String(profile.monthly_expenses) : '',
-    checking:         '',
-    savings:          '',
-    brokerage:        '',
     debts:            [],   // [{ name, balance }]
   })
 
@@ -383,43 +383,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
       return
     }
 
-    const checking  = Number(answers.checking)  || 0
-    const savings   = Number(answers.savings)   || 0
-    const brokerage = Number(answers.brokerage) || 0
     const validDebts = (answers.debts || []).filter(d => d.name?.trim() && Number(d.balance) > 0)
-    const totalDebt  = validDebts.reduce((s, d) => s + Number(d.balance), 0)
-    // Net worth = what you own (accounts) minus what you owe (debts).
-    const netWorth = checking + savings + brokerage - totalDebt
-
-    // Seed accounts + debts FIRST, then flip the profile. The dashboard refetches
-    // accounts the moment `onboarding_complete` flips, so the rows must exist by
-    // then — otherwise account value shows a stale $0.
-
-    // Typed account balances (one canonical row per type) — feeds the allocation
-    // donut + advisor context. Update-or-insert so re-running setup never creates
-    // duplicate rows (which would double the summed account value).
-    const accountRows = [
-      { type: 'checking',  subtype: 'checking',         name: 'Checking',    balance: checking },
-      { type: 'savings',   subtype: 'standard_savings', name: 'Savings',     balance: savings },
-      { type: 'brokerage', subtype: 'taxable_brokerage', name: 'Investments', balance: brokerage },
-    ]
-    if (accountRows.length) {
-      try {
-        const { data: existing, error: readError } = await supabase.from('accounts').select('id, type').eq('user_id', user.id)
-        if (readError) throw readError
-        for (const a of accountRows) {
-          const match = existing?.find(e => e.type === a.type)
-          const result = match
-            ? await supabase.from('accounts').update({ balance: a.balance, name: a.name, subtype: a.subtype, last_verified_at: new Date().toISOString().slice(0, 10) }).eq('id', match.id).eq('user_id', user.id)
-            : await supabase.from('accounts').insert({ ...a, user_id: user.id, last_verified_at: new Date().toISOString().slice(0, 10) })
-          if (result.error) throw result.error
-        }
-      } catch (err) {
-        setError(err.message ?? 'Could not save your account balances.')
-        setSaving(false)
-        return
-      }
-    }
     // Seed debts so the advisor can plan payoff from day one.
     if (validDebts.length) {
       const { data: existingDebts, error: debtReadError } = await supabase.from('debts')
@@ -443,13 +407,9 @@ export default function Onboarding({ onClose, profileOnly = false }) {
       }
     }
 
-    const payload = {
-      ...profileFields,
-      net_worth:        netWorth,
-    }
     const { data, error: profileError } = await supabase
       .from('profiles')
-      .upsert(payload, { onConflict: 'id' })
+      .upsert(profileFields, { onConflict: 'id' })
       .select()
       .single()
     if (profileError) {
@@ -485,7 +445,8 @@ export default function Onboarding({ onClose, profileOnly = false }) {
     try { sessionStorage.setItem(`money-nudge-fresh-${user.id}`, '1') } catch { /* private mode */ }
     setProfile(savedProfile)
     setSaving(false)
-    onClose?.()
+    if (onClose) onClose()
+    else navigate(ONBOARDING_ACCOUNTS_ROUTE, { replace: true })
   }
 
   async function skip() {
@@ -615,7 +576,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                 </div>
               )}
 
-              {/* Money inputs — cash flow + typed account balances */}
+              {/* Money inputs — cash flow now, detailed accounts immediately after setup */}
               {current.type === 'money' && (
                 <div className="space-y-3">
                   {[
@@ -636,27 +597,15 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                       </div>
                     </label>
                   ))}
-                  <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide pt-1">What's in your accounts</div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { field: 'checking',  label: 'Checking',    color: 'focus-within:border-sky-400' },
-                      { field: 'savings',   label: 'Savings',     color: 'focus-within:border-emerald-400' },
-                      { field: 'brokerage', label: 'Investments', color: 'focus-within:border-violet-400' },
-                    ].map(({ field, label, color }) => (
-                      <label key={field} className="block">
-                        <span className="text-xs font-medium text-white/70">{label}</span>
-                        <div className={`mt-1 flex items-center bg-white/[0.075] border-2 border-white/15 rounded-lg px-2 py-2 transition-colors ${color}`}>
-                          <span className="text-white/40 text-sm mr-0.5">$</span>
-                          <input type="number" inputMode="decimal" min="0" step="50"
-                            value={answers[field]}
-                            onChange={e => set(field, e.target.value)}
-                            placeholder="0"
-                            className="w-full min-w-0 bg-transparent text-base md:text-sm font-bold text-white tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                        </div>
-                      </label>
-                    ))}
+                  <div className="flex gap-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] p-3.5">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-300/10 text-emerald-100">
+                      <Landmark className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold text-white">Your accounts are next</p>
+                      <p className="mt-1 text-xs leading-5 text-readable-secondary">After setup, Accounts opens automatically so you can add checking, savings, retirement, and brokerage accounts with their real details. Every save updates Home and your Advisor.</p>
+                    </div>
                   </div>
-                  <p className="text-[11px] text-white/35">Estimates are fine — you can fine-tune these on the Money tab later.</p>
                 </div>
               )}
 

@@ -123,6 +123,26 @@ export function accountFamily(account) {
   return 'asset'
 }
 
+const PROFILE_INVESTMENT_TYPE = {
+  taxable_brokerage: 'brokerage',
+  roth_ira: 'roth_ira',
+  traditional_ira: 'trad_ira',
+  '401k': '401k',
+  '403b': '401k',
+  hsa: 'hsa',
+  sep_ira: 'sep_ira',
+  crypto: 'crypto',
+  other_investment: 'other',
+}
+
+export function investmentTypesFromAccounts(accounts = []) {
+  const types = accounts
+    .filter(account => accountFamily(account) === 'investment')
+    .map(account => PROFILE_INVESTMENT_TYPE[account.subtype || defaultSubtype(account.type)])
+    .filter(Boolean)
+  return types.length ? [...new Set(types)] : ['none']
+}
+
 export function defaultSubtype(type) {
   if (type === 'checking') return 'checking'
   if (type === 'savings') return 'standard_savings'

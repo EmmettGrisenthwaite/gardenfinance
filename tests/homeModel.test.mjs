@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { selectHomeAction } from '../src/lib/homeModel.js'
 import { getMoneySetupState } from '../src/lib/moneySetup.js'
-import { HOME_MONEY_REDIRECTS } from '../src/lib/routes.js'
+import { HOME_MONEY_REDIRECTS, ONBOARDING_ACCOUNTS_ROUTE } from '../src/lib/routes.js'
 
 test('Home action priority is setup gap, then unfinished step, then Plan review', () => {
   const plan = { steps: [{ id: 'done', text: 'Done', done: true }, { id: 'next', text: 'Open the HYSA', done: false, impact: 'Earn more interest' }] }
@@ -38,7 +38,8 @@ test('legacy Money routes redirect to the matching Home workspace', () => {
   assert.deepEqual(HOME_MONEY_REDIRECTS, {
     '/money': '/?section=money',
     '/budget': '/?sheet=plan',
-    '/accounts': '/?sheet=cash',
+    '/accounts': '/?section=money&sheet=accounts',
     '/debt': '/?sheet=debts',
   })
+  assert.equal(ONBOARDING_ACCOUNTS_ROUTE, '/?section=money&sheet=accounts&setup=1')
 })

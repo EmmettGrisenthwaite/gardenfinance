@@ -12,7 +12,7 @@ import { computeSnapshot } from '@/lib/finance'
 import {
   accountFamily, ASSET_SUBTYPES, CASH_FLOW_CATEGORIES, CASH_SUBTYPES,
   categoryMeta, daysSince, defaultSubtype, DEBT_TYPES, FREQUENCIES,
-  INVESTMENT_SUBTYPES, isWorkplaceAccount, itemMonthlyAmount,
+  investmentTypesFromAccounts, INVESTMENT_SUBTYPES, isWorkplaceAccount, itemMonthlyAmount,
   monthlyAmount, subtypeLabel, taxTreatment,
 } from '@/lib/moneyModel'
 import { netWorthTrend } from '@/lib/netWorth'
@@ -207,7 +207,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
   useEffect(() => {
     loadData().catch(loadError => setError(loadError.message ?? 'Could not load your money data.'))
       .finally(() => setLoading(false))
-  }, [user.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user.id, profile?.onboarding_complete]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Arriving from a nudge (dashboard money-picture row, advisor gap banner):
   // open the exact sheet that resolves it — one less tap between "I was asked"
@@ -247,6 +247,20 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
     investment: accounts.filter(account => accountFamily(account) === 'investment'),
     asset: accounts.filter(account => accountFamily(account) === 'asset'),
   }), [accounts])
+
+  async function syncAccountProfile(nextAccounts) {
+    const investmentTypes = investmentTypesFromAccounts(nextAccounts)
+    const currentTypes = Array.isArray(profile?.investment_types) ? profile.investment_types : []
+    if (JSON.stringify([...currentTypes].sort()) === JSON.stringify([...investmentTypes].sort())) return
+    const { error: syncError } = await supabase.from('profiles')
+      .update({ investment_types: investmentTypes })
+      .eq('id', user.id)
+    if (syncError) {
+      setError('Your account saved, but Advisor memory could not refresh yet. It will use the detailed account record in the meantime.')
+      return
+    }
+    setProfile(current => current ? { ...current, investment_types: investmentTypes } : current)
+  }
   const activeDebts = useMemo(() => [...debts].filter(debt => Number(debt.balance) > 0)
     .sort((left, right) => Number(right.interest_rate || 0) - Number(left.interest_rate || 0)), [debts])
   const assetTotal = accountGroups.asset.filter(account => account.include_in_net_worth !== false)
@@ -288,6 +302,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
       const params = new URLSearchParams(location.search)
       if (params.has('sheet')) {
         params.delete('sheet')
+        params.delete('setup')
         navigate({ pathname: '/', search: params.toString() ? `?${params}` : '' }, { replace: true })
       }
     } else if (location.state?.sheet) {
@@ -512,7 +527,8 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
       return
     }
     try {
-      await loadData()
+      const canonical = await loadData()
+      await syncAccountProfile(canonical.accounts)
       setEditor(null)
       setEditorDirty(false)
       setDirty(false)
@@ -597,7 +613,8 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
       return
     }
     try {
-      await loadData()
+      const canonical = await loadData()
+      if (table === 'accounts') await syncAccountProfile(canonical.accounts)
       setDeleteTarget(null)
       setSaving(false)
     } catch (refreshError) {
@@ -636,6 +653,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
     if (editor?.kind === 'account') return `${editor.id ? 'Edit' : 'Add'} ${editor.family === 'asset' ? 'asset' : 'account'}`
     if (editor?.kind === 'debt') return editor.id ? 'Edit debt' : 'Add debt'
     if (activeSheet === 'plan') return 'Monthly plan'
+    if (activeSheet === 'accounts') return 'Set up your accounts'
     if (activeSheet === 'debts') return 'Debts'
     if (activeSheet === 'balances') return 'Update balances'
     return FAMILY_META[activeSheet]?.title || 'Money details'
@@ -656,6 +674,8 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
     if (editor?.kind === 'debt') return <SaveFooter onCancel={returnToList} onSave={saveDebt} saving={saving} saveLabel="Save debt" />
     if (activeSheet === 'plan') return <SaveFooter onSave={saveMonthlyPlan} saving={saving} saveLabel="Save monthly plan" disabled={!dirty} />
     if (activeSheet === 'balances') return <SaveFooter onCancel={requestClose} onSave={saveBalances} saving={saving} saveLabel="Update balances" disabled={!dirty} />
+    if (activeSheet === 'accounts') return <SaveFooter onSave={requestClose} saving={false}
+      saveLabel={accounts.length ? 'Done — use these accounts' : 'Skip for now'} />
     return null
   }
 
@@ -849,6 +869,43 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
     )
   }
 
+  function renderAccountSetup() {
+    const cashTotal = accountGroups.cash.reduce((sum, account) => sum + Number(account.balance || 0), 0)
+    const investmentTotal = accountGroups.investment.reduce((sum, account) => sum + Number(account.balance || 0), 0)
+    return (
+      <div className="space-y-6">
+        <div className="rounded-2xl border border-emerald-300/18 bg-emerald-300/[0.06] p-4">
+          <p className="text-[15px] font-semibold text-white">Add the accounts you actually use</p>
+          <p className="mt-1 text-[13px] leading-5 text-readable-secondary">Save each checking, savings, retirement, or brokerage account separately. Balances and account types update Home, net worth, Plan, and Advisor automatically.</p>
+        </div>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Landmark className="h-4 w-4 text-emerald-200" />
+              <h3 className="text-[15px] font-semibold text-white">Cash accounts</h3>
+            </div>
+            <span className="text-[13px] font-semibold tabular-nums text-readable-secondary">{fmt(cashTotal)}</span>
+          </div>
+          {renderAccountList('cash')}
+        </section>
+
+        <section className="border-t border-white/[0.08] pt-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <LineChart className="h-4 w-4 text-emerald-200" />
+              <h3 className="text-[15px] font-semibold text-white">Investment accounts</h3>
+            </div>
+            <span className="text-[13px] font-semibold tabular-nums text-readable-secondary">{fmt(investmentTotal)}</span>
+          </div>
+          {renderAccountList('investment')}
+        </section>
+
+        <p className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-3 text-xs leading-5 text-readable-muted">Never enter credentials or full account numbers. Manual balances are enough.</p>
+      </div>
+    )
+  }
+
   function renderDebtEditor() {
     return (
       <div className="space-y-4">
@@ -915,6 +972,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
     if (editor?.kind === 'account') return renderAccountEditor()
     if (editor?.kind === 'debt') return renderDebtEditor()
     if (activeSheet === 'plan') return renderPlanList()
+    if (activeSheet === 'accounts') return renderAccountSetup()
     if (activeSheet === 'debts') return renderDebtList()
     if (activeSheet === 'balances') return renderBalanceSheet()
     if (FAMILY_META[activeSheet]) return renderAccountList(activeSheet)
@@ -993,9 +1051,9 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
       </section>
 
       <BottomSheet open={Boolean(activeSheet)} title={sheetTitle()}
-        subtitle={editor || breakdown ? 'Required fields first. Optional details stay tucked away.' : activeSheet === 'plan' ? 'Typical monthly amounts and targets—not transaction activity.' : activeSheet === 'balances' ? 'A quick manual refresh across your tracked balances.' : FAMILY_META[activeSheet]?.subtitle}
+        subtitle={editor || breakdown ? 'Required fields first. Optional details stay tucked away.' : activeSheet === 'plan' ? 'Typical monthly amounts and targets—not transaction activity.' : activeSheet === 'accounts' ? 'Your saved records become the source of truth everywhere in the app.' : activeSheet === 'balances' ? 'A quick manual refresh across your tracked balances.' : FAMILY_META[activeSheet]?.subtitle}
         onClose={closeSheet} dirty={dirty || editorDirty} size="lg"
-        footer={(editor || breakdown || activeSheet === 'plan' || activeSheet === 'balances') ? ({ requestClose }) => sheetFooter(requestClose) : null}>
+        footer={(editor || breakdown || activeSheet === 'plan' || activeSheet === 'accounts' || activeSheet === 'balances') ? ({ requestClose }) => sheetFooter(requestClose) : null}>
         {sheetError && <div role="alert" className="mb-4 flex gap-2 rounded-xl border border-rose-300/20 bg-rose-400/[0.08] px-3.5 py-3 text-[13px] leading-5 text-rose-100"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{sheetError}</div>}
         {sheetBody()}
       </BottomSheet>
