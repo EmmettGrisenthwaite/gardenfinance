@@ -39,7 +39,7 @@ const WEB_SEARCH_TOOL = {
     'irs.gov', 'ssa.gov', 'healthcare.gov', 'treasury.gov', 'fdic.gov',
     'ncua.gov', 'consumerfinance.gov', 'studentaid.gov', 'annualcreditreport.com',
     // Established personal-finance references (rate comparisons, explainers)
-    'nerdwallet.com', 'bankrate.com', 'investopedia.com', 'morningstar.com', 'bogleheads.org',
+    'nerdwallet.com', 'bankrate.com', 'morningstar.com', 'bogleheads.org',
   ],
 }
 
@@ -353,16 +353,47 @@ Deno.serve(async (req) => {
   // server-side tool loop paused (stop_reason pause_turn), resume it
   // transparently: append the assistant turn and re-request.
   const textParts: string[] = []
-  const sources = new Map<string, { label: string; url: string }>()
+  const citedSources = new Map<string, { label: string; url: string }>()
+  const searchedSources = new Map<string, { label: string; url: string }>()
+  const harvestSources = (value: unknown) => {
+    if (Array.isArray(value)) {
+      value.forEach(harvestSources)
+      return
+    }
+    if (!value || typeof value !== 'object') return
+    const item = value as {
+      type?: string; url?: string; source?: string; title?: string
+      content?: unknown; citations?: unknown
+    }
+    const isWebSource = item.type === 'web_search_result' || item.type === 'web_search_result_location'
+    const url = item.url || (item.type === 'web_search_result_location' ? item.source : undefined)
+    const target = item.type === 'web_search_result_location' ? citedSources : searchedSources
+    if (isWebSource && url && /^https?:\/\//i.test(url) && !target.has(url)) {
+      target.set(url, { label: item.title || url, url })
+    }
+    harvestSources(item.citations)
+    harvestSources(item.content)
+  }
   const harvest = (content: unknown) => {
     if (!Array.isArray(content)) return
     for (const b of content as Array<{ type?: string; text?: string; citations?: Array<{ url?: string; title?: string }> }>) {
-      if (b?.type !== 'text') continue
-      if (b.text) textParts.push(b.text)
-      for (const c of b.citations ?? []) {
-        if (c?.url && !sources.has(c.url)) sources.set(c.url, { label: c.title || c.url, url: c.url })
-      }
+      if (b?.type === 'text' && b.text) textParts.push(b.text)
+      harvestSources(b)
     }
+  }
+  const responseSources = () => {
+    const pool = citedSources.size ? citedSources : searchedSources
+    const hosts = new Set<string>()
+    const compact: Array<{ label: string; url: string }> = []
+    for (const source of pool.values()) {
+      let host = source.url
+      try { host = new URL(source.url).hostname.replace(/^www\./, '') } catch { /* URL validated above */ }
+      if (hosts.has(host)) continue
+      hosts.add(host)
+      compact.push(source)
+      if (compact.length === 6) break
+    }
+    return compact
   }
   harvest(data?.content)
   for (let hop = 0; hop < 2 && data?.stop_reason === 'pause_turn'; hop++) {
@@ -386,7 +417,7 @@ Deno.serve(async (req) => {
 
   return json({
     text: textParts.join(''),
-    sources: [...sources.values()],
+    sources: responseSources(),
     usage: data?.usage ?? null,
   })
 })

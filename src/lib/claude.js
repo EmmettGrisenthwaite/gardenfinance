@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { LIMITS } from '@/lib/finance'
+import { collectWebSources, compactWebSources } from '@/lib/webSources'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const CHAT_ENDPOINT = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/chat` : null
@@ -67,7 +68,7 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 4000, onD
   // source URLs so the UI can render them as tappable chips.
   const reader  = res.body.getReader()
   const decoder = new TextDecoder()
-  const sources = new Map()   // url → {label, url}
+  const sourceSets = { cited: new Map(), searched: new Map() }
   let buf = '', full = ''
   for (;;) {
     const { done, value } = await reader.read()
@@ -81,9 +82,9 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 4000, onD
       if (!dataStr) continue
       let evt
       try { evt = JSON.parse(dataStr) } catch { continue }
+      if (evt.type === 'content_block_start') collectWebSources(evt.content_block, sourceSets)
       if (evt.type === 'content_block_delta' && evt.delta?.type === 'citations_delta') {
-        const c = evt.delta.citation
-        if (c?.url && !sources.has(c.url)) sources.set(c.url, { label: c.title || c.url, url: c.url })
+        collectWebSources(evt.delta.citation, sourceSets)
       } else if (evt.type === 'content_block_delta' && evt.delta?.text) {
         full += evt.delta.text
         onDelta(full)
@@ -92,7 +93,8 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 4000, onD
       }
     }
   }
-  if (sources.size) onSources?.([...sources.values()])
+  const sources = compactWebSources(sourceSets)
+  if (sources.length) onSources?.(sources)
   return full
 }
 
