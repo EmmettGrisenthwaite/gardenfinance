@@ -1,6 +1,11 @@
 import { supabase } from '@/lib/supabase'
 import { LIMITS } from '@/lib/finance'
-import { collectWebSources, compactWebSources } from '@/lib/webSources'
+import {
+  collectWebSources,
+  compactWebSources,
+  limitGuideLinks,
+  needsActionLinks,
+} from '@/lib/webSources'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const CHAT_ENDPOINT = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/chat` : null
@@ -93,7 +98,10 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 4000, onD
       }
     }
   }
-  const sources = compactWebSources(sourceSets)
+  const latestUserMessage = [...messages].reverse().find(message => message.role === 'user')?.content ?? ''
+  const sources = compactWebSources(sourceSets, {
+    allowSearchFallback: needsActionLinks(latestUserMessage),
+  })
   if (sources.length) onSources?.(sources)
   return full
 }
@@ -171,7 +179,7 @@ export async function requestGuide(messages, systemPrompt) {
     if (!res.ok) return null
     const data = await res.json()
     const r = data?.result
-    return r?.should_guide && Array.isArray(r.steps) && r.steps.length ? r : null
+    return r?.should_guide && Array.isArray(r.steps) && r.steps.length ? limitGuideLinks(r) : null
   } catch {
     return null
   }

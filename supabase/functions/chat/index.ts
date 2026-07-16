@@ -22,6 +22,16 @@ const MAX_REQUEST_BYTES = 256_000
 const MAX_MESSAGES = 80
 const MAX_MESSAGE_CHARS = 12_000
 const MAX_SYSTEM_CHARS = 60_000
+const MAX_CHAT_LINKS = 3
+
+const EXPLICIT_LINK_INTENT = /\b(link|links|website|site|url|source|sources|cite|citation)\b/i
+const SETUP_ACTION = /\b(open|apply|enroll|sign\s?up|register|create|switch|roll\s?over|transfer|buy|purchase|file|freeze|compare|choose)\b/i
+const LINK_DESTINATION = /\b(account|bank|brokerage|ira|roth|401k|403b|hsa|hysa|savings|insurance|marketplace|credit|loan|tax|provider|fund|etf|bond)\b/i
+
+function needsActionLinks(message = '') {
+  return EXPLICIT_LINK_INTENT.test(message)
+    || (SETUP_ACTION.test(message) && LINK_DESTINATION.test(message))
+}
 
 // Server-side web search (Anthropic runs the searches; results come back with
 // citations). The allowlist is both a quality filter and the main defense
@@ -205,7 +215,7 @@ Deno.serve(async (req) => {
 
   const CREATE_GUIDE_TOOL = {
     name: 'create_guide',
-    description: 'Use when the user wants to TAKE A CONCRETE SETUP ACTION — e.g. open a Roth IRA, open a high-yield savings account, start investing in index funds, roll over an old 401(k), open an HSA, get term life insurance, freeze their credit, set up automatic transfers. Produce a short do-it-today walkthrough: 3–6 ordered steps. On the step where they pick a provider, list 2–4 reputable, genuinely top-rated options with their OFFICIAL website URLs — use only primary official domains you are confident about (e.g. fidelity.com, vanguard.com, schwab.com, ally.com, marcus.com, sofi.com, wealthfront.com, irs.gov). Never invent URLs. Ground the recommendations in the user’s real situation (age, income, existing accounts). If the latest message is NOT a request to actually set something up, set should_guide=false and leave the rest blank.',
+    description: 'Use when the user wants to TAKE A CONCRETE SETUP ACTION — e.g. open a Roth IRA, open a high-yield savings account, start investing in index funds, roll over an old 401(k), open an HSA, get term life insurance, freeze their credit, set up automatic transfers. Produce a short do-it-today walkthrough: 3–6 ordered steps. Include links only when the user must leave the app to complete an action, placing no more than 3 links total on the relevant step. Use reputable official sites you are confident about (e.g. fidelity.com, vanguard.com, schwab.com, ally.com, marcus.com, sofi.com, wealthfront.com, irs.gov). Never add links to explanatory steps and never invent URLs. Ground the recommendations in the user’s real situation (age, income, existing accounts). If the latest message is NOT a request to actually set something up, set should_guide=false and leave the rest blank.',
     strict: true,
     input_schema: {
       type: 'object',
@@ -225,7 +235,7 @@ Deno.serve(async (req) => {
               detail: { type: 'string', description: 'One short sentence of how/why' },
               resources: {
                 type: 'array',
-                description: 'Optional reputable links for this step (e.g. provider sign-up pages). Official domains only.',
+                description: 'Optional official action links for this step. Across the entire guide, include at most 3 and only when needed to complete the action.',
                 items: {
                   type: 'object',
                   additionalProperties: false,
@@ -382,7 +392,12 @@ Deno.serve(async (req) => {
     }
   }
   const responseSources = () => {
-    const pool = citedSources.size ? citedSources : searchedSources
+    const latestUserMessage = [...(messages as Array<{ role?: string; content?: string }>)]
+      .reverse()
+      .find(message => message.role === 'user')?.content ?? ''
+    const pool = citedSources.size
+      ? citedSources
+      : (needsActionLinks(latestUserMessage) ? searchedSources : new Map())
     const hosts = new Set<string>()
     const compact: Array<{ label: string; url: string }> = []
     for (const source of pool.values()) {
@@ -391,7 +406,7 @@ Deno.serve(async (req) => {
       if (hosts.has(host)) continue
       hosts.add(host)
       compact.push(source)
-      if (compact.length === 6) break
+      if (compact.length === MAX_CHAT_LINKS) break
     }
     return compact
   }

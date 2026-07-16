@@ -533,10 +533,13 @@ export default function AIAdvisor() {
       // tag fragments) so raw tags never flash in the bubble mid-stream. Web
       // search citations arrive on the same stream; they become source chips.
       let sources = []
+      const isSetupRequest = GUIDE_INTENT.test(text)
       const reply = await callClaude(next, systemPrompt, {
         maxTokens: 4000,
         onDelta: (text) => setMessages([...next, { role: 'assistant', content: stripForStreaming(text) }]),
-        onSources: (s) => { sources = s },
+        // Setup requests get up to three official links in the dedicated guide
+        // below; suppressing generic source chips avoids a duplicate link row.
+        onSources: isSetupRequest ? undefined : (s) => { sources = s },
       })
 
       // Parse artifacts, tappable answer options, and the plannable marker
@@ -563,7 +566,7 @@ export default function AIAdvisor() {
       }
 
       // After the reply, offer relevant follow-ups
-      if (GUIDE_INTENT.test(text)) {
+      if (isSetupRequest) {
         requestGuide(convo, systemPrompt).then(g => { if (g) setPendingGuide(g) })
       } else if (GOAL_INTENT.test(text)) {
         suggestGoal(convo, systemPrompt).then(g => { if (g) setPendingGoal(g) })
