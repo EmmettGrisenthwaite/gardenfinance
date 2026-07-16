@@ -20,7 +20,7 @@ export default function GuideCard({ guide, saved = false, onSave, onDismiss }) {
         <BookOpenCheck className="w-4 h-4 text-sky-300 flex-shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-white">{guide.title}</div>
-          {guide.summary && <div className="text-xs text-white/55 mt-0.5 leading-snug">{guide.summary}</div>}
+          {guide.summary && <div className="text-xs text-readable-secondary mt-0.5 leading-snug">{guide.summary}</div>}
         </div>
         {Number(guide.estimated_minutes) > 0 && (
           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-200 bg-sky-500/15 border border-sky-400/25 rounded-full px-2 py-0.5 flex-shrink-0">
@@ -37,7 +37,7 @@ export default function GuideCard({ guide, saved = false, onSave, onDismiss }) {
             </span>
             <div className="min-w-0 flex-1">
               <div className="text-sm text-white/90 leading-snug">{s.text}</div>
-              {s.detail && <div className="text-xs text-white/45 mt-0.5 leading-snug">{s.detail}</div>}
+              {s.detail && <div className="text-xs text-readable-secondary mt-0.5 leading-snug">{s.detail}</div>}
               <ResourceLinks resources={s.resources} />
             </div>
           </li>
@@ -52,7 +52,7 @@ export default function GuideCard({ guide, saved = false, onSave, onDismiss }) {
           </Link>
         ) : (
           <>
-            <p className="text-xs text-white/75 mb-2">Would you like me to add this to your Plan so you can check it off as you go?</p>
+            <p className="text-xs text-readable-secondary mb-2">Would you like me to add this to your Plan so you can check it off as you go?</p>
             <div className="flex items-center gap-2">
               <button onClick={handleSave} disabled={saving}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-900/30 transition-colors disabled:opacity-60">
@@ -61,12 +61,12 @@ export default function GuideCard({ guide, saved = false, onSave, onDismiss }) {
               </button>
               {onDismiss && (
                 <button onClick={onDismiss}
-                  className="px-3 py-2 rounded-lg text-xs font-semibold text-white/50 hover:text-white/80 hover:bg-white/5 transition-colors">
+                  className="px-3 py-2 rounded-lg text-xs font-semibold text-readable-secondary hover:text-white hover:bg-white/5 transition-colors">
                   Not now
                 </button>
               )}
             </div>
-            <p className="text-[10px] text-white/30 mt-2 leading-tight">Links open official sites — verify before entering info.</p>
+            <p className="text-[10px] text-readable-muted mt-2 leading-tight">Links open official sites — verify before entering info.</p>
           </>
         )}
       </div>

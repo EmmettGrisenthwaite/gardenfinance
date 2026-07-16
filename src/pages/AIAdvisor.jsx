@@ -172,14 +172,14 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
         <Bot className="h-4 w-4 text-emerald-200/75" />
       </div>
       <div className="min-w-0 flex-1 space-y-3">
-        <div className="pr-1 text-[14px] leading-[1.7] text-white/78 [&_strong]:font-semibold [&_strong]:text-white">
+        <div className="pr-1 text-[15px] leading-[1.7] text-readable-secondary [&_strong]:font-semibold [&_strong]:text-readable-primary">
           {renderContent(msg.content)}
         </div>
 
         {/* Web-search sources — real URLs from real search results, tappable */}
         {msg.sources?.length > 0 && (
           <div>
-            <div className="text-[10px] font-semibold text-white/35 uppercase tracking-wider pl-1 mb-1">Sources</div>
+            <div className="text-[10px] font-semibold text-readable-muted uppercase tracking-wider pl-1 mb-1">Sources</div>
             <ResourceLinks resources={msg.sources} />
           </div>
         )}
@@ -206,7 +206,7 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
         {showOptions && (
           <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, delay: 0.05 }} className="space-y-1.5">
-            <div className="text-[10px] font-semibold text-white/35 uppercase tracking-wider pl-1">Tap to answer</div>
+            <div className="text-[10px] font-semibold text-readable-muted uppercase tracking-wider pl-1">Tap to answer</div>
             <div className="flex flex-wrap gap-1.5">
               {options.map((opt, i) => (
                 <button
@@ -761,13 +761,13 @@ export default function AIAdvisor() {
             </div>
             <div>
               <h1 className="font-display text-[18px] font-medium leading-tight text-white">Advisor</h1>
-              <p className="text-[11px] text-white/35">Personal to your real numbers</p>
+              <p className="text-[11px] text-readable-muted">Personal to your real numbers</p>
             </div>
           </div>
           <div className="relative z-30">
             {menuOpen && <button type="button" aria-label="Close advisor menu" onClick={() => setMenuOpen(false)} className="fixed inset-0 z-20 cursor-default" />}
             <button type="button" onClick={() => setMenuOpen(open => !open)} aria-label="Advisor menu" aria-expanded={menuOpen}
-              className="flex h-11 w-11 items-center justify-center rounded-xl text-white/42 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60">
+              className="flex h-11 w-11 items-center justify-center rounded-xl text-readable-muted transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60">
               <MoreHorizontal className="h-5 w-5" />
             </button>
             {menuOpen && (
@@ -775,12 +775,12 @@ export default function AIAdvisor() {
                 className="absolute right-0 top-12 z-30 w-48 overflow-hidden rounded-2xl border border-white/[0.1] bg-[#0c1612] p-1.5 shadow-2xl">
                 {messages.length > 0 && (
                   <button type="button" onClick={() => { setMenuOpen(false); handleClearChat() }}
-                    className="flex min-h-11 w-full items-center gap-2.5 rounded-xl px-3 text-left text-sm text-white/65 transition-colors hover:bg-white/[0.06] hover:text-white">
+                    className="flex min-h-11 w-full items-center gap-2.5 rounded-xl px-3 text-left text-sm text-readable-secondary transition-colors hover:bg-white/[0.06] hover:text-white">
                     <RefreshCw className="h-4 w-4" /> Start over
                   </button>
                 )}
                 <Link to="/settings" onClick={() => setMenuOpen(false)}
-                  className="flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-sm text-white/65 transition-colors hover:bg-white/[0.06] hover:text-white">
+                  className="flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-sm text-readable-secondary transition-colors hover:bg-white/[0.06] hover:text-white">
                   <Settings className="h-4 w-4" /> Settings
                 </Link>
               </motion.div>
@@ -822,9 +822,9 @@ export default function AIAdvisor() {
         <div className="mx-auto w-full max-w-3xl flex-shrink-0 px-4 pt-3">
           <div className="flex items-center gap-2.5 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2.5">
             <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-emerald-200/70" />
-            <span className="min-w-0 flex-1 text-xs leading-snug text-white/60">
+            <span className="min-w-0 flex-1 text-xs leading-snug text-readable-secondary">
               {gaps.length > 0 ? (
-                <>{gaps[0].label}{gaps.length > 1 && <span className="text-white/28"> +{gaps.length - 1} more</span>}</>
+                <>{gaps[0].label}{gaps.length > 1 && <span className="text-readable-muted"> +{gaps.length - 1} more</span>}</>
               ) : 'Your numbers are ready. Turn this conversation into a short action plan.'}
             </span>
             {gaps.length > 0 ? (
@@ -836,7 +836,7 @@ export default function AIAdvisor() {
             )}
             {gaps.length > 0 && (
               <button onClick={() => dismissGap(gaps[0].id)} aria-label="Dismiss"
-                className="-m-1 flex-shrink-0 p-1 text-white/22 hover:text-white/55"><X className="h-3.5 w-3.5" /></button>
+                className="-m-1 flex-shrink-0 p-1 text-readable-disabled hover:text-readable-primary"><X className="h-3.5 w-3.5" /></button>
             )}
           </div>
         </div>
@@ -864,7 +864,7 @@ export default function AIAdvisor() {
               initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }} transition={{ duration: 0.15 }}
               onClick={() => { setAtBottom(true); bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }}
-              className="advisor-scroll-button fixed right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.09] bg-[#101a16]/90 text-white/55 shadow-lg backdrop-blur-xl transition-colors hover:border-emerald-300/25 hover:text-emerald-200"
+              className="advisor-scroll-button fixed right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.09] bg-[#101a16]/90 text-readable-secondary shadow-lg backdrop-blur-xl transition-colors hover:border-emerald-300/25 hover:text-emerald-200"
             >
               <ArrowDown className="w-4 h-4" />
             </motion.button>
@@ -943,7 +943,7 @@ export default function AIAdvisor() {
             <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 md:flex-wrap md:overflow-x-visible md:-mx-0 md:px-0 mt-2 mb-2">
               {quickSuggestions.map((s, i) => (
                 <button key={i} onClick={() => send(s.q ?? s.label)}
-                  className="flex min-h-9 flex-shrink-0 items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 text-xs text-white/50 transition-colors hover:border-emerald-300/20 hover:text-white/80">
+                  className="flex min-h-9 flex-shrink-0 items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 text-xs text-readable-secondary transition-colors hover:border-emerald-300/20 hover:text-white">
                   <s.icon className="w-3 h-3 text-emerald-300/80" /> {s.label}
                 </button>
               ))}
@@ -979,7 +979,7 @@ export default function AIAdvisor() {
                 <Send className="w-4 h-4" />
               </button>
             </div>
-            <p className="mt-2 hidden text-center text-[10px] text-white/25 sm:block">
+            <p className="mt-2 hidden text-center text-[10px] text-readable-muted sm:block">
               Educational guidance — not a substitute for a licensed financial planner.
             </p>
           </form>
