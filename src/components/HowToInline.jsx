@@ -45,7 +45,7 @@ export default function HowToInline({ subject, context }) {
         <div className="mt-2 rounded-xl bg-emerald-500/[0.07] border border-emerald-400/20 px-3 py-2.5">
           {loading ? (
             <div className="flex items-center gap-2 text-xs text-emerald-200/80 py-1">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Writing your steps…
+              <Loader2 className="status-spinner w-3.5 h-3.5" aria-hidden="true" /> Writing your steps…
             </div>
           ) : error ? (
             <div className="text-xs text-readable-secondary py-1">

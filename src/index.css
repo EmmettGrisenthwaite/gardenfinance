@@ -296,6 +296,23 @@ button:focus-visible {
   }
 }
 
+/* Functional progress indicators must remain visibly active. Keep the motion
+   small and slow it down for reduced-motion users instead of freezing it on a
+   random frame, which makes an in-flight request look broken. */
+@keyframes gf-status-spin {
+  to { transform: rotate(360deg); }
+}
+.status-spinner {
+  animation: gf-status-spin 800ms linear infinite !important;
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-spinner {
+    animation-duration: 1600ms !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
 .advisor-composer-shell {
   padding-bottom: max(env(safe-area-inset-bottom), var(--mobile-dock-clearance));
   transition: padding-bottom 180ms ease;

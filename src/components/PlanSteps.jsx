@@ -141,7 +141,7 @@ export function StepGuide({ step, context, onSave }) {
         </div>
       ) : (
         <div className="flex items-center gap-2 text-xs text-emerald-200 py-1" role="status" aria-live="polite">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <Loader2 className="status-spinner w-3.5 h-3.5" aria-hidden="true" />
           {slow ? 'Finishing your personalized steps…' : 'Checking this step against your numbers…'}
         </div>
       )}
