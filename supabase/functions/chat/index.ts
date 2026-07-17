@@ -11,6 +11,7 @@
 // (SUPABASE_URL and SUPABASE_ANON_KEY are injected automatically.)
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { isCompleteToolResult, retryInstruction, sanitizeToolResult } from './toolValidation.js'
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')
 const SUPABASE_URL       = Deno.env.get('SUPABASE_URL')!
@@ -227,14 +228,16 @@ Deno.serve(async (req) => {
         timeline_months:      { type: 'number',  description: 'Roughly how many months at that contribution' },
         rationale:            { type: 'string',  description: 'One short, friendly sentence explaining the suggested numbers' },
       },
-      required: ['should_suggest'],
+      required: ['should_suggest', 'name'],
     },
   }
 
   const HOW_TO_TOOL = {
     name: 'create_how_to',
     description: 'Write the fast, decisive instructions for one existing Plan step. Return 3–6 short imperative steps grounded in the supplied user context. Pick one clear path, build on accounts the user already has, and do not browse, quote live rates, or add a preamble.',
-    strict: true,
+    // Validate this response after generation. Compiling its deeply nested,
+    // optional outcome/apply schema in strict mode can exceed Anthropic's
+    // structured-output complexity ceiling and return a request-level 400.
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -327,7 +330,17 @@ Deno.serve(async (req) => {
     extract_memories: EXTRACT_MEMORIES_TOOL,
   }
 
-  const body: Record<string, unknown> = { model, max_tokens, system: systemBlocks, messages }
+  const minimumToolTokens: Record<string, number> = {
+    action_plan: 4000,
+    guide: 3000,
+    how_to: 900,
+    suggest_goal: 1200,
+    extract_memories: 1600,
+  }
+  const responseTokens = tool
+    ? Math.max(max_tokens, minimumToolTokens[tool] ?? max_tokens)
+    : max_tokens
+  const body: Record<string, unknown> = { model, max_tokens: responseTokens, system: systemBlocks, messages }
   if (tool && TOOLS[tool]) {
     const def = TOOLS[tool] as { name: string }
     body.tools = [def]
@@ -343,7 +356,7 @@ Deno.serve(async (req) => {
   }
 
   // ── Proxy to Anthropic — one retry on transient overload/rate-limit ─────────
-  async function callAnthropic(): Promise<Response> {
+  async function callAnthropic(requestBody: Record<string, unknown> = body): Promise<Response> {
     return fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -351,7 +364,7 @@ Deno.serve(async (req) => {
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
       signal: req.signal,
     })
   }
@@ -394,12 +407,40 @@ Deno.serve(async (req) => {
   let data = await res.json()
   // Tool call → return the structured input the model produced
   if (tool && TOOLS[tool]) {
-    const block = Array.isArray(data?.content)
+    let block = Array.isArray(data?.content)
       ? data.content.find((b: { type?: string }) => b.type === 'tool_use')
       : null
-    if (!block) return json({ error: 'Model did not return structured output' }, 502)
+
+    // A token-limit stop can still return HTTP 200 with a truncated tool
+    // object. Retry once with a full budget, then reject incomplete data rather
+    // than letting the client render an empty card or save a partial plan.
+    if (!block || !isCompleteToolResult(tool, block.input)) {
+      const retryBody = {
+        ...body,
+        max_tokens: Math.max(responseTokens, 4000),
+        system: [
+          ...(systemBlocks ?? []),
+          { type: 'text', text: retryInstruction(tool) },
+        ],
+      }
+      const retry = await callAnthropic(retryBody)
+      if (!retry.ok) {
+        const detail = (await retry.text()).slice(0, 500)
+        const status = retry.status >= 400 && retry.status < 600 ? retry.status : 502
+        return json({ error: `Anthropic error ${retry.status}`, detail }, status)
+      }
+      data = await retry.json()
+      block = Array.isArray(data?.content)
+        ? data.content.find((b: { type?: string }) => b.type === 'tool_use')
+        : null
+    }
+
+    if (!block || !isCompleteToolResult(tool, block.input)) {
+      return json({ error: 'The advisor returned an incomplete structured response. Please try again.' }, 502)
+    }
     // `plan` kept for backward-compat with the action-plan client
-    return json(tool === 'action_plan' ? { plan: block.input } : { result: block.input })
+    const result = sanitizeToolResult(tool, block.input)
+    return json(tool === 'action_plan' ? { plan: result } : { result })
   }
 
   // Chat (non-stream): with web search in play the response is a SEQUENCE of
