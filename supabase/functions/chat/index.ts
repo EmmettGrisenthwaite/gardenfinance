@@ -153,7 +153,9 @@ Deno.serve(async (req) => {
   const ACTION_PLAN_TOOL = {
     name: 'create_action_plan',
     description: 'Create a short, personalized financial action plan for the user based on their real numbers. 3–5 concrete, ordered steps. Give each step a stable intentKey. When completing a step would move money, pay debt, set up a recurring transfer, or open an account, include a structured outcome so the app can offer a reviewable record update without guessing. Where a step maps to adding a goal or recurring budget line, also fill in its apply object.',
-    strict: true,
+    // Validate this response after generation. Compiling its deeply nested,
+    // optional outcome/apply schema in strict mode can exceed Anthropic's
+    // structured-output complexity ceiling and return a request-level 400.
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -235,9 +237,7 @@ Deno.serve(async (req) => {
   const HOW_TO_TOOL = {
     name: 'create_how_to',
     description: 'Write the fast, decisive instructions for one existing Plan step. Return 3–6 short imperative steps grounded in the supplied user context. Pick one clear path, build on accounts the user already has, and do not browse, quote live rates, or add a preamble.',
-    // Validate this response after generation. Compiling its deeply nested,
-    // optional outcome/apply schema in strict mode can exceed Anthropic's
-    // structured-output complexity ceiling and return a request-level 400.
+    strict: true,
     input_schema: {
       type: 'object',
       additionalProperties: false,
