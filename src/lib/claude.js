@@ -194,6 +194,49 @@ export async function requestPlan(messages, systemPrompt) {
   return plan
 }
 
+// The focus planner never asks the model what the user should do. The client
+// supplies deterministic, fully grounded candidate briefs; this endpoint only
+// makes their action/reason/done language more concise. Client-side validation
+// rejects unsupported wording and falls back to the briefs when needed.
+export async function requestFocusPlan(candidates, context = {}, { desiredSteps = 3 } = {}) {
+  if (!CHAT_ENDPOINT) throw new Error('Advisor is not configured (missing VITE_SUPABASE_URL).')
+  const count = Math.max(1, Math.min(3, Number(desiredSteps) || 3))
+  const briefs = (candidates || []).slice(0, count).map(candidate => ({
+    candidateKey: candidate.candidateKey,
+    text: candidate.text,
+    detail: candidate.detail,
+    doneWhen: candidate.doneWhen,
+    impact: candidate.impact || '',
+    due: candidate.due || null,
+    trustedBasis: candidate.basis || null,
+    trustedOutcome: candidate.outcome || null,
+  }))
+  if (!briefs.length) return { steps: [] }
+
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) throw new Error('Please sign in to build your focused plan.')
+
+  const system = `You are Garden Financial's wording editor. The app has already selected and calculated every candidate. Return exactly one output for each supplied candidateKey, in the same order. Improve clarity only. Do not introduce facts, records, providers, amounts, dates, products, or advice. Each text must be one atomic imperative action. Each detail must be one short evidence-based reason. Each doneWhen must describe something the user can directly observe. Never use "learn about", "consider", "look into", "explore", or generic financial education.`
+  const messages = [{
+    role: 'user',
+    content: JSON.stringify({ desiredSteps: briefs.length, context, candidates: briefs }),
+  }]
+  const res = await fetchWithNetworkRetry(CHAT_ENDPOINT, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ messages, system, maxTokens: 1600, tool: 'focus_plan' }),
+  })
+  if (!res.ok) {
+    let message = `Could not refine the focused plan (${res.status}).`
+    try { const body = await res.json(); if (body?.error) message = body.error } catch { /* noop */ }
+    throw new Error(message)
+  }
+  const data = await res.json()
+  if (!data?.result || !Array.isArray(data.result.steps)) throw new Error('The focused plan response was incomplete.')
+  return data.result
+}
+
 // Asks Claude (via tool-use) for a do-it-today how-to guide when the user wants
 // to set something up (open an IRA, HYSA, etc.). Returns { title, summary,
 // estimated_minutes, steps: [{ text, detail?, resources? }] } or null.

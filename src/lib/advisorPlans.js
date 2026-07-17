@@ -25,6 +25,18 @@ export function normalizeSteps(steps = []) {
       : null,
     due:     s.due ?? null,          // optional YYYY-MM-DD target date
     guide:   s.guide ?? null,        // the fetched "how to do this" text — cached on the step
+    doneWhen: s.doneWhen ?? s.done_when ?? null,
+    priorityKey: s.priorityKey ?? s.priority_key ?? null,
+    basis: s.basis && typeof s.basis === 'object' ? { ...s.basis } : null,
+    chapterId: s.chapterId ?? s.chapter_id ?? null,
+    chapterOrder: Number.isFinite(Number(s.chapterOrder ?? s.chapter_order))
+      ? Number(s.chapterOrder ?? s.chapter_order)
+      : null,
+    generatedForFingerprint: s.generatedForFingerprint ?? s.generated_for_fingerprint ?? null,
+    pinnedAt: s.pinnedAt ?? s.pinned_at ?? null,
+    reviewOverrideFingerprint: s.reviewOverrideFingerprint ?? s.review_override_fingerprint ?? null,
+    supersededAt: s.supersededAt ?? s.superseded_at ?? null,
+    guideFingerprint: s.guideFingerprint ?? s.guide_fingerprint ?? null,
     intentKey: s.intentKey ?? s.intent_key ?? null,
     completionPolicy: (s.completionPolicy ?? s.completion_policy) === 'repeatable' ? 'repeatable' : 'once',
     outcome: s.outcome && typeof s.outcome === 'object' ? { ...s.outcome } : null,

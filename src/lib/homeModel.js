@@ -1,22 +1,29 @@
-export function selectHomeAction({ setupState, plan, planLoading = false } = {}) {
-  if (setupState?.next) {
+export function selectHomeAction({ setupState, planModel, plan, planLoading = false } = {}) {
+  const prerequisite = planModel?.prerequisite || (setupState?.next ? {
+    title: setupState.next.label,
+    cta: setupState.next.cta,
+    sheet: setupState.next.sheet,
+  } : null)
+  if (prerequisite) {
     return {
       kind: 'setup',
       eyebrow: 'Complete your money picture',
-      title: setupState.next.label,
-      detail: 'Add the missing detail so your Plan and Advisor can make more useful recommendations.',
-      cta: setupState.next.cta || 'Add details',
-      sheet: setupState.next.sheet,
+      title: prerequisite.title,
+      detail: prerequisite.detail || 'Add the missing detail so your Plan and Advisor can make more useful recommendations.',
+      cta: prerequisite.cta || 'Add details',
+      sheet: prerequisite.sheet,
     }
   }
 
-  const unfinished = Array.isArray(plan?.steps) ? plan.steps.find(step => !step.done) : null
+  const unfinished = planModel?.focus?.find(step => !step.proposed)
+    || (planModel ? null : (Array.isArray(plan?.steps) ? plan.steps.find(step => !step.done && !step.supersededAt) : null))
   if (unfinished) {
     return {
       kind: 'plan-step',
       eyebrow: 'Up next in your Plan',
       title: unfinished.text || 'Continue your next step',
-      detail: unfinished.impact || unfinished.detail || 'One focused action keeps your financial plan moving.',
+      detail: unfinished.detail || unfinished.impact || 'One focused action keeps your financial plan moving.',
+      doneWhen: unfinished.doneWhen || null,
       cta: 'View step',
       href: unfinished.id ? `/plan/step/${unfinished.id}` : '/plan',
     }
@@ -29,6 +36,19 @@ export function selectHomeAction({ setupState, plan, planLoading = false } = {})
       title: 'Reviewing your Plan',
       detail: 'Your money details are ready while your next action loads.',
       cta: null,
+    }
+  }
+
+  const proposal = planModel?.focus?.find(step => step.proposed)
+  if (proposal) {
+    return {
+      kind: 'plan-proposal',
+      eyebrow: 'Proposed next move',
+      title: proposal.text,
+      detail: proposal.detail || 'Review this grounded suggestion before adding it to your Plan.',
+      doneWhen: proposal.doneWhen || null,
+      cta: 'Review focused plan',
+      href: '/plan',
     }
   }
 

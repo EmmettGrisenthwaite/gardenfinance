@@ -42,7 +42,7 @@ export function filterFreshPlanSteps(existingSteps = [], incomingSteps = [], { d
     const duplicateIntent = intentKey && comparisonSteps.some(existing => {
       if ((existing?.intentKey || existing?.intent_key) !== intentKey) return false
       const policy = step?.completionPolicy || step?.completion_policy || 'once'
-      if (policy !== 'repeatable' || !existing?.done) return true
+      if (policy !== 'repeatable') return true
       const previousState = existing?.outcome?.stateFingerprint
       const nextState = step?.outcome?.stateFingerprint
       return !previousState || !nextState || previousState === nextState
@@ -91,6 +91,10 @@ export function nextChapterFingerprint({ userId, profile, steps, goals, debts, a
       detail: step?.detail || '', impact: step?.impact || '', due: step?.due || '',
       apply: step?.apply || null, completedAt: step?.completedAt || '',
       intentKey: step?.intentKey || '', completionPolicy: step?.completionPolicy || '', outcome: step?.outcome || null,
+      doneWhen: step?.doneWhen || '', priorityKey: step?.priorityKey || '', basis: step?.basis || null,
+      chapterId: step?.chapterId || '', chapterOrder: step?.chapterOrder ?? null,
+      generatedForFingerprint: step?.generatedForFingerprint || '', pinnedAt: step?.pinnedAt || '',
+      supersededAt: step?.supersededAt || '', guideFingerprint: step?.guideFingerprint || '',
     })),
     goals: sortedRecords(goals, goal => ({
       id: goal?.id || '', name: goal?.name || '', target: Number(goal?.target_amount) || 0,

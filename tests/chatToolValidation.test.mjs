@@ -22,6 +22,15 @@ test('action plans require three to five complete steps', () => {
   }), false)
 })
 
+test('focused plans require one to three complete wording-only steps', () => {
+  const step = { candidateKey: 'debt.card.1', text: 'Pay $200 to Card', detail: 'It has the highest APR.', doneWhen: 'The $200 payment is confirmed.', impact: '' }
+  assert.equal(isCompleteToolResult('focus_plan', { steps: [step] }), true)
+  assert.equal(isCompleteToolResult('focus_plan', { steps: [step, step, step] }), true)
+  assert.equal(isCompleteToolResult('focus_plan', { steps: [] }), false)
+  assert.equal(isCompleteToolResult('focus_plan', { steps: [{ candidateKey: 'missing-fields' }] }), false)
+  assert.match(retryInstruction('focus_plan'), /candidateKey/)
+})
+
 test('conditional tool results require their useful fields', () => {
   assert.equal(isCompleteToolResult('guide', { should_guide: false }), true)
   assert.equal(isCompleteToolResult('guide', {

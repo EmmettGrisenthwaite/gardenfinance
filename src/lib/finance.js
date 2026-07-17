@@ -127,55 +127,128 @@ export function debtFreedomWithMinimums(debts = []) {
   }
 }
 
-export function nextDollar(snapshot) {
-  if (snapshot.income > 0 && snapshot.cashFlowMargin < 0) return {
-    key: 'deficit', urgent: true, title: 'Close the monthly gap',
-    why: `Your typical spending is $${Math.abs(Math.round(snapshot.cashFlowMargin)).toLocaleString()}/mo above income. Start there before assigning money elsewhere.`,
+// The planning ladder is deterministic. Every surface can consume the full
+// ordered list, while legacy callers keep using `nextDollar()` for the first
+// applicable move. AI is deliberately not involved in this ranking.
+export function financialPriorities(snapshot) {
+  const priorities = []
+  const add = priority => priorities.push(priority)
+
+  if (snapshot.income > 0 && snapshot.cashFlowMargin < 0) {
+    add({
+      key: 'deficit', urgent: true, title: 'Close the monthly gap',
+      why: `Your typical spending is $${Math.abs(Math.round(snapshot.cashFlowMargin)).toLocaleString()}/mo above income. Start there before assigning money elsewhere.`,
+      amount: Math.abs(Math.round(snapshot.cashFlowMargin)),
+    })
+  } else if (snapshot.income > 0 && snapshot.unallocated < 0) {
+    // This is intentionally mutually exclusive with a spending deficit: the
+    // spending plan works, but future allocations exceed the remaining cash.
+    add({
+      key: 'overcommitted', urgent: true, title: 'Reduce planned allocations',
+      why: `You have assigned $${Math.abs(Math.round(snapshot.unallocated)).toLocaleString()}/mo more than your cash-flow margin can support.`,
+      amount: Math.abs(Math.round(snapshot.unallocated)),
+    })
   }
-  if (snapshot.income > 0 && snapshot.unallocated < 0) return {
-    key: 'overcommitted', urgent: true, title: 'Reduce planned allocations',
-    why: `You have assigned $${Math.abs(Math.round(snapshot.unallocated)).toLocaleString()}/mo more than your cash-flow margin can support.`,
+
+  if (snapshot.profile?.health_insurance === 'none') {
+    add({
+      key: 'insurance', urgent: true, title: 'Get health insurance',
+      why: 'One medical emergency without coverage can undo the progress you are building.',
+    })
   }
-  if (snapshot.profile?.health_insurance === 'none') return {
-    key: 'insurance', urgent: true, title: 'Get health insurance',
-    why: 'One medical emergency without coverage can undo the progress you are building.',
+
+  if (snapshot.expenses > 0 && snapshot.liquid < THRESHOLDS.starterEmergency) {
+    add({
+      key: 'starter_ef', urgent: false, title: `Build a $${THRESHOLDS.starterEmergency.toLocaleString()} starter reserve`,
+      why: 'A small liquid buffer keeps everyday surprises from turning into debt.',
+      amount: Math.max(0, THRESHOLDS.starterEmergency - Math.round(snapshot.liquid)),
+    })
   }
-  if (snapshot.expenses > 0 && snapshot.liquid < THRESHOLDS.starterEmergency) return {
-    key: 'starter_ef', urgent: false, title: `Build a $${THRESHOLDS.starterEmergency.toLocaleString()} starter reserve`,
-    why: 'A small liquid buffer keeps everyday surprises from turning into debt.',
-  }
-  const missedMatch = snapshot.accounts.find(account => {
+
+  const missedMatch = (snapshot.accounts || []).find(account => {
     if (!isWorkplaceAccount(account) || num(account.employer_match_percent) <= 0) return false
     const matchLimit = num(account.employer_match_limit_percent)
     return matchLimit > 0 && num(account.contribution_percent) < matchLimit
   })
-  if (missedMatch) return {
-    key: 'capture_match', urgent: false, title: `Capture the full match in ${missedMatch.name}`,
-    why: `Your contribution is ${num(missedMatch.contribution_percent)}% and the match applies up to ${num(missedMatch.employer_match_limit_percent)}%.`,
+  if (missedMatch) {
+    add({
+      key: 'capture_match', urgent: false, title: `Capture the full match in ${missedMatch.name}`,
+      why: `Your contribution is ${num(missedMatch.contribution_percent)}% and the match applies up to ${num(missedMatch.employer_match_limit_percent)}%.`,
+      recordId: missedMatch.id ?? null,
+      account: missedMatch,
+    })
   }
-  const worst = snapshot.avalanche[0]
-  if (worst && worst.apr > THRESHOLDS.highApr) return {
-    key: 'kill_debt', urgent: worst.apr >= THRESHOLDS.crisisApr,
-    title: `Pay down ${worst.name} (${worst.apr}% APR)`,
-    why: `It costs about $${Math.round(worst.monthlyInterest).toLocaleString()}/mo in interest; paying it down is a guaranteed return.`,
+
+  const worst = snapshot.avalanche?.[0]
+  if (worst && worst.apr > THRESHOLDS.highApr) {
+    const debt = (snapshot.debts || []).find(item => item.name === worst.name) ?? null
+    add({
+      key: 'kill_debt', urgent: worst.apr >= THRESHOLDS.crisisApr,
+      title: `Pay down ${worst.name} (${worst.apr}% APR)`,
+      why: `It costs about $${Math.round(worst.monthlyInterest).toLocaleString()}/mo in interest; paying it down is a guaranteed return.`,
+      recordId: debt?.id ?? null,
+      debt,
+    })
   }
-  if (snapshot.expenses > 0 && snapshot.efMonths < snapshot.efTargetMonths) return {
-    key: 'build_ef', urgent: false, title: `Grow cash reserves to ${snapshot.efTargetMonths} months`,
-    why: `You have ${snapshot.efMonths.toFixed(1)} months available now; your target is $${snapshot.efTargetAmount.toLocaleString()}.`,
+
+  if (snapshot.expenses > 0 && snapshot.efMonths < snapshot.efTargetMonths) {
+    add({
+      key: 'build_ef', urgent: false, title: `Grow cash reserves to ${snapshot.efTargetMonths} months`,
+      why: `You have ${snapshot.efMonths.toFixed(1)} months available now; your target is $${snapshot.efTargetAmount.toLocaleString()}.`,
+      amount: Math.max(0, snapshot.efTargetAmount - Math.round(snapshot.liquid)),
+    })
   }
+
+  const activeGoal = [...(snapshot.goals || [])]
+    .filter(goal => num(goal.target_amount) > num(goal.current_amount))
+    .sort((left, right) => {
+      if (left.deadline && right.deadline) return left.deadline.localeCompare(right.deadline)
+      if (left.deadline) return -1
+      if (right.deadline) return 1
+      return String(left.created_at || left.id || '').localeCompare(String(right.created_at || right.id || ''))
+    })[0]
   const profileInvesting = (snapshot.profile?.investment_types || []).some(type => type !== 'none')
-  if (!snapshot.hasInvestmentAccount && !profileInvesting) return {
-    key: 'roth', urgent: false, title: 'Open your first investment account',
-    why: `A Roth IRA can provide tax-free growth, up to $${LIMITS.rothIra.toLocaleString()}/year in ${LIMITS.year}.`,
+  if (activeGoal) {
+    add({
+      key: 'goal', urgent: false, title: `Move ${activeGoal.name} forward`,
+      why: `$${Math.max(0, num(activeGoal.target_amount) - num(activeGoal.current_amount)).toLocaleString()} remains toward this goal.`,
+      recordId: activeGoal.id ?? null,
+      goal: activeGoal,
+    })
+  } else if (!snapshot.hasInvestmentAccount && !profileInvesting) {
+    add({
+      key: 'roth', urgent: false, title: 'Open your first investment account',
+      why: `A Roth IRA can provide tax-free growth, up to $${LIMITS.rothIra.toLocaleString()}/year in ${LIMITS.year}.`,
+    })
+  } else if (snapshot.unallocated > 0 && snapshot.hasInvestmentAccount) {
+    const account = snapshot.investmentAccounts?.[0]
+    add({
+      key: 'invest', urgent: false, title: `Increase investing in ${account.name || 'your investment account'}`,
+      why: 'Your core protections are in place, so a sustainable contribution can support long-term growth.',
+      recordId: account.id ?? null,
+      account,
+    })
   }
-  if (snapshot.unallocated >= THRESHOLDS.autoTransferMin) return {
-    key: 'assign_cash', urgent: false, title: 'Give the remaining cash a job',
-    why: `$${Math.round(snapshot.unallocated).toLocaleString()}/mo is still unassigned. Direct it to your highest-priority goal.`,
+
+  if (snapshot.unallocated >= THRESHOLDS.autoTransferMin) {
+    add({
+      key: 'assign_cash', urgent: false, title: 'Give the remaining cash a job',
+      why: `$${Math.round(snapshot.unallocated).toLocaleString()}/mo is still unassigned. Direct it to your highest-priority goal.`,
+      amount: Math.round(snapshot.unallocated),
+    })
   }
-  return {
-    key: 'grow', urgent: false, title: 'Keep your plan balanced',
-    why: 'Your current plan is assigned without an obvious gap. Refresh balances and details as they change.',
+
+  if (!priorities.length) {
+    add({
+      key: 'grow', urgent: false, title: 'Keep your plan balanced',
+      why: 'Your current plan is assigned without an obvious gap. Refresh balances and details as they change.',
+    })
   }
+  return priorities
+}
+
+export function nextDollar(snapshot) {
+  return financialPriorities(snapshot)[0]
 }
 
 export function computeSnapshot({

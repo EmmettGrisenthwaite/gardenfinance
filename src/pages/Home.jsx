@@ -12,6 +12,7 @@ import { milestoneEventsFromState, groupGardenGoals } from '@/lib/gardenModel'
 import { reconcileGardenMilestones } from '@/lib/gardenProgress'
 import { getMoneySetupState } from '@/lib/moneySetup'
 import { selectHomeAction } from '@/lib/homeModel'
+import { buildPlanModel } from '@/lib/focusedPlan'
 import ProgressActivitySheet from '@/components/ProgressActivitySheet'
 import { listFinancialActivities } from '@/lib/financialActivities'
 import { isPromptableActivity } from '@/lib/progressOutcome'
@@ -25,7 +26,7 @@ function formatDate(value) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function HomeHero({ profile, accounts, debts, goals, cashFlowItems, snapshot, openSheet, renderNetWorth, refreshMoney }) {
+function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits, snapshot, openSheet, renderNetWorth, refreshMoney }) {
   const { user, refreshProfile } = useAuth()
   const { stage, milestones, milestoneTotal, momentum, sceneTone, updateGarden } = useGarden()
   const reducedMotion = useReducedMotion()
@@ -95,7 +96,13 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, snapshot, op
   const setupState = useMemo(() => getMoneySetupState({
     profile, accounts, debts, goals, cashFlowItems,
   }), [profile, accounts, debts, goals, cashFlowItems])
-  const action = useMemo(() => selectHomeAction({ setupState, plan, planLoading }), [setupState, plan, planLoading])
+  const planModel = useMemo(() => buildPlanModel({
+    snapshot: { ...snapshot, profile, accounts, debts, goals, cashFlowItems, budgetLimits },
+    setupState,
+    plan,
+    activities,
+  }), [snapshot, profile, accounts, debts, goals, cashFlowItems, budgetLimits, setupState, plan, activities])
+  const action = useMemo(() => selectHomeAction({ setupState, planModel, plan, planLoading }), [setupState, planModel, plan, planLoading])
   const grouped = useMemo(() => groupGardenGoals(goals, milestones, 3), [goals, milestones])
   const selectedPercent = selectedGoal
     ? Math.min(100, Math.round((Number(selectedGoal.current_amount || 0) / Math.max(1, Number(selectedGoal.target_amount || 0))) * 100))
@@ -162,6 +169,7 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, snapshot, op
                 <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/80">{action.eyebrow}</p>
                 <h2 className="mt-1.5 text-[18px] font-semibold leading-6 tracking-[-0.015em] text-white">{action.title}</h2>
                 <p className="mt-1.5 text-[13px] leading-5 text-readable-secondary">{action.detail}</p>
+                {action.doneWhen && <p className="mt-2 text-[12px] leading-5 text-white/[0.78]"><span className="font-semibold text-readable-secondary">Done when:</span> {action.doneWhen}</p>}
                 {action.cta && <button type="button" onClick={runAction} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl text-[13px] font-semibold text-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
                   {action.cta}<ArrowRight className="h-4 w-4" />
                 </button>}

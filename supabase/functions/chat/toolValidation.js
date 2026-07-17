@@ -14,6 +14,18 @@ function validActionPlan(input) {
       && ['once', 'repeatable'].includes(step.completionPolicy))
 }
 
+function validFocusPlan(input) {
+  return isRecord(input)
+    && Array.isArray(input.steps)
+    && input.steps.length >= 1
+    && input.steps.length <= 3
+    && input.steps.every(step => isRecord(step)
+      && isText(step.candidateKey)
+      && isText(step.text)
+      && isText(step.detail)
+      && isText(step.doneWhen))
+}
+
 function validGuide(input) {
   if (!isRecord(input) || typeof input.should_guide !== 'boolean') return false
   if (!input.should_guide) return true
@@ -54,6 +66,7 @@ function validHowTo(input) {
 
 export function isCompleteToolResult(tool, input) {
   if (tool === 'action_plan') return validActionPlan(input)
+  if (tool === 'focus_plan') return validFocusPlan(input)
   if (tool === 'guide') return validGuide(input)
   if (tool === 'suggest_goal') return validGoal(input)
   if (tool === 'extract_memories') return validMemories(input)
@@ -64,6 +77,9 @@ export function isCompleteToolResult(tool, input) {
 export function retryInstruction(tool) {
   if (tool === 'action_plan') {
     return 'Return a complete action plan with 3 to 5 distinct ordered steps. Every step must include text, detail, intentKey, and completionPolicy.'
+  }
+  if (tool === 'focus_plan') {
+    return 'Return 1 to 3 complete focus steps. Use only the supplied candidateKey values and include text, detail, and an observable doneWhen for every step.'
   }
   if (tool === 'guide') {
     return 'Return the complete guide. If should_guide is true, include a title, summary, and 3 to 6 actionable steps.'

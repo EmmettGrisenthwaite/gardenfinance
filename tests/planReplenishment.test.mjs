@@ -142,4 +142,11 @@ test('stable intents dedupe permanent work and gate repeatable work by financial
     { text: 'Add $600 to the emergency fund', intentKey: 'fund.emergency', completionPolicy: 'repeatable', outcome: { stateFingerprint: 'cash-b' } },
   ], { dedupeCompleted: true })
   assert.equal(repeatableChangedState.fresh.length, 1)
+
+  const datedSprint = filterFreshPlanSteps([
+    { text: 'Move $400 in August', done: false, intentKey: 'fund.goal.house', completionPolicy: 'repeatable', outcome: { stateFingerprint: 'august' } },
+  ], [
+    { text: 'Move $400 in September', intentKey: 'fund.goal.house', completionPolicy: 'repeatable', outcome: { stateFingerprint: 'september' } },
+  ], { dedupeCompleted: true })
+  assert.equal(datedSprint.fresh.length, 1)
 })

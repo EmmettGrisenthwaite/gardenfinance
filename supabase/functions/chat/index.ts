@@ -252,6 +252,34 @@ Deno.serve(async (req) => {
     },
   }
 
+  const FOCUS_PLAN_TOOL = {
+    name: 'word_focus_plan',
+    description: 'Rewrite the supplied deterministic financial-plan candidates into concise user-facing language. Preserve every candidateKey and every trusted fact. Do not choose priorities, introduce records, change amounts or dates, add providers, or create new steps. Each action must be atomic and imperative; each doneWhen must be directly observable.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        steps: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              candidateKey: { type: 'string', description: 'Copy the supplied candidateKey exactly.' },
+              text: { type: 'string', description: 'One concise imperative action using only supplied facts.' },
+              detail: { type: 'string', description: 'One evidence-based sentence explaining why this matters now.' },
+              doneWhen: { type: 'string', description: 'One observable completion condition.' },
+              impact: { type: 'string', description: 'Optional grounded impact copied or paraphrased from the candidate; use an empty string when none was supplied.' },
+            },
+            required: ['candidateKey', 'text', 'detail', 'doneWhen', 'impact'],
+          },
+        },
+      },
+      required: ['steps'],
+    },
+  }
+
   const CREATE_GUIDE_TOOL = {
     name: 'create_guide',
     description: 'Use when the user wants to TAKE A CONCRETE SETUP ACTION — e.g. open a Roth IRA, open a high-yield savings account, start investing in index funds, roll over an old 401(k), open an HSA, get term life insurance, freeze their credit, set up automatic transfers. Produce a short do-it-today walkthrough: 3–6 ordered steps. Include links only when the user must leave the app to complete an action, placing no more than 3 links total on the relevant step. Use reputable official sites you are confident about (e.g. fidelity.com, vanguard.com, schwab.com, ally.com, marcus.com, sofi.com, wealthfront.com, irs.gov). Never add links to explanatory steps and never invent URLs. Ground the recommendations in the user’s real situation (age, income, existing accounts). If the latest message is NOT a request to actually set something up, set should_guide=false and leave the rest blank.',
@@ -324,6 +352,7 @@ Deno.serve(async (req) => {
 
   const TOOLS: Record<string, unknown> = {
     action_plan: ACTION_PLAN_TOOL,
+    focus_plan: FOCUS_PLAN_TOOL,
     suggest_goal: SUGGEST_GOAL_TOOL,
     guide: CREATE_GUIDE_TOOL,
     how_to: HOW_TO_TOOL,
@@ -332,6 +361,7 @@ Deno.serve(async (req) => {
 
   const minimumToolTokens: Record<string, number> = {
     action_plan: 4000,
+    focus_plan: 1600,
     guide: 3000,
     how_to: 900,
     suggest_goal: 1200,

@@ -8,13 +8,20 @@ import { useGarden, milestonesToStage } from '@/context/GardenContext'
 import { milestoneEventForGoal, milestoneEventForStep, milestoneEventsFromState } from '@/lib/gardenModel'
 import { reconcileGardenMilestones, recordGardenMilestone } from '@/lib/gardenProgress'
 import { getPlan, updatePlanSteps, deletePlan, applyStep, appendSteps, normalizeSteps } from '@/lib/advisorPlans'
-import { orderSteps } from '@/lib/planOrder'
-import { requestPlan, chatConfigured } from '@/lib/claude'
-import { buildContext, buildSystemPrompt } from '@/lib/advisorContext'
+import { requestFocusPlan, chatConfigured } from '@/lib/claude'
 import { computeSnapshot } from '@/lib/finance'
 import { buildHowToContext } from '@/lib/howToContext'
 import { GoalItem, GoalModal, getProjection } from '@/components/GoalItem'
-import { UpNextCard, StepList, DoneAccordion, AddStepRow, NextChapterCard } from '@/components/PlanSteps'
+import {
+  UpNextCard,
+  DoneAccordion,
+  AddStepRow,
+  NextChapterCard,
+  PlanPrerequisite,
+  FocusQueue,
+  LaterAccordion,
+  OutdatedStepReview,
+} from '@/components/PlanSteps'
 import GardenMeter from '@/components/GardenMeter'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
 import PageHeader from '@/components/ui/PageHeader'
@@ -22,11 +29,13 @@ import ProgressActivitySheet from '@/components/ProgressActivitySheet'
 import { listFinancialActivities, recordStepActivity } from '@/lib/financialActivities'
 import { isPromptableActivity } from '@/lib/progressOutcome'
 import {
-  filterFreshPlanSteps,
-  isCurrentNextChapter,
-  nextChapterFingerprint,
-  shouldRequestNextChapter,
-} from '@/lib/planReplenishment'
+  buildPlanModel,
+  mergeFocusWording,
+  replacementCandidate,
+  validateFocusPlanResult,
+} from '@/lib/focusedPlan'
+import { getMoneySetupState } from '@/lib/moneySetup'
+import { filterFreshPlanSteps } from '@/lib/planReplenishment'
 
 function readStorage(storage, key) {
   try { return storage.getItem(key) } catch { return null }
@@ -56,7 +65,7 @@ export default function Plan() {
   const [modal,   setModal]   = useState(null)   // null | 'new' | goal
   const [growth,  setGrowth]  = useState(null)   // garden-grew celebration
   const [error,   setError]   = useState(null)
-  const [showAllSteps, setShowAllSteps] = useState(false)
+  const [notice, setNotice] = useState(null)
   const [manageOpen, setManageOpen] = useState(false)
   const [savingStep, setSavingStep] = useState(false)
   const [gardenTotal, setGardenTotal] = useState(0)
@@ -70,6 +79,12 @@ export default function Plan() {
   const [promptActivity, setPromptActivity] = useState(null)
   const [queuedActivity, setQueuedActivity] = useState(null)
   const dismissGrowth = useCallback(() => setGrowth(null), [])
+
+  useEffect(() => {
+    if (!notice) return undefined
+    const timer = setTimeout(() => setNotice(null), 4500)
+    return () => clearTimeout(timer)
+  }, [notice])
 
   useEffect(() => {
     if (!queuedActivity || growth || loading) return
@@ -173,23 +188,34 @@ export default function Plan() {
 
   // ── Derived milestone counts ─────────────────────────────────────────────────
   const steps          = useMemo(() => plan?.steps ?? [], [plan])
-  const totalSteps     = steps.length
+  const totalSteps     = steps.filter(step => !step.supersededAt).length
   const goalsReached   = goals.filter(g => Number(g.target_amount) > 0 && Number(g.current_amount) >= Number(g.target_amount)).length
 
   // The one shared ordering — the Up-next card, this list, and the Dashboard
   // peek all agree on what's next.
-  const activeSteps = orderSteps(steps.filter(s => !s.done))
-  const upNext      = activeSteps[0] ?? null
-  const restSteps   = activeSteps.slice(1)
-  const visibleRestSteps = showAllSteps ? restSteps : restSteps.slice(0, 3)
-  const doneSteps   = steps.filter(s => s.done)
-  const currentFingerprint = useMemo(() => nextChapterFingerprint({
-    userId: user.id, profile, steps, goals, debts, accounts, cashFlowItems, budgetLimits, activities,
-  }), [user.id, profile, steps, goals, debts, accounts, cashFlowItems, budgetLimits, activities])
+  const snapshot = useMemo(() => computeSnapshot({
+    profile, accounts, debts, goals, cashFlowItems, budgetLimits,
+  }), [profile, accounts, debts, goals, cashFlowItems, budgetLimits])
+  const setupState = useMemo(() => getMoneySetupState({
+    profile, accounts, debts, goals, cashFlowItems,
+  }), [profile, accounts, debts, goals, cashFlowItems])
+  const basePlanModel = useMemo(() => buildPlanModel({
+    snapshot, setupState, plan, activities,
+  }), [snapshot, setupState, plan, activities])
+  const currentFingerprint = basePlanModel.fingerprint
+  const currentDraft = nextChapter?.fingerprint === currentFingerprint ? nextChapter.draft : null
+  const planModel = useMemo(() => buildPlanModel({
+    snapshot, setupState, plan, activities, proposals: currentDraft?.steps || [],
+  }), [snapshot, setupState, plan, activities, currentDraft])
+  const activeSteps = useMemo(() => steps.filter(step => !step.done && !step.supersededAt), [steps])
+  const upNext = planModel.focus[0] ?? null
+  const afterThis = planModel.focus.slice(1, 3)
+  const doneSteps = steps.filter(step => step.done)
+  const replacement = replacementCandidate(planModel)
   const fingerprintRef = useRef(currentFingerprint)
   useEffect(() => { fingerprintRef.current = currentFingerprint }, [currentFingerprint])
-  const dismissedKey = `next-chapter-dismissed-${user.id}`
-  const cacheKey = `next-chapter-draft-${user.id}-${currentFingerprint}`
+  const dismissedKey = `focus-plan-dismissed-${user.id}`
+  const cacheKey = `focus-plan-draft-${user.id}-${currentFingerprint}`
 
   // Net worth auto-derives from what you own (accounts) minus what you owe
   // (debts) — one source of truth, always in sync as those change.
@@ -244,15 +270,21 @@ export default function Plan() {
   }
 
   // ── Step handlers (functional updaters → burst-safe) ────────────────────────
-  function editSteps(mutate) {
-    setPlan(prev => {
-      if (!prev) return prev
-      const next = mutate(prev.steps)
-      updatePlanSteps(prev.id, next, user.id).catch(err => {
-        setError(err.message ?? 'Could not save that plan change.')
-      })
-      return { ...prev, steps: next }
-    })
+  async function editSteps(mutate) {
+    if (!plan || savingStep) return null
+    const next = mutate(plan.steps)
+    setSavingStep(true)
+    try {
+      await updatePlanSteps(plan.id, next, user.id)
+      setPlan(previous => previous ? { ...previous, steps: next, updated_at: new Date().toISOString() } : previous)
+      return next
+    } catch (err) {
+      try { setPlan(await getPlan(user.id)) } catch { /* keep the visible error below */ }
+      setError(err.message ?? 'Could not save that plan change.')
+      throw err
+    } finally {
+      setSavingStep(false)
+    }
   }
   async function toggleStep(stepId) {
     if (savingStep || !plan) return
@@ -290,6 +322,7 @@ export default function Plan() {
         }
       }
     } catch (err) {
+      try { setPlan(await getPlan(user.id)) } catch { /* preserve the original error */ }
       setError(err.message ?? 'Could not save that completed step.')
     } finally {
       setSavingStep(false)
@@ -299,12 +332,24 @@ export default function Plan() {
   // button. The step rides along in nav state for an instant paint.
   const openStep = (step) => navigate(`/plan/step/${step.id}`, { state: { step } })
 
-  // The user's own step — their intent wins, no dedupe second-guessing.
+  // Manual steps stay user-owned, while the shared admission check prevents an
+  // accidental duplicate from occupying a second focus position.
   async function addOwnStep(text) {
     try {
-      const step = normalizeSteps([{ text, source: 'user', addedAt: new Date().toISOString() }])[0]
+      const step = normalizeSteps([{
+        text,
+        source: 'user',
+        addedAt: new Date().toISOString(),
+        chapterId: planModel.approvedCount >= 3 ? 'manual.later' : null,
+      }])[0]
       if (plan) {
-        editSteps(list => [...list, step])
+        const admission = filterFreshPlanSteps(steps, [step])
+        if (!admission.fresh.length) {
+          setNotice('That action is already in your Plan.')
+          return
+        }
+        await editSteps(list => [...list, admission.fresh[0]])
+        if (planModel.approvedCount >= 3) setNotice('Step added to Later. Use “Make next” whenever you want to promote it.')
       } else {
         const { plan: created } = await appendSteps(user.id, [step], { source: 'user' })
         setPlan(created)
@@ -312,6 +357,61 @@ export default function Plan() {
     } catch (err) {
       setError(err.message ?? 'Could not add that step.')
     }
+  }
+
+  async function makeNext(step) {
+    if (!step || savingStep) return
+    const pinnedAt = new Date().toISOString()
+    try {
+      await editSteps(list => list.map(item => item.id === step.id
+        ? { ...item, pinnedAt }
+        : { ...item, pinnedAt: null }))
+    } catch { /* editSteps already restored canonical state and surfaced the error */ }
+  }
+
+  async function keepOutdated(step) {
+    if (!step || savingStep) return
+    try {
+      await editSteps(list => list.map(item => item.id === step.id
+        ? { ...item, reviewOverrideFingerprint: currentFingerprint }
+        : item))
+    } catch { /* handled by editSteps */ }
+  }
+
+  async function replaceOutdated(step, proposed) {
+    if (!step || !proposed || savingStep) return
+    const now = new Date().toISOString()
+    const normalizedReplacement = normalizeSteps([{
+      ...proposed,
+      id: undefined,
+      proposed: undefined,
+      source: 'focus',
+      addedAt: now,
+      generatedForFingerprint: currentFingerprint,
+    }])[0]
+    const admission = filterFreshPlanSteps(
+      steps.filter(item => item.id !== step.id),
+      [normalizedReplacement],
+      { dedupeCompleted: true },
+    )
+    if (!admission.fresh.length) {
+      setNotice('That replacement is already represented in your Plan.')
+      return
+    }
+    const replacementStep = admission.fresh[0]
+    try {
+      await editSteps(list => [
+        ...list.map(item => item.id === step.id
+          ? { ...item, supersededAt: now, pinnedAt: null }
+          : item),
+        replacementStep,
+      ])
+    } catch { /* handled by editSteps */ }
+  }
+
+  function openPrerequisite(item) {
+    if (item?.sheet) navigate(`/?section=money&sheet=${encodeURIComponent(item.sheet)}`)
+    else navigate('/plan#goals')
   }
 
   // Clearing everything is destructive — two-tap arm, tucked at the bottom.
@@ -322,7 +422,7 @@ export default function Plan() {
     return () => clearTimeout(t)
   }, [clearArmed])
   async function clearPlan() {
-    if (!plan) return
+    if (!plan || savingStep) return
     try {
       await deletePlan(plan.id, user.id)
       setPlan(null)
@@ -336,7 +436,7 @@ export default function Plan() {
   async function applyAndMark(step) {
     try {
       await applyStep(user.id, step.apply)
-      editSteps(list => list.map(s => s.id === step.id ? { ...s, applied: true } : s))
+      await editSteps(list => list.map(s => s.id === step.id ? { ...s, applied: true } : s))
       if (step.apply?.type === 'budget') {
         // The apply changed profile income/expenses — refresh so the page and the
         // advisor read the new truth immediately.
@@ -411,6 +511,12 @@ export default function Plan() {
   const generateNextChapter = useCallback(async ({ force = false } = {}) => {
     const requestFingerprint = currentFingerprint
     if (!force && (nextStatus === 'loading' || nextStatus === 'saving')) return
+    const candidates = basePlanModel.candidates
+    if (!candidates.length) {
+      setNextChapter(null)
+      setNextStatus('idle')
+      return
+    }
 
     if (force) {
       removeStorage(window.localStorage, dismissedKey)
@@ -418,43 +524,29 @@ export default function Plan() {
     }
 
     setAttemptedFingerprint(requestFingerprint)
-    setNextChapter(null)
+    const fallbackDraft = { title: 'Your focused next moves', steps: candidates }
+    setNextChapter({ fingerprint: requestFingerprint, draft: fallbackDraft })
     setNextError(null)
     setNextStatus('loading')
 
     try {
       if (!chatConfigured) {
-        throw new Error('The advisor service is not available right now.')
+        setNextStatus('fallback')
+        return
       }
 
-      const ctx = buildContext(money, goals, debts, profile, {
-        plans: plan ? [plan] : [],
-        accounts,
-        cashFlowItems,
-        budgetLimits,
-        activities,
-      })
-      const system = buildSystemPrompt(ctx)
-      const generated = await requestPlan([{
-        role: 'user',
-        content: `Build the next chapter of my financial action plan. Return exactly 5 concise, ordered, practical steps based on my current finances, goals, debts, accounts, ${activeSteps.length} unfinished plan steps, and completed history. Do not repeat anything already active or completed. Avoid recommending insurance, investing, emergency-fund, or debt work when the profile and completed history show it is already handled. Include apply actions only when they are safe and immediately useful.`,
-      }], system)
-
-      const generatedSteps = generated.steps.map(step => ({
-        ...step,
-        outcome: step.outcome ? { ...step.outcome, stateFingerprint: requestFingerprint } : null,
-      }))
-      const { fresh } = filterFreshPlanSteps(steps, generatedSteps, { dedupeCompleted: true })
-      const proposed = fresh.slice(0, 5)
-      if (proposed.length < 3) {
-        throw new Error('The advisor could not find enough new steps yet. You can try again when your finances change.')
+      const first = await requestFocusPlan(candidates, { fingerprint: requestFingerprint }, { desiredSteps: candidates.length })
+      const firstValidation = validateFocusPlanResult(first, candidates)
+      let second = null
+      if (firstValidation.rejected.length) {
+        const rejectedCandidates = firstValidation.rejected.map(item => item.candidate)
+        second = await requestFocusPlan(rejectedCandidates, { fingerprint: requestFingerprint, retry: true }, { desiredSteps: rejectedCandidates.length })
       }
-
-      if (!isCurrentNextChapter(requestFingerprint, fingerprintRef.current)) return
+      if (requestFingerprint !== fingerprintRef.current) return
 
       const draft = {
-        title: generated.title || 'Keep your momentum growing',
-        steps: proposed,
+        title: 'Your focused next moves',
+        steps: mergeFocusWording(candidates, first, second),
       }
       writeStorage(window.sessionStorage, cacheKey, JSON.stringify({
         fingerprint: requestFingerprint,
@@ -462,17 +554,18 @@ export default function Plan() {
       }))
       setNextChapter({ fingerprint: requestFingerprint, draft })
       setNextStatus('ready')
-    } catch (err) {
-      if (!isCurrentNextChapter(requestFingerprint, fingerprintRef.current)) return
-      setNextError(err.message ?? 'Could not prepare your next chapter.')
+    } catch {
+      if (requestFingerprint !== fingerprintRef.current) return
+      setNextChapter({ fingerprint: requestFingerprint, draft: fallbackDraft })
+      setNextError('The focused steps are ready with verified wording. Personalized phrasing could not load just now.')
       setNextStatus('error')
     }
-  }, [accounts, activeSteps.length, activities, budgetLimits, cacheKey, cashFlowItems, currentFingerprint, debts, dismissedKey, goals, money, nextStatus, plan, profile, steps])
+  }, [basePlanModel.candidates, cacheKey, currentFingerprint, dismissedKey, nextStatus])
 
   useEffect(() => {
     if (loading || growth || tab !== 'steps') return
 
-    if (activeSteps.length > 2) {
+    if (!basePlanModel.candidates.length) {
       if (nextStatus !== 'idle' || nextChapter || nextError) {
         setNextChapter(null)
         setNextError(null)
@@ -497,7 +590,7 @@ export default function Plan() {
       return
     }
 
-    if (nextChapter || nextStatus === 'loading' || nextStatus === 'saving' || nextStatus === 'error') return
+    if (nextChapter || ['loading', 'saving', 'error', 'fallback', 'ready'].includes(nextStatus)) return
 
     const cached = readStorage(window.sessionStorage, cacheKey)
     if (cached) {
@@ -519,32 +612,28 @@ export default function Plan() {
       return
     }
 
-    if (!shouldRequestNextChapter({
-      activeCount: activeSteps.length,
-      fingerprint: currentFingerprint,
-      attemptedFingerprint,
-      dismissedFingerprint,
-      hasDraft: Boolean(nextChapter),
-      loading,
-      busy: savingStep,
-    })) return
+    if (attemptedFingerprint === currentFingerprint || dismissedFingerprint === currentFingerprint || savingStep) return
 
     void generateNextChapter()
-  }, [activeSteps.length, attemptedFingerprint, cacheKey, currentFingerprint, dismissedKey, generateNextChapter, growth, loading, nextChapter, nextError, nextStatus, savingStep, tab])
+  }, [attemptedFingerprint, basePlanModel.candidates.length, cacheKey, currentFingerprint, dismissedKey, generateNextChapter, growth, loading, nextChapter, nextError, nextStatus, savingStep, tab])
 
   async function approveNextChapter() {
-    if (!nextChapter?.draft?.steps?.length || nextStatus === 'saving') return
-    if (!isCurrentNextChapter(nextChapter.fingerprint, currentFingerprint)) {
+    const approvalDraft = currentDraft || (basePlanModel.candidates.length
+      ? { title: 'Your focused next moves', steps: basePlanModel.candidates }
+      : null)
+    if (!approvalDraft?.steps?.length || nextStatus === 'saving') return
+    if (nextChapter && nextChapter.fingerprint !== currentFingerprint) {
       void generateNextChapter({ force: true })
       return
     }
 
     setNextError(null)
     setNextStatus('saving')
+    setSavingStep(true)
     try {
-      const { plan: updated, added } = await appendSteps(user.id, nextChapter.draft.steps, {
-        source: 'advisor',
-        group: 'Next chapter',
+      const { plan: updated, added } = await appendSteps(user.id, approvalDraft.steps, {
+        source: 'focus',
+        group: 'Focused plan',
         dedupeCompleted: true,
       })
       if (!added) throw new Error('Those steps are already part of your financial history.')
@@ -554,8 +643,11 @@ export default function Plan() {
       setAttemptedFingerprint(null)
       setNextStatus('idle')
     } catch (err) {
+      try { setPlan(await getPlan(user.id)) } catch { /* preserve the approval error */ }
       setNextError(err.message ?? 'Could not add these steps. Your current plan was not changed.')
       setNextStatus('error')
+    } finally {
+      setSavingStep(false)
     }
   }
 
@@ -634,7 +726,7 @@ export default function Plan() {
 
   // Situation snapshot for the goal cards' inline "Show me how" guides (steps
   // build theirs on the step detail page from the same shared builder).
-  const howToCtx = buildHowToContext({ profile, debts, income: money.income, expenses: money.expenses, netWorth })
+  const howToCtx = buildHowToContext({ profile, debts, accounts, goals, income: money.income, expenses: money.expenses, netWorth })
 
   // Living headline — the nearest goal you'll reach.
   const nearest = goals
@@ -667,7 +759,7 @@ export default function Plan() {
               <>
                 <button aria-label="Close plan menu" onClick={() => setManageOpen(false)} className="fixed inset-0 z-20 cursor-default" />
                 <div className="absolute right-0 top-12 z-30 w-56 rounded-2xl border border-white/[0.12] bg-[#101a14] p-2 shadow-2xl shadow-black/40">
-                  <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">Plan management</p>
+                  <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-readable-muted">Plan management</p>
                   <button onClick={() => { if (clearArmed) clearPlan(); else setClearArmed(true) }}
                     className={`flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm transition-colors ${clearArmed ? 'bg-rose-500/15 text-rose-200' : 'text-white/65 hover:bg-white/[0.06] hover:text-white'}`}>
                     <Trash2 className="h-4 w-4" />
@@ -691,7 +783,7 @@ export default function Plan() {
             badge: goals.length === 0 ? null : `${goalsReached}/${goals.length} reached` },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-semibold transition-all ${
+            className={`min-h-11 flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-semibold transition-all ${
               tab === t.id ? 'bg-emerald-500/20 ring-1 ring-emerald-400/30 text-white' : 'text-white/50 hover:text-white/80'}`}>
             <t.icon className={`w-4 h-4 flex-shrink-0 ${tab === t.id ? 'text-emerald-300' : ''}`} />
             {t.label}
@@ -713,80 +805,65 @@ export default function Plan() {
           transition={{ duration: 0.18 }} className="space-y-3">
 
           {/* One thin line of garden progress — the reward, always visible */}
-          {upNext ? (
-            <>
-              {/* THE emphasized element — the one thing to do next */}
-              <UpNextCard step={upNext} onToggle={toggleStep} onApply={applyAndMark} onOpen={openStep}
-                progress={<GardenMeter total={gardenTotal} embedded />} />
+          {planModel.prerequisite ? (
+            <PlanPrerequisite
+              item={planModel.prerequisite}
+              onOpen={openPrerequisite}
+              progress={<GardenMeter total={gardenTotal} embedded />}
+            />
+          ) : <>
+            {upNext && !upNext.proposed && (
+              <UpNextCard
+                step={upNext}
+                onToggle={toggleStep}
+                onApply={applyAndMark}
+                onOpen={openStep}
+                busy={savingStep}
+                progress={<GardenMeter total={gardenTotal} embedded />}
+              />
+            )}
 
-              {/* Everything else stays quiet — tap a row for its own page */}
-              <StepList steps={visibleRestSteps} onToggle={toggleStep} onOpen={openStep} />
-              {restSteps.length > 3 && (
-                <button onClick={() => setShowAllSteps(show => !show)}
-                  className="min-h-11 w-full rounded-xl text-sm font-semibold text-white/45 transition-colors hover:bg-white/[0.04] hover:text-white/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
-                  {showAllSteps ? 'Show less' : `Show all ${restSteps.length} queued steps`}
-                </button>
-              )}
+            {upNext && !upNext.proposed && <FocusQueue steps={afterThis} onOpen={openStep} />}
 
-              <DoneAccordion steps={doneSteps} onToggle={toggleStep} />
-
-              {activeSteps.length <= 2 && !growth && (
-                <NextChapterCard
-                  status={nextStatus}
-                  draft={nextChapter?.draft}
-                  error={nextError}
-                  onAdd={approveNextChapter}
-                  onDismiss={dismissNextChapter}
-                  onRegenerate={regenerateNextChapter}
-                  onRetry={regenerateNextChapter}
-                />
-              )}
-
-              <AddStepRow onAdd={addOwnStep} />
-            </>
-          ) : totalSteps > 0 ? (
-            /* Every step done — celebrate + point forward */
-            <>
-              <GardenMeter total={gardenTotal} />
-              <div className="bg-emerald-500/[0.08] rounded-2xl border border-emerald-400/25 p-6 text-center">
-                <div className="w-11 h-11 mx-auto mb-3 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <Sprout className="w-5 h-5 text-emerald-300" />
-                </div>
-                <p className="text-white font-semibold text-sm mb-1">Every step done — your garden thanks you.</p>
-                <p className="text-readable-secondary text-xs">Your next suggestions appear below after this completion is safely remembered.</p>
-              </div>
-              <DoneAccordion steps={doneSteps} onToggle={toggleStep} />
-              {!growth && (
-                <NextChapterCard
-                  status={nextStatus}
-                  draft={nextChapter?.draft}
-                  error={nextError}
-                  onAdd={approveNextChapter}
-                  onDismiss={dismissNextChapter}
-                  onRegenerate={regenerateNextChapter}
-                  onRetry={regenerateNextChapter}
-                />
-              )}
-              <AddStepRow onAdd={addOwnStep} />
-            </>
-          ) : (
-            <>
+            {!growth && basePlanModel.candidates.length > 0 && (
               <NextChapterCard
                 status={nextStatus}
-                draft={nextChapter?.draft}
+                draft={currentDraft || { title: 'Your focused next moves', steps: basePlanModel.candidates }}
                 error={nextError}
                 onAdd={approveNextChapter}
                 onDismiss={dismissNextChapter}
                 onRegenerate={regenerateNextChapter}
                 onRetry={regenerateNextChapter}
-                isEmpty
+                isEmpty={!activeSteps.length}
               />
-              <AddStepRow onAdd={addOwnStep} />
-            </>
-          )}
+            )}
+
+            {!upNext && !basePlanModel.candidates.length && (
+              <div className="rounded-2xl border border-white/[0.09] bg-white/[0.045] p-5 text-center">
+                <GardenMeter total={gardenTotal} />
+                <p className="mt-4 text-sm font-semibold text-white">Your focused plan is clear.</p>
+                <p className="mt-1 text-xs leading-5 text-readable-secondary">Add a goal or a manual step when there is a concrete next move.</p>
+              </div>
+            )}
+          </>}
+
+          <OutdatedStepReview
+            review={planModel.review}
+            replacement={replacement}
+            onKeep={keepOutdated}
+            onReplace={replaceOutdated}
+            busy={savingStep}
+          />
+
+          <LaterAccordion steps={planModel.later} onOpen={openStep} onMakeNext={makeNext} busy={savingStep} />
+          <DoneAccordion steps={doneSteps} onToggle={toggleStep} />
+          <AddStepRow onAdd={addOwnStep} disabled={savingStep} />
 
           {error && (
             <p className="text-xs text-rose-200 bg-rose-500/15 border border-rose-400/25 px-3 py-2 rounded-lg text-center">{error}</p>
+          )}
+          {notice && (
+            <p className="rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] px-3 py-2 text-center text-xs text-emerald-50" role="status">{notice}</p>
           )}
         </motion.div>
       ) : (
@@ -798,7 +875,7 @@ export default function Plan() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200/65">Across all goals</p>
-                <p className="mt-2 font-display text-2xl font-medium text-white tabular-nums">
+                <p className="mt-2 text-2xl font-semibold text-white tabular-nums tracking-[-0.02em]">
                   ${goals.reduce((s, g) => s + Number(g.current_amount || 0), 0).toLocaleString()}
                 </p>
                 <p className="mt-1 text-xs text-white/45">

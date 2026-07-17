@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Check, Plus, Loader2, Calendar, X, ChevronDown, ChevronRight, Sparkles, RefreshCw } from 'lucide-react'
+import { Check, Plus, Loader2, Calendar, X, ChevronDown, ChevronRight, Sparkles, RefreshCw, AlertTriangle, ArrowUp, CircleDot } from 'lucide-react'
 import { applyLabel } from '@/lib/advisorPlans'
 import { fetchHowTo } from '@/lib/claude'
-import { HOW_TO_SLOW_MS } from '@/lib/howToGuide'
+import { guideEvidenceFingerprint, HOW_TO_SLOW_MS } from '@/lib/howToGuide'
 
 // ── Due-date helpers ────────────────────────────────────────────────────────────
 export function dueMeta(due) {
@@ -64,7 +64,12 @@ function CheckBox({ done, onToggle, label }) {
 const guideCache = new Map()   // stepId → text, survives navigation within a session
 
 export function StepGuide({ step, context, onSave }) {
-  const cached = step.guide ?? guideCache.get(step.id) ?? null
+  const sessionCached = guideCache.get(step.id)
+  const cached = step.guide ?? (typeof sessionCached === 'string' ? sessionCached : sessionCached?.text) ?? null
+  const evidenceFingerprint = guideEvidenceFingerprint(step.text, context)
+  const cachedFingerprint = step.guide
+    ? step.guideFingerprint
+    : (typeof sessionCached === 'object' ? sessionCached?.fingerprint : null)
   const [text, setText]       = useState(cached)
   const [loading, setLoading] = useState(!cached)
   const [error, setError]     = useState(false)
@@ -84,9 +89,9 @@ export function StepGuide({ step, context, onSave }) {
         if (!alive) return
         const clean = t?.trim()
         if (!clean) { setError('The guide came back empty. Please try again.'); return }
-        guideCache.set(step.id, clean)
+        guideCache.set(step.id, { text: clean, fingerprint: evidenceFingerprint })
         setText(clean)
-        onSave?.(step.id, clean)
+        onSave?.(step.id, clean, evidenceFingerprint)
       })
       .catch(err => {
         if (alive && err?.name !== 'AbortError') setError(err?.message || 'Could not load this guide.')
@@ -115,6 +120,8 @@ export function StepGuide({ step, context, onSave }) {
     setAttempt(a => a + 1)
   }
 
+  const stale = Boolean(text && cachedFingerprint && cachedFingerprint !== evidenceFingerprint)
+
   return (
     <div className="rounded-xl bg-emerald-500/[0.07] border border-emerald-400/20 px-3 py-2.5">
       <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300/80 mb-1.5">
@@ -129,6 +136,12 @@ export function StepGuide({ step, context, onSave }) {
       </div>
       {text ? (
         <div className="space-y-1.5">
+          {stale && (
+            <div className="mb-2 rounded-lg border border-amber-200/20 bg-amber-200/[0.07] px-3 py-2 text-xs leading-5 text-amber-50" role="status">
+              Your financial details changed since this guide was written.{' '}
+              <button type="button" onClick={regenerate} className="font-semibold text-amber-100 underline decoration-amber-100/40 underline-offset-2 hover:text-white">Refresh the guide</button>
+            </div>
+          )}
           {text.split('\n').filter(l => l.trim()).map((line, i) => (
             <p key={i} className="text-[13px] text-readable-secondary leading-relaxed">{line.trim()}</p>
           ))}
@@ -179,7 +192,7 @@ export function ApplyAction({ step, onApply }) {
 // ── The one emphasized element on the page ──────────────────────────────────────
 // Tapping the card body opens the step's own page (title, why, and the full
 // how-to) — the hero is just the top step, bigger.
-export function UpNextCard({ step, onToggle, onApply, onOpen, progress }) {
+export function UpNextCard({ step, onToggle, onApply, onOpen, progress, busy = false }) {
   const meta = dueMeta(step.due)
   return (
     <AnimatePresence mode="popLayout">
@@ -197,22 +210,125 @@ export function UpNextCard({ step, onToggle, onApply, onOpen, progress }) {
           </div>
           <div className="text-[15px] font-semibold text-white leading-snug">{step.text}</div>
           {(step.detail || step.impact || meta) && (
-            <div className="mt-1 text-xs text-white/60 leading-relaxed">
+            <div className="mt-1 line-clamp-2 text-xs text-white/60 leading-relaxed">
               {step.detail}
               {step.impact && <span className="ml-1.5 text-emerald-200/90">{step.impact}</span>}
               {meta && <span className={`ml-1.5 text-[10px] font-semibold ${meta.color}`}>{meta.label}</span>}
             </div>
           )}
+          {step.doneWhen && (
+            <div className="mt-3 rounded-xl border border-white/[0.08] bg-black/10 px-3 py-2">
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-readable-muted">Done when</span>
+              <p className="mt-0.5 text-[13px] leading-5 text-white/80">{step.doneWhen}</p>
+            </div>
+          )}
         </div>
         <div className="mt-3 flex items-center gap-3 flex-wrap">
-          <button onClick={() => onToggle(step.id)}
-            className="inline-flex min-h-11 items-center gap-1.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-lg shadow-emerald-900/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
-            <Check className="w-4 h-4" strokeWidth={3} /> Done
+          <button onClick={() => onToggle(step.id)} disabled={busy}
+            className="inline-flex min-h-11 items-center gap-1.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-lg shadow-emerald-900/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 disabled:cursor-wait disabled:opacity-55">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="w-4 h-4" strokeWidth={3} />} {busy ? 'Saving…' : 'Done'}
           </button>
           {step.apply && onApply && <ApplyAction step={step} onApply={onApply} />}
         </div>
       </motion.div>
     </AnimatePresence>
+  )
+}
+
+export function PlanPrerequisite({ item, onOpen, progress }) {
+  if (!item) return null
+  return (
+    <div className="rounded-2xl border border-amber-200/25 bg-gradient-to-br from-amber-200/[0.09] to-white/[0.035] p-4 sm:p-5">
+      {progress && <div className="mb-3 border-b border-white/[0.08] pb-2">{progress}</div>}
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-amber-100/80">Needed before advice</p>
+      <h2 className="mt-1.5 text-[16px] font-semibold leading-6 text-white">{item.title}</h2>
+      <p className="mt-1 text-[13px] leading-5 text-readable-secondary">{item.detail}</p>
+      <button type="button" onClick={() => onOpen(item)} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber-100 px-4 text-sm font-semibold text-[#172019] transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-100/70">
+        {item.cta}<ChevronRight className="h-4 w-4" />
+      </button>
+      <p className="mt-2 text-[11px] leading-4 text-readable-muted">This is a setup prompt, not a permanent Plan step.</p>
+    </div>
+  )
+}
+
+export function FocusQueue({ steps = [], onOpen }) {
+  if (!steps.length) return null
+  return (
+    <section aria-labelledby="after-this-title" className="overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.045]">
+      <h2 id="after-this-title" className="px-4 pb-1 pt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-readable-muted">After this</h2>
+      <div className="divide-y divide-white/[0.06]">
+        {steps.map((step, index) => (
+          <button key={step.id || step.candidateKey} type="button" disabled={step.proposed}
+            onClick={() => !step.proposed && onOpen?.(step)}
+            className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors enabled:hover:bg-white/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-300/70 disabled:cursor-default">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/[0.07] text-[11px] font-bold tabular-nums text-readable-secondary">{index + 2}</span>
+            <span className="min-w-0 flex-1 text-[14px] font-medium leading-5 text-white/[0.88]">{step.text}</span>
+            {step.proposed
+              ? <span className="rounded-full border border-emerald-200/20 bg-emerald-300/[0.08] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-emerald-100">Proposed</span>
+              : <ChevronRight className="h-4 w-4 shrink-0 text-readable-muted" />}
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+export function LaterAccordion({ steps = [], onOpen, onMakeNext, busy = false }) {
+  const [open, setOpen] = useState(false)
+  if (!steps.length) return null
+  return (
+    <section className="rounded-2xl border border-white/[0.075] bg-white/[0.03]">
+      <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open}
+        className="flex min-h-11 w-full items-center gap-2 px-3.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-300/70">
+        <CircleDot className="h-3.5 w-3.5 text-readable-muted" />
+        <span className="flex-1 text-xs font-semibold text-readable-secondary">Later · {steps.length}</span>
+        <ChevronDown className={`h-4 w-4 text-readable-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="divide-y divide-white/[0.055] border-t border-white/[0.06] px-3.5">
+        {steps.map(step => <div key={step.id} className="flex min-h-12 items-center gap-2 py-2">
+          <button type="button" onClick={() => onOpen?.(step)} className="min-w-0 flex-1 text-left text-[14px] leading-5 text-white/[0.78] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">{step.text}</button>
+          <button type="button" onClick={() => onMakeNext?.(step)} disabled={busy}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-emerald-100 transition-colors hover:bg-emerald-300/[0.08] disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
+            <ArrowUp className="h-3.5 w-3.5" /> Make next
+          </button>
+        </div>)}
+      </div>}
+    </section>
+  )
+}
+
+export function OutdatedStepReview({ review, replacement, onKeep, onReplace, busy = false }) {
+  const [preview, setPreview] = useState(false)
+  if (!review?.step) return null
+  return (
+    <section className="rounded-2xl border border-amber-200/20 bg-amber-200/[0.055] p-4">
+      <div className="flex gap-3">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-100" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-amber-100/80">Plan check</p>
+          <p className="mt-1 text-[14px] font-semibold leading-5 text-white">{review.step.text}</p>
+          <p className="mt-1 text-[13px] leading-5 text-readable-secondary">{review.reason}</p>
+          {preview && replacement && <div className="mt-3 rounded-xl border border-white/[0.09] bg-black/10 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-100/75">Replacement preview</p>
+            <p className="mt-1 text-sm font-semibold leading-5 text-white">{replacement.text}</p>
+            <p className="mt-1 text-xs leading-5 text-readable-secondary">{replacement.detail}</p>
+            <p className="mt-2 text-xs leading-5 text-white/[0.78]"><span className="font-semibold text-readable-secondary">Done when:</span> {replacement.doneWhen}</p>
+          </div>}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {preview ? <>
+              <button type="button" onClick={() => onReplace?.(review.step, replacement)} disabled={busy || !replacement} className="btn-primary min-h-11">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Confirm replacement
+              </button>
+              <button type="button" onClick={() => setPreview(false)} disabled={busy} className="btn-ghost min-h-11 px-3">Back</button>
+            </> : <>
+              <button type="button" onClick={() => setPreview(true)} disabled={busy || !replacement} className="btn-ghost min-h-11 border border-amber-100/20 px-3 text-amber-50">Replace</button>
+              <button type="button" onClick={() => onKeep?.(review.step)} disabled={busy} className="btn-ghost min-h-11 px-3">Keep for now</button>
+            </>}
+          </div>
+          {!replacement && <p className="mt-2 text-[11px] text-readable-muted">No equally grounded replacement is available yet.</p>}
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -252,7 +368,7 @@ export function DoneAccordion({ steps, onToggle }) {
   return (
     <div className="bg-white/[0.035] rounded-2xl border border-white/[0.07]">
       <button onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left">
+        className="min-h-11 w-full flex items-center gap-2 px-3.5 py-2.5 text-left">
         <Check className="w-3.5 h-3.5 text-emerald-400/70 flex-shrink-0" strokeWidth={3} />
         <span className="flex-1 text-xs font-semibold text-white/50">
           Done · <span className="tabular-nums">{steps.length}</span>{since ? ` since ${since}` : ''}
@@ -264,7 +380,7 @@ export function DoneAccordion({ steps, onToggle }) {
           {steps.map(step => (
             <div key={step.id} className="flex items-center gap-2.5 py-2">
               <CheckBox done onToggle={() => onToggle(step.id)} label="Mark step not done" />
-              <span className="flex-1 min-w-0 text-sm text-white/35 line-through leading-snug">{step.text}</span>
+              <span className="flex-1 min-w-0 text-sm text-readable-muted line-through leading-snug">{step.text}</span>
             </div>
           ))}
         </div>
@@ -274,34 +390,34 @@ export function DoneAccordion({ steps, onToggle }) {
 }
 
 // ── Add your own step ───────────────────────────────────────────────────────────
-export function AddStepRow({ onAdd }) {
+export function AddStepRow({ onAdd, disabled = false }) {
   const [text, setText] = useState('')
   const [open, setOpen] = useState(false)
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault()
     const t = text.trim()
-    if (!t) return
-    onAdd(t)
+    if (!t || disabled) return
+    await onAdd(t)
     setText('')
   }
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 px-1 py-2 text-xs font-medium text-white/45 hover:text-emerald-200 transition-colors">
+      <button onClick={() => setOpen(true)} disabled={disabled}
+        className="flex min-h-11 items-center gap-1.5 px-1 py-2 text-xs font-medium text-white/45 hover:text-emerald-200 transition-colors disabled:cursor-wait disabled:opacity-45">
         <Plus className="w-3.5 h-3.5" /> Add a step
       </button>
     )
   }
   return (
     <form onSubmit={submit} className="flex items-center gap-2 py-1">
-      <input autoFocus value={text} onChange={e => setText(e.target.value)}
+      <input autoFocus value={text} onChange={e => setText(e.target.value)} disabled={disabled}
         onBlur={() => !text && setOpen(false)}
         placeholder="e.g. Cancel unused subscriptions"
-        className="flex-1 bg-white/10 border border-white/[0.11] rounded-lg px-3 py-2 text-base md:text-xs text-white placeholder-white/35 focus:outline-none focus:border-emerald-400/50" />
-      <button type="submit" disabled={!text.trim()}
-        className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-semibold transition-colors">
+        className="min-h-11 flex-1 bg-white/10 border border-white/[0.11] rounded-lg px-3 py-2 text-base md:text-xs text-white placeholder-white/35 focus:outline-none focus:border-emerald-400/50" />
+      <button type="submit" disabled={!text.trim() || disabled}
+        className="min-h-11 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-semibold transition-colors">
         Add
       </button>
     </form>
@@ -330,7 +446,7 @@ export function SuggestionRow({ suggestion, onRun, onDismiss }) {
 // A reviewable replenishment set. It is generated automatically when the queue
 // runs low, but nothing changes in the durable plan until the user approves it.
 export function NextChapterCard({ status, draft, error, onAdd, onDismiss, onRegenerate, onRetry, isEmpty = false }) {
-  if (status === 'loading' || status === 'idle') {
+  if ((status === 'loading' || status === 'idle') && !draft?.steps?.length) {
     return (
       <div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/[0.06] p-4" aria-live="polite">
         <div className="flex items-center gap-3">
@@ -388,9 +504,9 @@ export function NextChapterCard({ status, draft, error, onAdd, onDismiss, onRege
           <Sparkles className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-200">Next chapter</p>
-          <p className="mt-0.5 text-sm font-semibold text-white">{draft.title || 'Keep your momentum growing'}</p>
-          <p className="mt-1 text-xs text-readable-secondary">Review these suggestions. Nothing is added until you approve.</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-emerald-200">Focus suggestions</p>
+          <p className="mt-0.5 text-sm font-semibold text-white">{draft.title || 'Fill your three-step focus'}</p>
+          <p className="mt-1 text-xs text-readable-secondary">Rules chose these priorities from your records. Nothing is added until you approve.</p>
         </div>
       </div>
       <div className="divide-y divide-white/[0.07] px-4">
@@ -401,6 +517,7 @@ export function NextChapterCard({ status, draft, error, onAdd, onDismiss, onRege
               <p className="text-sm font-semibold leading-snug text-white">{step.text}</p>
               {step.detail && <p className="mt-1 text-xs leading-relaxed text-readable-secondary">{step.detail}</p>}
               {step.impact && <p className="mt-1 text-xs font-semibold text-emerald-200">{step.impact}</p>}
+              {step.doneWhen && <p className="mt-1.5 text-xs leading-5 text-white/[0.78]"><span className="font-semibold text-readable-secondary">Done when:</span> {step.doneWhen}</p>}
             </div>
           </div>
         ))}
@@ -413,7 +530,7 @@ export function NextChapterCard({ status, draft, error, onAdd, onDismiss, onRege
       <div className="flex flex-wrap gap-2 border-t border-white/[0.08] px-4 py-3.5">
         <button type="button" onClick={onAdd} disabled={saving} className="btn-primary min-h-11 flex-1 sm:flex-none">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-          {saving ? 'Adding…' : 'Add to my plan'}
+          {saving ? 'Adding…' : `Add ${draft.steps.length === 1 ? 'this step' : `${draft.steps.length} steps`}`}
         </button>
         <button type="button" onClick={onRegenerate} disabled={saving} className="btn-ghost min-h-11 px-3">
           <RefreshCw className="h-4 w-4" /> Regenerate
