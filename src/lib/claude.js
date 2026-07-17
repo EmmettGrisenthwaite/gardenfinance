@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { LIMITS } from '@/lib/finance'
 import { formatHowToResult, HOW_TO_TIMEOUT_MS } from '@/lib/howToGuide'
+import { fetchWithNetworkRetry } from '@/lib/networkRetry'
 import {
   collectWebSources,
   compactWebSources,
@@ -40,7 +41,7 @@ export async function callClaude(messages, systemPrompt, { maxTokens = 4000, onD
   const token = session?.access_token
   if (!token) throw new Error('Please sign in to use the advisor.')
 
-  const res = await fetch(CHAT_ENDPOINT, {
+  const res = await fetchWithNetworkRetry(CHAT_ENDPOINT, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -142,7 +143,7 @@ export async function fetchHowTo(subject, context = '', { signal, timeoutMs = HO
   }, timeoutMs)
 
   try {
-    const res = await fetch(CHAT_ENDPOINT, {
+    const res = await fetchWithNetworkRetry(CHAT_ENDPOINT, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ messages, system, maxTokens: 900, tool: 'how_to' }),
@@ -175,7 +176,7 @@ export async function requestPlan(messages, systemPrompt) {
   const token = session?.access_token
   if (!token) throw new Error('Please sign in to use the advisor.')
 
-  const res = await fetch(CHAT_ENDPOINT, {
+  const res = await fetchWithNetworkRetry(CHAT_ENDPOINT, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify({ messages: sanitizeMessages(messages), system: systemPrompt, maxTokens: 4000, tool: 'action_plan' }),
@@ -209,7 +210,7 @@ export async function requestGuide(messages, systemPrompt) {
     : clean
 
   try {
-    const res = await fetch(CHAT_ENDPOINT, {
+    const res = await fetchWithNetworkRetry(CHAT_ENDPOINT, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ messages: probe, system: systemPrompt, maxTokens: 4000, tool: 'guide' }),
@@ -238,7 +239,7 @@ export async function suggestGoal(messages, systemPrompt) {
     : clean
 
   try {
-    const res = await fetch(CHAT_ENDPOINT, {
+    const res = await fetchWithNetworkRetry(CHAT_ENDPOINT, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ messages: probe, system: systemPrompt, maxTokens: 1500, tool: 'suggest_goal' }),
