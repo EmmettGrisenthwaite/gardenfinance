@@ -14,6 +14,11 @@ import { StepGuide, DueChip, ApplyAction, dueMeta } from '@/components/PlanSteps
 import ResourceLinks from '@/components/ResourceLinks'
 import PageHeader from '@/components/ui/PageHeader'
 import { recordStepActivity } from '@/lib/financialActivities'
+import { doneWhenForStep } from '@/lib/stepQuality'
+
+function withCompletionCondition(step) {
+  return step ? { ...step, doneWhen: doneWhenForStep(step) } : null
+}
 
 // One step, one page: the title, why it matters, and the full "how to do this"
 // guide — reached by tapping the step in the Plan, exited by the back button.
@@ -25,7 +30,7 @@ export default function StepDetail() {
 
   // The Plan passes the step in nav state for instant paint; the plan itself
   // (needed to save changes) hydrates in the background.
-  const [step, setStep]   = useState(location.state?.step ?? null)
+  const [step, setStep]   = useState(withCompletionCondition(location.state?.step))
   const [plan, setPlan]   = useState(null)
   const [debts, setDebts] = useState([])
   const [accounts, setAccounts] = useState([])
@@ -51,7 +56,7 @@ export default function StepDetail() {
       setAccounts(a.data ?? [])
       setGoals(g.data ?? [])
       const found = pl?.steps.find(s => s.id === stepId)
-      if (found) setStep(found)
+      if (found) setStep(withCompletionCondition(found))
       else if (!location.state?.step) setMissing(true)
     }
     load().catch(err => setError(err.message ?? 'Could not load this step.'))
@@ -76,7 +81,7 @@ export default function StepDetail() {
         const canonical = await getPlan(user.id)
         setPlan(canonical)
         const found = canonical?.steps.find(item => item.id === stepId)
-        if (found) setStep(found)
+        if (found) setStep(withCompletionCondition(found))
       } catch { /* preserve the original save error */ }
       setError(err.message ?? 'Could not save that change.')
       throw err

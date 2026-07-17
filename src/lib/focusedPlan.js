@@ -1,6 +1,7 @@
 import { financialPriorities, THRESHOLDS } from './finance.js'
 import { filterFreshPlanSteps, samePlanStep } from './planReplenishment.js'
 import { isWorkplaceAccount } from './moneyModel.js'
+import { doneWhenForStep } from './stepQuality.js'
 
 export const FOCUS_SIZE = 3
 
@@ -698,7 +699,9 @@ function prerequisiteFromSetup(setupState) {
 export function buildPlanModel({ snapshot = {}, setupState, plan, activities = [], now = new Date(), proposals = [] } = {}) {
   const fingerprint = focusPlanFingerprint({ snapshot, setupState, plan, activities })
   const prerequisite = prerequisiteFromSetup(setupState)
-  const active = orderFocusSteps((plan?.steps || []).filter(step => !step.done && !step.supersededAt))
+  const active = orderFocusSteps((plan?.steps || [])
+    .filter(step => !step.done && !step.supersededAt)
+    .map(step => ({ ...step, doneWhen: doneWhenForStep(step) })))
   const approvedFocus = active.slice(0, FOCUS_SIZE)
   const later = active.slice(FOCUS_SIZE)
   const candidates = prerequisite ? [] : buildFocusCandidates({ snapshot, plan, activities, now, fingerprint })
