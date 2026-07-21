@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, Check, Plus, Loader2, ArrowRight, X, TrendingUp, Sprout } from 'lucide-react'
+import { Sparkles, Check, Plus, Loader2, ArrowRight, X, TrendingUp, Sprout, ShoppingBag } from 'lucide-react'
 
 const fmt$ = (n) => `$${Math.round(Number(n) || 0).toLocaleString()}`
 
@@ -32,6 +32,7 @@ export default function GoalSuggestionCard({ suggestion: s, onAdd, onDismiss }) 
   const [busy, setBusy] = useState(false)
   const [added, setAdded] = useState(false)
   const isInv = s.goal_type === 'investment'
+  const isPurchase = s.goal_type === 'purchase'
   const tl = timeline(s.timeline_months)
 
   async function handleAdd() {
@@ -66,9 +67,10 @@ export default function GoalSuggestionCard({ suggestion: s, onAdd, onDismiss }) 
               <span className="text-base font-bold text-white">{s.name}</span>
               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                 isInv ? 'bg-amber-400/15 border-amber-400/30 text-amber-200'
-                      : 'bg-emerald-400/15 border-emerald-400/30 text-emerald-200'}`}>
-                {isInv ? <TrendingUp className="w-3 h-3" /> : <Sprout className="w-3 h-3" />}
-                {isInv ? 'Investment' : 'Savings'}
+                      : isPurchase ? 'bg-sky-400/15 border-sky-400/30 text-sky-200'
+                        : 'bg-emerald-400/15 border-emerald-400/30 text-emerald-200'}`}>
+                {isInv ? <TrendingUp className="w-3 h-3" /> : isPurchase ? <ShoppingBag className="h-3 w-3" /> : <Sprout className="w-3 h-3" />}
+                {isInv ? 'Investment' : isPurchase ? 'Purchase' : 'Savings'}
               </span>
             </div>
             <div className="text-xs text-white/60 mt-0.5 tabular-nums">

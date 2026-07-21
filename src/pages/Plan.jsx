@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ClipboardList, Target, Plus, Sprout, MoreHorizontal, Trash2, History } from 'lucide-react'
+import { ClipboardList, Target, MoreHorizontal, Trash2, History } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden, milestonesToStage } from '@/context/GardenContext'
@@ -11,7 +11,8 @@ import { getPlan, updatePlanSteps, deletePlan, applyStep, appendSteps, normalize
 import { requestFocusPlan, chatConfigured } from '@/lib/claude'
 import { computeSnapshot } from '@/lib/finance'
 import { buildHowToContext } from '@/lib/howToContext'
-import { GoalItem, GoalModal, getProjection } from '@/components/GoalItem'
+import { GoalItem, GoalModal } from '@/components/GoalItem'
+import ReminderWorkspace from '@/components/ReminderWorkspace'
 import {
   UpNextCard,
   DoneAccordion,
@@ -36,6 +37,16 @@ import {
 } from '@/lib/focusedPlan'
 import { getMoneySetupState } from '@/lib/moneySetup'
 import { filterFreshPlanSteps } from '@/lib/planReplenishment'
+import { buildReminderModel } from '@/lib/reminderModel'
+import {
+  actOnReminder,
+  approveReminderCandidate,
+  dismissReminderCandidate,
+  listReminderEvents,
+  listReminders,
+  saveReminder,
+  setReminderStatus,
+} from '@/lib/reminders'
 
 function readStorage(storage, key) {
   try { return storage.getItem(key) } catch { return null }
@@ -75,6 +86,10 @@ export default function Plan() {
   const [nextError, setNextError] = useState(null)
   const [attemptedFingerprint, setAttemptedFingerprint] = useState(null)
   const [activities, setActivities] = useState([])
+  const [reminders, setReminders] = useState([])
+  const [reminderEvents, setReminderEvents] = useState([])
+  const [pendingLinkedReminder, setPendingLinkedReminder] = useState(null)
+  const [completionOffer, setCompletionOffer] = useState(null)
   const [activitySheetOpen, setActivitySheetOpen] = useState(false)
   const [promptActivity, setPromptActivity] = useState(null)
   const [queuedActivity, setQueuedActivity] = useState(null)
@@ -116,7 +131,7 @@ export default function Plan() {
 
   useEffect(() => {
     async function load() {
-      const [g, d, pl, ac, flow, limits, activityRows] = await Promise.all([
+      const [g, d, pl, ac, flow, limits, activityRows, reminderRows, reminderEventRows] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id).order('created_at'),
         supabase.from('debts').select('*').eq('user_id', user.id),
         getPlan(user.id),
@@ -124,6 +139,8 @@ export default function Plan() {
         supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order'),
         supabase.from('budget_limits').select('*').eq('user_id', user.id),
         listFinancialActivities(user.id),
+        listReminders(user.id),
+        listReminderEvents(user.id),
       ])
       if (g.error) throw g.error
       if (d.error) throw d.error
@@ -145,6 +162,8 @@ export default function Plan() {
       setCashFlowItems(loadedFlow)
       setBudgetLimits(loadedLimits)
       setActivities(activityRows)
+      setReminders(reminderRows)
+      setReminderEvents(reminderEventRows)
       const unseen = activityRows.find(activity => isPromptableActivity(activity) && !activity.prompt_seen_at)
       if (unseen) setQueuedActivity(unseen)
       try {
@@ -189,7 +208,6 @@ export default function Plan() {
   // ── Derived milestone counts ─────────────────────────────────────────────────
   const steps          = useMemo(() => plan?.steps ?? [], [plan])
   const totalSteps     = steps.filter(step => !step.supersededAt).length
-  const goalsReached   = goals.filter(g => Number(g.target_amount) > 0 && Number(g.current_amount) >= Number(g.target_amount)).length
 
   // The one shared ordering — the Up-next card, this list, and the Dashboard
   // peek all agree on what's next.
@@ -199,14 +217,18 @@ export default function Plan() {
   const setupState = useMemo(() => getMoneySetupState({
     profile, accounts, debts, goals, cashFlowItems,
   }), [profile, accounts, debts, goals, cashFlowItems])
+  const reminderModel = useMemo(() => buildReminderModel({
+    snapshot, profile, accounts, debts, goals, activities,
+    reminders, events: reminderEvents,
+  }), [snapshot, profile, accounts, debts, goals, activities, reminders, reminderEvents])
   const basePlanModel = useMemo(() => buildPlanModel({
-    snapshot, setupState, plan, activities,
-  }), [snapshot, setupState, plan, activities])
+    snapshot, setupState, plan, activities, reminders,
+  }), [snapshot, setupState, plan, activities, reminders])
   const currentFingerprint = basePlanModel.fingerprint
   const currentDraft = nextChapter?.fingerprint === currentFingerprint ? nextChapter.draft : null
   const planModel = useMemo(() => buildPlanModel({
-    snapshot, setupState, plan, activities, proposals: currentDraft?.steps || [],
-  }), [snapshot, setupState, plan, activities, currentDraft])
+    snapshot, setupState, plan, activities, reminders, proposals: currentDraft?.steps || [],
+  }), [snapshot, setupState, plan, activities, reminders, currentDraft])
   const activeSteps = useMemo(() => steps.filter(step => !step.done && !step.supersededAt), [steps])
   const upNext = planModel.focus[0] ?? null
   const afterThis = planModel.focus.slice(1, 3)
@@ -508,6 +530,140 @@ export default function Plan() {
     setPromptActivity(null)
   }
 
+  async function refreshReminderRecords() {
+    const [nextReminders, nextEvents] = await Promise.all([
+      listReminders(user.id),
+      listReminderEvents(user.id),
+    ])
+    setReminders(nextReminders)
+    setReminderEvents(nextEvents)
+    return { reminders: nextReminders, events: nextEvents }
+  }
+
+  // Approval is based on a fresh canonical read, not the values that happened
+  // to be on screen when the suggestion was first rendered.
+  async function refreshReminderContext() {
+    const [profileResult, accountResult, debtResult, goalResult, flowResult, limitResult, activityRows, reminderRows, eventRows] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', user.id).single(),
+      supabase.from('accounts').select('*').eq('user_id', user.id),
+      supabase.from('debts').select('*').eq('user_id', user.id),
+      supabase.from('goals').select('*').eq('user_id', user.id).order('created_at'),
+      supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order'),
+      supabase.from('budget_limits').select('*').eq('user_id', user.id),
+      listFinancialActivities(user.id),
+      listReminders(user.id),
+      listReminderEvents(user.id),
+    ])
+    for (const result of [profileResult, accountResult, debtResult, goalResult, flowResult, limitResult]) {
+      if (result.error) throw result.error
+    }
+    const canonicalProfile = profileResult.data || profile
+    const canonicalAccounts = accountResult.data || []
+    const canonicalDebts = debtResult.data || []
+    const canonicalGoals = goalResult.data || []
+    const canonicalFlow = flowResult.data || []
+    const canonicalLimits = limitResult.data || []
+    const canonicalSnapshot = computeSnapshot({
+      profile: canonicalProfile,
+      accounts: canonicalAccounts,
+      debts: canonicalDebts,
+      goals: canonicalGoals,
+      cashFlowItems: canonicalFlow,
+      budgetLimits: canonicalLimits,
+    })
+    setProfile(canonicalProfile)
+    setAccounts(canonicalAccounts)
+    setDebts(canonicalDebts)
+    setGoals(canonicalGoals)
+    setCashFlowItems(canonicalFlow)
+    setBudgetLimits(canonicalLimits)
+    setActivities(activityRows)
+    setReminders(reminderRows)
+    setReminderEvents(eventRows)
+    return buildReminderModel({
+      snapshot: canonicalSnapshot,
+      profile: canonicalProfile,
+      accounts: canonicalAccounts,
+      debts: canonicalDebts,
+      goals: canonicalGoals,
+      activities: activityRows,
+      reminders: reminderRows,
+      events: eventRows,
+    })
+  }
+
+  async function approveReminderSuggestion(candidate) {
+    const canonicalModel = await refreshReminderContext()
+    const canonical = canonicalModel.suggestions.find(item => item.candidateKey === candidate.candidateKey)
+    if (!canonical || canonical.sourceFingerprint !== candidate.sourceFingerprint) {
+      const stale = new Error('The financial information behind this suggestion changed. The current suggestion is now shown instead.')
+      stale.code = 'STALE_REMINDER_CANDIDATE'
+      throw stale
+    }
+    const approved = candidate.userEdited ? {
+      ...canonical,
+      title: candidate.title,
+      detail: candidate.detail,
+      cadence: candidate.cadence,
+      anchorDate: candidate.anchorDate,
+      linkedRecordType: candidate.linkedRecordType,
+      linkedRecordId: candidate.linkedRecordId,
+      userEdited: true,
+    } : canonical
+    await approveReminderCandidate(approved)
+    await refreshReminderRecords()
+    setNotice('Reminder added. It will never change a balance on its own.')
+  }
+
+  async function dismissReminderSuggestion(candidate) {
+    await dismissReminderCandidate(candidate)
+    await refreshReminderRecords()
+  }
+
+  async function persistReminder(payload) {
+    await saveReminder(payload)
+    await refreshReminderRecords()
+    setNotice(payload.id ? 'Reminder updated.' : 'Reminder added.')
+  }
+
+  async function performReminderAction(reminder, action, snoozedUntil = null) {
+    await actOnReminder(reminder, action, snoozedUntil)
+    await refreshReminderRecords()
+    if (completionOffer?.id === reminder.id) setCompletionOffer(null)
+    setNotice(action === 'done' ? 'Check-in completed. No balances were changed.' : action === 'skipped' ? 'This occurrence was skipped.' : `Snoozed until ${new Date(`${snoozedUntil}T12:00:00`).toLocaleDateString()}.`)
+  }
+
+  async function changeReminderStatus(reminder, status, metadataPatch = {}) {
+    await setReminderStatus(reminder.id, status, metadataPatch)
+    await refreshReminderRecords()
+    setNotice(status === 'archived' ? 'Reminder archived. Its history is preserved.' : status === 'paused' ? 'Reminder paused.' : 'Reminder active.')
+  }
+
+  function openReminderContext(reminder) {
+    if (reminder.linked_record_type === 'goal' && reminder.linked_record_id) {
+      const linkedGoal = goals.find(goal => goal.id === reminder.linked_record_id)
+      if (linkedGoal) {
+        setPendingLinkedReminder(reminder)
+        setModal(linkedGoal)
+        return
+      }
+    }
+    const fallback = {
+      monthly_plan: '/?sheet=plan', money_records: '/?sheet=balances',
+      debt: '/?sheet=debts', account: '/?section=money&sheet=accounts',
+      profile: '/settings',
+    }[reminder.linked_record_type]
+    const target = reminder.metadata?.action_target || fallback
+    if (!target) return
+    const [withoutHash, hash] = target.split('#')
+    const separator = withoutHash.includes('?') ? '&' : '?'
+    const linkedParam = reminder.linked_record_type === 'account' && reminder.linked_record_id
+      ? `&accountId=${encodeURIComponent(reminder.linked_record_id)}`
+      : reminder.linked_record_type === 'debt' && reminder.linked_record_id
+        ? `&debtId=${encodeURIComponent(reminder.linked_record_id)}` : ''
+    navigate(`${withoutHash}${separator}reminder=${encodeURIComponent(reminder.id)}&reminderDue=${encodeURIComponent(reminder.next_due_on)}${linkedParam}${hash ? `#${hash}` : ''}`)
+  }
+
   const generateNextChapter = useCallback(async ({ force = false } = {}) => {
     const requestFingerprint = currentFingerprint
     if (!force && (nextStatus === 'loading' || nextStatus === 'saving')) return
@@ -687,6 +843,10 @@ export default function Plan() {
         }
       }
       setModal(null)
+      if (pendingLinkedReminder) {
+        setCompletionOffer(pendingLinkedReminder)
+        setPendingLinkedReminder(null)
+      }
     } catch (err) {
       setError(err.message ?? 'Could not save that goal.')
       throw err
@@ -727,12 +887,6 @@ export default function Plan() {
   // Situation snapshot for the goal cards' inline "Show me how" guides (steps
   // build theirs on the step detail page from the same shared builder).
   const howToCtx = buildHowToContext({ profile, debts, accounts, goals, income: money.income, expenses: money.expenses, netWorth })
-
-  // Living headline — the nearest goal you'll reach.
-  const nearest = goals
-    .map(g => ({ g, p: getProjection(g) }))
-    .filter(x => x.p && !x.p.done && !x.p.longTerm && x.p.monthsLeft)
-    .sort((a, b) => a.p.monthsLeft - b.p.monthsLeft)[0]
 
   return (
     <motion.div
@@ -780,7 +934,7 @@ export default function Plan() {
           { id: 'steps', icon: ClipboardList, label: 'Steps',
             badge: totalSteps === 0 ? null : (activeSteps.length === 0 ? 'all done' : `${activeSteps.length} left`) },
           { id: 'goals', icon: Target, label: 'Goals',
-            badge: goals.length === 0 ? null : `${goalsReached}/${goals.length} reached` },
+            badge: reminderModel.counts.due > 0 ? `${reminderModel.counts.due} due` : (goals.length ? `${goals.length} goals` : null) },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className={`min-h-11 flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-semibold transition-all ${
@@ -871,50 +1025,44 @@ export default function Plan() {
           transition={{ duration: 0.18 }} className="space-y-3">
 
           {/* Living headline — this is goal news, so it lives on the Goals tab */}
-          <div className="rounded-2xl border border-emerald-400/20 bg-gradient-to-br from-emerald-500/[0.12] to-white/[0.035] p-4 sm:p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200/65">Across all goals</p>
-                <p className="mt-2 text-2xl font-semibold text-white tabular-nums tracking-[-0.02em]">
-                  ${goals.reduce((s, g) => s + Number(g.current_amount || 0), 0).toLocaleString()}
-                </p>
-                <p className="mt-1 text-xs text-white/45">
-                  of ${goals.reduce((s, g) => s + Number(g.target_amount || 0), 0).toLocaleString()} saved · {goalsReached} reached
-                </p>
+          <ReminderWorkspace
+            model={reminderModel}
+            reminders={reminders}
+            events={reminderEvents}
+            goals={goals}
+            accounts={accounts}
+            debts={debts}
+            initialReminderId={new URLSearchParams(location.search).get('reminder')}
+            onApproveSuggestion={approveReminderSuggestion}
+            onDismissSuggestion={dismissReminderSuggestion}
+            onSaveReminder={persistReminder}
+            onReminderAction={performReminderAction}
+            onReminderStatus={changeReminderStatus}
+            onOpenContext={openReminderContext}
+            onAddGoal={() => setModal('new')}
+            completionOffer={completionOffer}
+            goalContent={goals.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-white/[0.1] px-5 py-6 text-center">
+                <p className="mx-auto max-w-xs text-[13px] leading-5 text-readable-secondary">Add a savings, purchase, or investment goal to track a clear amount and timeline.</p>
+                <button type="button" onClick={() => setModal('new')} className="mt-3 min-h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500">Add money goal</button>
               </div>
-              <button onClick={() => setModal('new')}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
-                <Plus className="w-3.5 h-3.5" /> Add goal
-              </button>
-            </div>
-            {nearest && (
-              <p className="mt-4 border-t border-white/[0.08] pt-3 text-sm text-white/65">
-                <Sprout className="mr-1.5 inline h-4 w-4 text-emerald-300" />
-                <span className="font-semibold text-white">{nearest.g.name}</span> is on pace for <span className="text-emerald-200">{nearest.p.label}</span>.
-              </p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {goals.map(goal => (
+                  <GoalItem key={goal.id} goal={goal}
+                    onEdit={setModal} onDelete={deleteGoal}
+                    onUpdateProgress={updateProgress} onContribute={contribute}
+                    howToContext={howToCtx} />
+                ))}
+              </div>
             )}
-          </div>
-
-          {goals.length === 0 ? (
-            <div className="bg-white/[0.075] rounded-xl border border-white/[0.11] p-6 text-center">
-              <p className="text-white/55 text-xs max-w-xs mx-auto">
-                Saving toward something — a house, emergency fund, a trip? Add a goal to plant a tree. Reaching it grows your garden.
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {goals.map(g => (
-                <GoalItem key={g.id} goal={g}
-                  onEdit={setModal} onDelete={deleteGoal}
-                  onUpdateProgress={updateProgress} onContribute={contribute}
-                  howToContext={howToCtx} />
-              ))}
-            </div>
-          )}
+          />
+          {error && <p className="rounded-lg border border-rose-400/25 bg-rose-500/15 px-3 py-2 text-center text-xs text-rose-100">{error}</p>}
+          {notice && <p className="rounded-lg border border-emerald-300/20 bg-emerald-300/[0.07] px-3 py-2 text-center text-xs text-emerald-50" role="status">{notice}</p>}
         </motion.div>
       )}
 
-      {modal && <GoalModal goal={modal === 'new' ? null : modal} onSave={saveGoal} onClose={() => setModal(null)} />}
+      {modal && <GoalModal goal={modal === 'new' ? null : modal} onSave={saveGoal} onClose={() => { setModal(null); setPendingLinkedReminder(null) }} />}
       <ProgressActivitySheet
         open={activitySheetOpen}
         initialActivity={promptActivity}

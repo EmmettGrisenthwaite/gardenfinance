@@ -131,7 +131,7 @@ export async function addGoal(userId, g) {
   const { data, error } = await supabase.from('goals').insert({
     user_id:              userId,
     name:                 g.name || 'New goal',
-    goal_type:            g.goal_type === 'investment' ? 'investment' : 'savings',
+    goal_type:            ['investment', 'purchase'].includes(g.goal_type) ? g.goal_type : 'savings',
     target_amount:        targetAmount,
     current_amount:       0,
     monthly_contribution: monthlyContribution,
@@ -159,7 +159,7 @@ export async function applyStep(userId, apply) {
     const { error } = await supabase.from('goals').insert({
       user_id:              userId,
       name:                 apply.name || 'New goal',
-      goal_type:            apply.goal_type === 'investment' ? 'investment' : 'savings',
+      goal_type:            ['investment', 'purchase'].includes(apply.goal_type) ? apply.goal_type : 'savings',
       target_amount:        targetAmount,
       current_amount:       0,
       monthly_contribution: monthlyContribution,

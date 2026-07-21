@@ -69,7 +69,7 @@ function hashState(value) {
   return (hash >>> 0).toString(36)
 }
 
-export function focusPlanFingerprint({ snapshot = {}, setupState, plan, activities = [] } = {}) {
+export function focusPlanFingerprint({ snapshot = {}, setupState, plan, activities = [], reminders = [] } = {}) {
   const steps = Array.isArray(plan?.steps) ? plan.steps : []
   const state = {
     setup: setupState?.next?.id || null,
@@ -113,6 +113,15 @@ export function focusPlanFingerprint({ snapshot = {}, setupState, plan, activiti
       sourceAccount: activity?.source_account_id || '', destinationAccount: activity?.destination_account_id || '',
       debt: activity?.debt_id || '', goal: activity?.goal_id || '', appliedAt: activity?.applied_at || '',
     })),
+    // A reminder can suppress only a duplicate recurring-setup proposal. Its
+    // title, due date, and check-in history never alter financial priorities.
+    reminderSetups: stableRecords(
+      reminders.filter(reminder => (
+        ['active', 'paused'].includes(reminder?.status)
+        && reminder?.metadata?.intent_key
+      )),
+      reminder => ({ intent: reminder.metadata.intent_key, status: reminder.status }),
+    ),
   }
   return `focus-v1-${hashState(JSON.stringify(state))}`
 }
@@ -539,7 +548,7 @@ function candidatesForPriority(priority, snapshot, now) {
   return result
 }
 
-export function buildFocusCandidates({ snapshot = {}, plan, activities = [], now = new Date(), fingerprint } = {}) {
+export function buildFocusCandidates({ snapshot = {}, plan, activities = [], reminders = [], now = new Date(), fingerprint } = {}) {
   const priorities = financialPriorities(snapshot)
   const pool = priorities.flatMap(priority => candidatesForPriority(priority, snapshot, now))
   if (!priorities.some(priority => priority.key === 'grow')) {
@@ -551,6 +560,12 @@ export function buildFocusCandidates({ snapshot = {}, plan, activities = [], now
   const existing = Array.isArray(plan?.steps) ? [...plan.steps] : []
   const accepted = []
   for (const candidate of pool) {
+    const reminderDuplicate = candidate?.outcome?.kind === 'recurring_setup'
+      && reminders.some(reminder => (
+        ['active', 'paused'].includes(reminder?.status)
+        && reminder?.metadata?.intent_key === candidate.intentKey
+      ))
+    if (reminderDuplicate) continue
     const legacyPriorityDuplicate = candidate.priorityKey !== 'grow' && existing.some(step => (
       !step?.done
       && !step?.supersededAt
@@ -696,15 +711,15 @@ function prerequisiteFromSetup(setupState) {
   }
 }
 
-export function buildPlanModel({ snapshot = {}, setupState, plan, activities = [], now = new Date(), proposals = [] } = {}) {
-  const fingerprint = focusPlanFingerprint({ snapshot, setupState, plan, activities })
+export function buildPlanModel({ snapshot = {}, setupState, plan, activities = [], reminders = [], now = new Date(), proposals = [] } = {}) {
+  const fingerprint = focusPlanFingerprint({ snapshot, setupState, plan, activities, reminders })
   const prerequisite = prerequisiteFromSetup(setupState)
   const active = orderFocusSteps((plan?.steps || [])
     .filter(step => !step.done && !step.supersededAt)
     .map(step => ({ ...step, doneWhen: doneWhenForStep(step) })))
   const approvedFocus = active.slice(0, FOCUS_SIZE)
   const later = active.slice(FOCUS_SIZE)
-  const candidates = prerequisite ? [] : buildFocusCandidates({ snapshot, plan, activities, now, fingerprint })
+  const candidates = prerequisite ? [] : buildFocusCandidates({ snapshot, plan, activities, reminders, now, fingerprint })
   const wording = new Map((proposals || []).map(step => [step.candidateKey, step]))
   const proposed = candidates.map(candidate => {
     const improved = wording.get(candidate.candidateKey)

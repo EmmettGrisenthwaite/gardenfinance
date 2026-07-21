@@ -13,6 +13,7 @@ import {
   formatMemoriesForContext, distillConversation,
 } from '@/lib/memory'
 import { listFinancialActivities } from '@/lib/financialActivities'
+import { listReminderEvents, listReminders } from '@/lib/reminders'
 import PlanCard from '@/components/PlanCard'
 import ResourceLinks from '@/components/ResourceLinks'
 import GuideCard from '@/components/GuideCard'
@@ -326,6 +327,8 @@ export default function AIAdvisor() {
   const [budgetLimits, setBudgetLimits] = useState([])
   const [memories, setMemories]         = useState([])
   const [activities, setActivities]     = useState([])
+  const [reminders, setReminders]       = useState([])
+  const [reminderEvents, setReminderEvents] = useState([])
   const [error, setError]               = useState(null)
   const [atBottom, setAtBottom]         = useState(true)
   const [pendingPlan, setPendingPlan]   = useState(null)
@@ -351,7 +354,7 @@ export default function AIAdvisor() {
   // ── Load data ───────────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const [g, d, conv, pl, ac, flow, limits, mems, activityRows] = await Promise.all([
+      const [g, d, conv, pl, ac, flow, limits, mems, activityRows, reminderRows, reminderEventRows] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', user.id),
         supabase.from('debts').select('*').eq('user_id', user.id),
         supabase.from('conversations').select('messages').eq('user_id', user.id).single(),
@@ -361,6 +364,8 @@ export default function AIAdvisor() {
         supabase.from('budget_limits').select('*').eq('user_id', user.id),
         getMemories(),
         listFinancialActivities(user.id, { limit: 20 }),
+        listReminders(user.id),
+        listReminderEvents(user.id, { limit: 20 }),
       ])
       if (g.error) throw g.error
       if (d.error) throw d.error
@@ -390,6 +395,8 @@ export default function AIAdvisor() {
       setBudgetLimits(loadedLimits)
       setMemories(mems ?? [])
       setActivities(activityRows ?? [])
+      setReminders(reminderRows ?? [])
+      setReminderEvents(reminderEventRows ?? [])
 
       // Calculate progress delta since last visit
       const lastVisit = localStorage.getItem(LAST_VISIT_KEY)
@@ -479,10 +486,12 @@ export default function AIAdvisor() {
   }), [profile, accounts, debts])
 
   const systemPrompt = useMemo(() => {
-    const ctx = buildContext(money, goals, debts, profile, { plans, accounts, cashFlowItems, budgetLimits, activities })
+    const ctx = buildContext(money, goals, debts, profile, {
+      plans, accounts, cashFlowItems, budgetLimits, activities, reminders, reminderEvents,
+    })
     const memoriesText = formatMemoriesForContext(memories)
     return buildSystemPrompt(ctx, memoriesText)
-  }, [money, goals, debts, profile, plans, accounts, cashFlowItems, budgetLimits, activities, memories])
+  }, [money, goals, debts, profile, plans, accounts, cashFlowItems, budgetLimits, activities, reminders, reminderEvents, memories])
 
   const noKey  = !chatConfigured
   const hasData = goals.length > 0 || debts.length > 0 || plans.length > 0 || money.income > 0 || money.expenses > 0 || money.netWorth !== 0

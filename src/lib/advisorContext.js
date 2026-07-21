@@ -515,6 +515,30 @@ export function buildContext(money, goals = [], debts = [], profile, extras = {}
     context += 'Treat applied activities and current structured records as stronger evidence than conversation memory.\n\n'
   }
 
+  const activeReminders = (extras.reminders || [])
+    .filter(reminder => ['active', 'paused'].includes(reminder.status))
+    .slice(0, 20)
+  if (activeReminders.length) {
+    context += 'ACTIVE REMINDERS (scheduled maintenance only; never treat a reminder as proof that money moved or financial work was completed):\n'
+    activeReminders.forEach(reminder => {
+      const state = reminder.status === 'paused' ? 'paused' : `next ${reminder.snoozed_until || reminder.next_due_on}`
+      const linked = reminder.linked_record_type ? `, linked to ${reminder.linked_record_type}` : ''
+      context += `  ${reminder.title}: ${reminder.cadence}, ${state}${linked}\n`
+    })
+    context += '\n'
+  }
+
+  const reminderById = new Map((extras.reminders || []).map(reminder => [reminder.id, reminder]))
+  const recentReminderEvents = (extras.reminderEvents || []).slice(0, 12)
+  if (recentReminderEvents.length) {
+    context += 'RECENT REMINDER CHECK-INS (attention was recorded; these events do not prove a transfer, payment, contribution, or balance update):\n'
+    recentReminderEvents.forEach(event => {
+      const reminder = reminderById.get(event.reminder_id)
+      context += `  ${reminder?.title || 'Reminder'}: ${event.action} for ${event.scheduled_for}\n`
+    })
+    context += '\n'
+  }
+
   if (profile) {
     const investmentEvidence = snap.hasInvestmentAccount
       ? `Detailed records confirm ${snap.investmentAccounts.length} investment account(s); trust this over onboarding.`

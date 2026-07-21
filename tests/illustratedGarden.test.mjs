@@ -45,3 +45,12 @@ test('accessible summary uses the same manifest and progress model', () => {
   assert.match(summary, /12 permanent milestones/)
   assert.match(summary, /4 milestones to Flourishing/)
 })
+
+test('purchase goals keep savings projections and garden visuals', () => {
+  const layout = illustratedGoalLayout([{
+    id: 'purchase', name: 'New car', goal_type: 'purchase',
+    current_amount: 5000, target_amount: 20000, created_at: '2026-01-01T00:00:00Z',
+  }])
+  assert.equal(layout.visible[0].species, 'savings')
+  assert.equal(layout.visible[0].percent, 25)
+})

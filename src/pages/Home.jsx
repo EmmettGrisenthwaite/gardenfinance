@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
-import { AlertCircle, ArrowRight, History, Loader2, Sprout, Target } from 'lucide-react'
+import { AlertCircle, ArrowRight, CalendarClock, History, Loader2, Sprout, Target } from 'lucide-react'
 import Money from '@/pages/Money'
 import IllustratedGarden from '@/components/garden/IllustratedGarden'
 import BottomSheet from '@/components/ui/BottomSheet'
@@ -16,6 +16,8 @@ import { buildPlanModel } from '@/lib/focusedPlan'
 import ProgressActivitySheet from '@/components/ProgressActivitySheet'
 import { listFinancialActivities } from '@/lib/financialActivities'
 import { isPromptableActivity } from '@/lib/progressOutcome'
+import { buildReminderModel } from '@/lib/reminderModel'
+import { listReminderEvents, listReminders } from '@/lib/reminders'
 
 const formatMoney = value => `$${Math.max(0, Number(value) || 0).toLocaleString()}`
 
@@ -37,6 +39,8 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
   const [sheet, setSheet] = useState(null)
   const [selectedGoal, setSelectedGoal] = useState(null)
   const [activities, setActivities] = useState([])
+  const [reminders, setReminders] = useState([])
+  const [reminderEvents, setReminderEvents] = useState([])
   const [activitySheetOpen, setActivitySheetOpen] = useState(false)
   const [promptActivity, setPromptActivity] = useState(null)
 
@@ -56,9 +60,15 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
       }
 
       try {
-        const activityRows = await listFinancialActivities(user.id)
+        const [activityRows, reminderRows, eventRows] = await Promise.all([
+          listFinancialActivities(user.id),
+          listReminders(user.id),
+          listReminderEvents(user.id),
+        ])
         if (!live) return
         setActivities(activityRows)
+        setReminders(reminderRows)
+        setReminderEvents(eventRows)
         const unseen = activityRows.find(activity => isPromptableActivity(activity) && !activity.prompt_seen_at)
         if (unseen) {
           setPromptActivity(unseen)
@@ -101,8 +111,13 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
     setupState,
     plan,
     activities,
-  }), [snapshot, profile, accounts, debts, goals, cashFlowItems, budgetLimits, setupState, plan, activities])
+    reminders,
+  }), [snapshot, profile, accounts, debts, goals, cashFlowItems, budgetLimits, setupState, plan, activities, reminders])
   const action = useMemo(() => selectHomeAction({ setupState, planModel, plan, planLoading }), [setupState, planModel, plan, planLoading])
+  const reminderModel = useMemo(() => buildReminderModel({
+    snapshot, profile, accounts, debts, goals, activities,
+    reminders, events: reminderEvents,
+  }), [snapshot, profile, accounts, debts, goals, activities, reminders, reminderEvents])
   const grouped = useMemo(() => groupGardenGoals(goals, milestones, 3), [goals, milestones])
   const selectedPercent = selectedGoal
     ? Math.min(100, Math.round((Number(selectedGoal.current_amount || 0) / Math.max(1, Number(selectedGoal.target_amount || 0))) * 100))
@@ -181,6 +196,16 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
       </section>
 
       {gardenError && <div role="status" className="mt-3 flex gap-2 rounded-xl border border-amber-200/18 bg-amber-300/[0.05] px-3.5 py-3 text-[13px] leading-5 text-amber-50"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{gardenError}</div>}
+
+      {reminderModel.counts.due > 0 && (
+        <button type="button" onClick={() => navigate(`/plan?reminder=${encodeURIComponent(reminderModel.due[0].id)}#goals`)}
+          className="mt-3 flex min-h-11 w-full items-center gap-2 rounded-xl border border-emerald-300/14 bg-emerald-300/[0.045] px-3 text-left text-[13px] font-semibold text-emerald-100 transition-colors hover:bg-emerald-300/[0.075] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
+          <CalendarClock className="h-4 w-4" />
+          <span>{reminderModel.counts.due} {reminderModel.counts.due === 1 ? 'reminder' : 'reminders'} due</span>
+          <span className="ml-auto truncate text-xs font-normal text-readable-secondary">{reminderModel.due[0].title}</span>
+          <ArrowRight className="h-4 w-4 shrink-0" />
+        </button>
+      )}
 
       <button type="button" onClick={() => { setPromptActivity(null); setActivitySheetOpen(true) }} className="mt-3 flex min-h-11 w-full items-center gap-2 rounded-xl px-2 text-left text-[13px] font-semibold text-readable-secondary transition-colors hover:bg-white/[0.035] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
         <History className="h-4 w-4 text-emerald-200" /> Recent progress

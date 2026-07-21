@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   AlertCircle, ArrowRight, CalendarDays, ChevronDown, ChevronRight,
-  CircleDollarSign, CreditCard, Gauge, Landmark, LineChart, Loader2, Pencil,
+  Check, CircleDollarSign, CreditCard, Gauge, Landmark, LineChart, Loader2, Pencil,
   Plus, RefreshCw, ShieldCheck, Trash2, WalletCards,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -19,6 +19,7 @@ import { netWorthTrend } from '@/lib/netWorth'
 import PageHeader from '@/components/ui/PageHeader'
 import BottomSheet from '@/components/ui/BottomSheet'
 import MoneySetupNudge from '@/components/MoneySetupNudge'
+import { actOnReminder, listReminders } from '@/lib/reminders'
 
 const fmt = value => {
   const amount = Number(value) || 0
@@ -185,6 +186,10 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [showMore, setShowMore] = useState(false)
   const [breakdown, setBreakdown] = useState(null)
+  const [linkedReminder, setLinkedReminder] = useState(null)
+  const [reminderCompletionOffer, setReminderCompletionOffer] = useState(false)
+  const [reminderSaving, setReminderSaving] = useState(false)
+  const [reminderError, setReminderError] = useState(null)
 
   async function loadData() {
     const [accountResult, debtResult, goalResult, flowResult, limitResult] = await Promise.all([
@@ -217,10 +222,18 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
     if (!sheet || loading) return
     openSheet(sheet)
     const preferredSubtype = new URLSearchParams(location.search).get('accountSubtype')
+    const accountId = new URLSearchParams(location.search).get('accountId')
+    const debtId = new URLSearchParams(location.search).get('debtId')
     if (sheet === 'accounts' && preferredSubtype) {
       const normalizedSubtype = preferredSubtype === 'savings' ? 'standard_savings' : preferredSubtype
       const family = INVESTMENT_SUBTYPES.some(option => option.value === normalizedSubtype) ? 'investment' : 'cash'
       beginAccount(family, null, normalizedSubtype)
+    } else if (sheet === 'accounts' && accountId) {
+      const account = accounts.find(item => item.id === accountId)
+      if (account) beginAccount(accountFamily(account), account)
+    } else if (sheet === 'debts' && debtId) {
+      const debt = debts.find(item => item.id === debtId)
+      if (debt) beginDebt(debt)
     }
   }, [loading, location.search, location.state]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -229,6 +242,21 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
     const frame = requestAnimationFrame(() => document.getElementById('home-money')?.scrollIntoView({ block: 'start' }))
     return () => cancelAnimationFrame(frame)
   }, [homeMode, loading, location.search])
+
+  useEffect(() => {
+    const reminderId = new URLSearchParams(location.search).get('reminder')
+    if (!reminderId || loading) {
+      setLinkedReminder(null)
+      return
+    }
+    let live = true
+    listReminders(user.id).then(rows => {
+      if (live) setLinkedReminder(rows.find(row => row.id === reminderId && row.status === 'active') || null)
+    }).catch(() => {
+      if (live) setReminderError('The money editor is ready, but the linked reminder could not be loaded.')
+    })
+    return () => { live = false }
+  }, [loading, location.search, user.id])
 
   const snapshot = useMemo(() => computeSnapshot({
     profile, accounts, debts, goals, cashFlowItems, budgetLimits,
@@ -310,10 +338,46 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
         params.delete('sheet')
         params.delete('setup')
         params.delete('accountSubtype')
+        params.delete('accountId')
+        params.delete('debtId')
         navigate({ pathname: '/', search: params.toString() ? `?${params}` : '' }, { replace: true })
       }
     } else if (location.state?.sheet) {
       navigate(location.pathname, { replace: true, state: null })
+    }
+  }
+
+  function offerLinkedReminderCompletion() {
+    if (linkedReminder) setReminderCompletionOffer(true)
+  }
+
+  function clearReminderLink() {
+    setReminderCompletionOffer(false)
+    setLinkedReminder(null)
+    setReminderError(null)
+    const params = new URLSearchParams(location.search)
+    params.delete('reminder')
+    params.delete('reminderDue')
+    navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : '' }, { replace: true })
+  }
+
+  async function completeLinkedReminder() {
+    if (!linkedReminder || reminderSaving) return
+    setReminderSaving(true)
+    setReminderError(null)
+    try {
+      await actOnReminder(linkedReminder, 'done')
+      clearReminderLink()
+    } catch (caught) {
+      setReminderError(caught.message || 'Your money saved, but the reminder could not be marked done.')
+      if (caught.code === 'STALE_REMINDER_STATE') {
+        try {
+          const rows = await listReminders(user.id)
+          setLinkedReminder(rows.find(row => row.id === linkedReminder.id && row.status === 'active') || null)
+        } catch { /* keep the original error visible */ }
+      }
+    } finally {
+      setReminderSaving(false)
     }
   }
 
@@ -422,6 +486,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
     setCashFlowItems(data?.items ?? [])
     setBudgetLimits(data?.limits ?? [])
     if (data?.profile) setProfile(data.profile)
+    offerLinkedReminderCompletion()
     closeSheet()
   }
 
@@ -541,6 +606,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
       setEditorDirty(false)
       setDirty(false)
       setSaving(false)
+      offerLinkedReminderCompletion()
     } catch (refreshError) {
       setSaving(false)
       setSheetError(refreshError.message ?? 'Saved, but could not refresh the account list.')
@@ -605,6 +671,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
       setEditorDirty(false)
       setDirty(false)
       setSaving(false)
+      offerLinkedReminderCompletion()
     } catch (refreshError) {
       setSaving(false)
       setSheetError(refreshError.message ?? 'Saved, but could not refresh the debt list.')
@@ -653,6 +720,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
       setDirty(false)
       return
     }
+    offerLinkedReminderCompletion()
     closeSheet()
   }
 
@@ -987,6 +1055,28 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
     return null
   }
 
+  function renderReminderCompletion() {
+    if (!reminderCompletionOffer || !linkedReminder) return null
+    return (
+      <div className="mb-4 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.065] p-3.5">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-300/12 text-emerald-100"><Check className="h-4 w-4" /></span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-white">Your money records are updated.</p>
+            <p className="mt-1 text-[13px] leading-5 text-readable-secondary">Mark “{linkedReminder.title}” done too? This only records the check-in.</p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button type="button" disabled={reminderSaving} onClick={completeLinkedReminder} className="min-h-11 rounded-xl bg-emerald-600 px-3 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-55">
+            {reminderSaving ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Mark reminder done'}
+          </button>
+          <button type="button" disabled={reminderSaving} onClick={clearReminderLink} className="btn-ghost min-h-11 text-sm">Not now</button>
+        </div>
+        {reminderError && <p role="alert" className="mt-2 text-[13px] text-rose-100">{reminderError}</p>}
+      </div>
+    )
+  }
+
   if (loading) return <div className="flex min-h-[55vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-emerald-300" /><span className="sr-only">Loading money data</span></div>
 
   const renderNetWorth = () => (
@@ -1013,6 +1103,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
       } />
 
       {error && <div role="alert" className="mb-4 flex gap-3 rounded-2xl border border-rose-300/20 bg-rose-400/[0.08] p-4 text-[13px] leading-5 text-rose-100"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>}
+      {!activeSheet && renderReminderCompletion()}
 
       {!homeMode && <div className="mb-4">
         <MoneySetupNudge profile={profile} accounts={accounts} debts={debts} goals={goals} cashFlowItems={cashFlowItems} onOpenGap={openSheet} />
@@ -1062,6 +1153,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
         subtitle={editor || breakdown ? 'Required fields first. Optional details stay tucked away.' : activeSheet === 'plan' ? 'Typical monthly amounts and targets—not transaction activity.' : activeSheet === 'accounts' ? 'Your saved records become the source of truth everywhere in the app.' : activeSheet === 'balances' ? 'A quick manual refresh across your tracked balances.' : FAMILY_META[activeSheet]?.subtitle}
         onClose={closeSheet} dirty={dirty || editorDirty} size="lg"
         footer={(editor || breakdown || activeSheet === 'plan' || activeSheet === 'accounts' || activeSheet === 'balances') ? ({ requestClose }) => sheetFooter(requestClose) : null}>
+        {renderReminderCompletion()}
         {sheetError && <div role="alert" className="mb-4 flex gap-2 rounded-xl border border-rose-300/20 bg-rose-400/[0.08] px-3.5 py-3 text-[13px] leading-5 text-rose-100"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{sheetError}</div>}
         {sheetBody()}
       </BottomSheet>

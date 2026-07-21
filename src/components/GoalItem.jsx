@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout, Plus, Loader2 } from 'lucide-react'
+import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout, Plus, Loader2, ShoppingBag } from 'lucide-react'
 import HowToInline from '@/components/HowToInline'
 import BottomSheet from '@/components/ui/BottomSheet'
 import { THRESHOLDS } from '@/lib/finance'
@@ -104,28 +104,38 @@ export function GoalModal({ goal, onSave, onClose }) {
           <form id="goal-editor-form" onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-white/80 mb-1.5">Goal type</label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button type="button" onClick={() => change(setGoalType)('savings')}
-                  className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${
+                  className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg border-2 px-2 text-sm font-medium transition-colors ${
                     goalType === 'savings'
                       ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300'
                       : 'border-white/[0.11] bg-[#0e1812] text-white/60 hover:border-white/10'
                   }`}>
-                  <Sprout className="w-4 h-4" /><span>Savings / Purchase</span>
+                  <Sprout className="w-4 h-4" /><span>Savings</span>
+                </button>
+                <button type="button" onClick={() => change(setGoalType)('purchase')}
+                  className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg border-2 px-2 text-sm font-medium transition-colors ${
+                    goalType === 'purchase'
+                      ? 'border-sky-400 bg-sky-400/15 text-sky-200'
+                      : 'border-white/[0.11] bg-[#0e1812] text-white/60 hover:border-white/10'
+                  }`}>
+                  <ShoppingBag className="w-4 h-4" /><span>Purchase</span>
                 </button>
                 <button type="button" onClick={() => change(setGoalType)('investment')}
-                  className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors ${
+                  className={`flex min-h-11 items-center justify-center gap-1.5 rounded-lg border-2 px-2 text-sm font-medium transition-colors ${
                     goalType === 'investment'
                       ? 'border-amber-500 bg-amber-500/15 text-amber-300'
                       : 'border-white/[0.11] bg-[#0e1812] text-white/60 hover:border-white/10'
                   }`}>
-                  <TrendingUp className="w-4 h-4" /><span>Investment / Wealth</span>
+                  <TrendingUp className="w-4 h-4" /><span>Investment</span>
                 </button>
               </div>
-              <p className="mt-1.5 text-xs text-white/40">
+              <p className="mt-1.5 text-xs text-readable-secondary">
                 {goalType === 'investment'
-                  ? 'Grows a golden tree in the investment zone as your wealth builds'
-                  : 'Grows a green tree in your garden as you save toward it'}
+                  ? 'Uses an estimated return for the projection; actual performance may differ.'
+                  : goalType === 'purchase'
+                    ? 'Tracks cash saved for a specific future purchase.'
+                    : 'Tracks cash saved for a reserve or flexible objective.'}
               </p>
             </div>
 
@@ -299,6 +309,7 @@ function TimelineBadge({ goal }) {
 // ─── Editable goal card ─────────────────────────────────────────────────────────
 export function GoalItem({ goal, onEdit, onDelete, onUpdateProgress, onContribute, howToContext }) {
   const isInv = goal.goal_type === 'investment'
+  const isPurchase = goal.goal_type === 'purchase'
   // Deleting a goal is destructive — require a second tap to confirm (the armed
   // state disarms itself after a moment).
   const [armed, setArmed] = useState(false)
@@ -317,6 +328,10 @@ export function GoalItem({ goal, onEdit, onDelete, onUpdateProgress, onContribut
             {isInv ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-500/15 text-amber-300 rounded-full text-xs font-medium border border-amber-400/30">
                 <TrendingUp className="w-3 h-3" /> Investment
+              </span>
+            ) : isPurchase ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-sky-300/30 bg-sky-300/15 px-2 py-0.5 text-xs font-medium text-sky-200">
+                <ShoppingBag className="h-3 w-3" /> Purchase
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/15 text-emerald-300 rounded-full text-xs font-medium border border-emerald-400/30">
@@ -351,7 +366,7 @@ export function GoalItem({ goal, onEdit, onDelete, onUpdateProgress, onContribut
       {/* AI path to the goal, generated in place — how much, where, and how */}
       {howToContext !== undefined && Number(goal.current_amount) < Number(goal.target_amount) && (
         <HowToInline
-          subject={`reach my "${goal.name}" ${isInv ? 'investment' : 'savings'} goal — $${Number(goal.current_amount || 0).toLocaleString()} saved of $${Number(goal.target_amount || 0).toLocaleString()}${Number(goal.monthly_contribution) > 0 ? `, currently putting in $${Number(goal.monthly_contribution).toLocaleString()}/mo` : ''}`}
+          subject={`reach my "${goal.name}" ${isInv ? 'investment' : isPurchase ? 'purchase' : 'savings'} goal — $${Number(goal.current_amount || 0).toLocaleString()} saved of $${Number(goal.target_amount || 0).toLocaleString()}${Number(goal.monthly_contribution) > 0 ? `, currently putting in $${Number(goal.monthly_contribution).toLocaleString()}/mo` : ''}`}
           context={howToContext} />
       )}
     </motion.div>

@@ -149,6 +149,32 @@ test('candidate briefs create a measurable 90-day sprint without vague filler', 
   }
 })
 
+test('active reminders suppress only a duplicate recurring setup proposal', () => {
+  const state = snapshot({
+    goals: [{ id: 'house', name: 'House fund', target_amount: 20000, current_amount: 5000, monthly_contribution: 400 }],
+  })
+  const reminders = [{ status: 'active', metadata: { intent_key: 'setup.goal.first_contribution' } }]
+  const candidates = buildFocusCandidates({
+    snapshot: state, plan: { steps: [] }, reminders,
+    now: new Date('2026-07-17T12:00:00Z'), fingerprint: 'focus-test',
+  })
+  assert.equal(candidates.some(step => step.intentKey === 'setup.goal.first_contribution'), false)
+  assert.equal(candidates.some(step => step.outcome?.kind === 'contribution'), true)
+})
+
+test('reminder timing and wording do not change Plan fingerprints', () => {
+  const state = snapshot()
+  const first = focusPlanFingerprint({
+    snapshot: state,
+    reminders: [{ status: 'active', title: 'First wording', next_due_on: '2026-07-20', metadata: { intent_key: 'setup.goal.first_contribution' } }],
+  })
+  const second = focusPlanFingerprint({
+    snapshot: state,
+    reminders: [{ status: 'active', title: 'Different wording', next_due_on: '2027-01-01', metadata: { intent_key: 'setup.goal.first_contribution' } }],
+  })
+  assert.equal(first, second)
+})
+
 test('mixed chapters fill remaining slots from the next verified priority', () => {
   const state = snapshot({
     profile: { monthly_income: 5000, monthly_expenses: 3200, health_insurance: 'none', investment_types: ['401k'] },
