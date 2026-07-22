@@ -19,7 +19,14 @@ import {
   Trash2,
 } from 'lucide-react'
 import BottomSheet from '@/components/ui/BottomSheet'
-import { addCalendarDays, previewOccurrences, toDateKey } from '@/lib/reminderModel'
+import { addCalendarDays, previewOccurrences, reminderTemplates, suggestedAnchor, toDateKey } from '@/lib/reminderModel'
+
+// Short, human labels for the data category behind a suggestion or reminder.
+const CATEGORY_LABELS = {
+  budget: 'Budgeting', debt: 'Debt', savings: 'Savings', taxes: 'Taxes',
+  retirement: 'Retirement', investing: 'Investing', goals: 'Goals',
+  accounts: 'Accounts', insurance: 'Insurance',
+}
 
 const inputClass = 'w-full rounded-xl border border-white/[0.12] bg-white/[0.055] px-3.5 py-3 text-base text-white placeholder:text-readable-muted focus:outline-none focus:ring-2 focus:ring-emerald-400/55 disabled:opacity-55'
 
@@ -73,7 +80,7 @@ function editorFromCandidate(candidate) {
 function editorForNew(cadence) {
   return {
     mode: 'new', original: null, title: '', detail: '', cadence,
-    anchor_date: toDateKey(), linked_record_type: '', linked_record_id: '', dirty: false,
+    anchor_date: suggestedAnchor(cadence), linked_record_type: '', linked_record_id: '', dirty: false,
   }
 }
 
@@ -95,7 +102,12 @@ function SuggestionCard({ candidate, busy, onAdd, onAdjust, onDismiss }) {
           <Sparkles className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-200">Suggested from your data</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-200">Suggested from your data</p>
+            {CATEGORY_LABELS[candidate.category] && (
+              <span className="rounded-full bg-emerald-300/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">{CATEGORY_LABELS[candidate.category]}</span>
+            )}
+          </div>
           <h4 className="mt-1 text-sm font-semibold leading-5 text-white">{candidate.title}</h4>
           <p className="mt-1 text-[13px] leading-5 text-readable-secondary">{candidate.detail}</p>
           <p className="mt-2 rounded-lg bg-black/15 px-2.5 py-2 text-xs leading-4 text-emerald-50">{candidate.evidence}</p>
@@ -245,8 +257,8 @@ function ReminderEditor({ editor, setEditor, saving, error, goals, accounts, deb
   const titleRef = useRef(null)
   const draft = editor
   const update = (key, value) => setEditor(current => ({ ...current, [key]: value, dirty: true }))
-  const relationValue = draft.linked_record_type && draft.linked_record_id
-    ? `${draft.linked_record_type}:${draft.linked_record_id}` : ''
+  const relationValue = draft.linked_record_type
+    ? `${draft.linked_record_type}:${draft.linked_record_id || ''}` : ''
   const occurrences = previewOccurrences(draft.anchor_date, draft.cadence, 3)
   const existing = draft.mode === 'existing' ? draft.original : null
   const save = event => {
@@ -266,6 +278,20 @@ function ReminderEditor({ editor, setEditor, saving, error, goals, accounts, deb
         </div>
       )}>
       <form id="reminder-editor" className="space-y-4" onSubmit={save}>
+        {draft.mode === 'new' && reminderTemplates(draft.cadence).length > 0 && (
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-white">Quick start <span className="font-normal text-readable-muted">(tap to fill, then save)</span></label>
+            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+              {reminderTemplates(draft.cadence).map(template => (
+                <button key={template.key} type="button"
+                  onClick={() => setEditor(current => ({ ...current, title: template.title, detail: template.detail, linked_record_type: template.linkedRecordType || '', linked_record_id: '', dirty: true }))}
+                  className="shrink-0 rounded-full border border-white/[0.12] bg-white/[0.05] px-3 py-2 text-xs font-semibold text-white hover:border-emerald-300/40 hover:bg-emerald-300/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60">
+                  {template.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div>
           <label className="mb-1.5 block text-sm font-semibold text-white">Title</label>
           <input ref={titleRef} required maxLength={160} value={draft.title} onChange={event => update('title', event.target.value)} placeholder="e.g. Update my house fund" className={inputClass} />
