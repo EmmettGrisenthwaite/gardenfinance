@@ -82,7 +82,7 @@ function SummaryMetric({ label, value, note }) {
     <div className="min-w-0 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-3">
       <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-readable-muted">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-white">{value}</p>
-      {note && <p className="mt-0.5 truncate text-xs text-readable-secondary">{note}</p>}
+      {note && <p className="mt-0.5 text-xs leading-tight text-readable-secondary">{note}</p>}
     </div>
   )
 }
@@ -354,10 +354,17 @@ export default function ReminderWorkspace({
   const [historyOpen, setHistoryOpen] = useState(false)
   const [goalsOpen, setGoalsOpen] = useState(true)
 
+  // Open the deep-linked reminder's editor exactly once per id. Without this
+  // guard the effect re-fires on every `reminders` refetch (each action returns
+  // a fresh array), reopening the editor after the user has closed or saved it.
+  const openedReminderRef = useRef(null)
   useEffect(() => {
-    if (!initialReminderId) return
+    if (!initialReminderId || openedReminderRef.current === initialReminderId) return
     const reminder = reminders.find(item => item.id === initialReminderId)
-    if (reminder) setEditor(editorFromReminder(reminder))
+    if (reminder) {
+      openedReminderRef.current = initialReminderId
+      setEditor(editorFromReminder(reminder))
+    }
   }, [initialReminderId, reminders])
 
   const dueIds = useMemo(() => new Set(model.due.map(item => item.id)), [model.due])

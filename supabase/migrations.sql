@@ -115,6 +115,13 @@ ALTER TABLE public.goals ADD COLUMN IF NOT EXISTS deadline date;
 ALTER TABLE public.goals ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
 ALTER TABLE public.goals ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();
 
+-- goal_type accepts three kinds: savings, investment, and purchase. Older
+-- projects carried a constraint limited to the first two; recreate it so a
+-- Purchase goal saves instead of raising a check-constraint violation.
+ALTER TABLE public.goals DROP CONSTRAINT IF EXISTS goals_goal_type_check;
+ALTER TABLE public.goals ADD CONSTRAINT goals_goal_type_check
+  CHECK (goal_type IN ('savings', 'investment', 'purchase'));
+
 ALTER TABLE public.advisor_plans ADD COLUMN IF NOT EXISTS user_id uuid;
 ALTER TABLE public.advisor_plans ADD COLUMN IF NOT EXISTS title text DEFAULT 'Your plan';
 ALTER TABLE public.advisor_plans ADD COLUMN IF NOT EXISTS steps jsonb DEFAULT '[]'::jsonb;
