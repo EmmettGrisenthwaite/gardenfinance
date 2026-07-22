@@ -15,9 +15,12 @@ export default function PageHeader({
     <header className={`flex items-start justify-between gap-4 ${compact ? 'py-2.5' : 'py-3.5'} ${className}`}>
       <div className="flex min-w-0 items-center gap-3">
         {onBack && (
+          // The label is visible, not just aria — a bare chevron makes users
+          // guess where it leads; "‹ Plan" says it.
           <button type="button" onClick={onBack} aria-label={backLabel}
-            className="-ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-readable-secondary transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60">
+            className="-ml-1.5 flex min-h-11 shrink-0 items-center gap-0.5 rounded-xl py-2 pl-1 pr-2.5 text-sm font-semibold text-readable-secondary transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60">
             <ChevronLeft className="h-5 w-5" />
+            <span className="max-w-[9rem] truncate">{backLabel}</span>
           </button>
         )}
         {Icon && (

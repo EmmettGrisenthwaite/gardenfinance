@@ -268,14 +268,13 @@ function ReminderEditor({ editor, setEditor, saving, error, goals, accounts, deb
   return (
     <BottomSheet open title={draft.mode === 'new' ? `New ${draft.cadence} reminder` : draft.mode === 'candidate' ? 'Adjust suggestion' : 'Reminder details'}
       subtitle="A check-in records attention, not a balance change." onClose={onClose} dirty={draft.dirty && !saving} initialFocusRef={titleRef}
-      footer={({ requestClose }) => (
-        <div className="flex gap-3">
-          <button type="button" onClick={requestClose} disabled={saving} className="btn-ghost min-h-11 flex-1">Cancel</button>
-          <button type="submit" form="reminder-editor" disabled={saving || !draft.title.trim() || !draft.anchor_date}
-            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-55">
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />} {draft.mode === 'candidate' ? 'Add reminder' : 'Save reminder'}
-          </button>
-        </div>
+      footer={(
+        // One close affordance (the header X, dirty-guarded) — Save stands alone
+        // at full width, matching the footer language across the app's sheets.
+        <button type="submit" form="reminder-editor" disabled={saving || !draft.title.trim() || !draft.anchor_date}
+          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-55">
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />} {draft.mode === 'candidate' ? 'Add reminder' : 'Save reminder'}
+        </button>
       )}>
       <form id="reminder-editor" className="space-y-4" onSubmit={save}>
         {draft.mode === 'new' && reminderTemplates(draft.cadence).length > 0 && (

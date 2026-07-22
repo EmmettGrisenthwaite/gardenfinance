@@ -88,17 +88,13 @@ export function GoalModal({ goal, onSave, onClose }) {
       onClose={onClose}
       dirty={dirty && !saving}
       initialFocusRef={nameRef}
-      footer={({ requestClose }) => (
-        <div className="flex gap-3">
-          <button type="button" onClick={requestClose} disabled={saving}
-            className="min-h-11 flex-1 rounded-xl border border-white/[0.11] text-sm font-semibold text-white/60 transition-colors hover:bg-white/[0.05] disabled:opacity-50">
-            Cancel
-          </button>
-          <button type="submit" form="goal-editor-form" disabled={saving}
-            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-60">
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save goal
-          </button>
-        </div>
+      footer={(
+        // One close affordance (the header X, dirty-guarded) — so Save stands
+        // alone at full width, the same footer language as every other sheet.
+        <button type="submit" form="goal-editor-form" disabled={saving}
+          className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-60">
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save goal
+        </button>
       )}
     >
           <form id="goal-editor-form" onSubmit={handleSubmit} className="space-y-4">

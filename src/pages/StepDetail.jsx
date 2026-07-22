@@ -200,14 +200,14 @@ export default function StepDetail() {
       className="max-w-2xl mx-auto w-full px-4 pb-32 md:px-6 md:pb-10"
       style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
 
-      {/* Back to the plan */}
+      {/* Back to the plan — the visible "‹ Plan" label names the destination,
+          so the eyebrow no longer needs to repeat it. */}
       <PageHeader
         icon={ClipboardList}
-        eyebrow="Plan"
         title="Step guide"
         subtitle="Everything you need to finish this move."
         onBack={() => navigate('/plan')}
-        backLabel="Back to Plan"
+        backLabel="Plan"
       />
 
       {/* The step */}

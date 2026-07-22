@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  AlertCircle, ArrowRight, CalendarDays, ChevronDown, ChevronRight,
+  AlertCircle, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
   Check, CircleDollarSign, CreditCard, Gauge, Landmark, LineChart, Loader2, Pencil,
   Plus, RefreshCw, ShieldCheck, Trash2, WalletCards,
 } from 'lucide-react'
@@ -149,10 +149,35 @@ function RecordRow({ title, subtitle, value, onEdit, onDelete, confirming, onCon
   )
 }
 
-function SaveFooter({ onCancel, onSave, saving, saveLabel = 'Save', disabled = false }) {
+// The one sheet footer. Navigation language: the header X closes the sheet,
+// "Back" steps up a level inside it, and the primary verb saves — full width
+// when it stands alone. When the drilled-in editor has typed changes, Back
+// arms first ("Discard edits?") instead of silently dropping them.
+function SaveFooter({ onBack, guardBack = false, onSave, saving, saveLabel = 'Save', disabled = false }) {
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return undefined
+    const timer = setTimeout(() => setArmed(false), 2500)
+    return () => clearTimeout(timer)
+  }, [armed])
+  function back() {
+    if (guardBack && !armed) {
+      setArmed(true)
+      return
+    }
+    setArmed(false)
+    onBack()
+  }
   return (
     <div className="flex gap-2">
-      {onCancel && <button type="button" onClick={onCancel} disabled={saving} className="btn-ghost min-h-11 flex-1">Cancel</button>}
+      {onBack && (
+        <button type="button" onClick={back} disabled={saving}
+          className={armed
+            ? 'inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 text-sm font-semibold text-amber-100 transition-colors'
+            : 'btn-ghost min-h-11 flex-1'}>
+          <ChevronLeft className="h-4 w-4" /> {armed ? 'Discard edits?' : 'Back'}
+        </button>
+      )}
       <button type="button" onClick={onSave} disabled={saving || disabled}
         className="btn-primary min-h-11 flex-1 disabled:cursor-not-allowed disabled:opacity-50">
         {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving</> : saveLabel}
@@ -744,12 +769,14 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
   }
 
   function sheetFooter(requestClose) {
-    if (breakdown) return <SaveFooter onCancel={() => { setBreakdown(null); setSheetError(null) }} onSave={keepBreakdown} saving={false} saveLabel="Keep breakdown" />
-    if (editor?.kind === 'flow') return <SaveFooter onCancel={returnToList} onSave={keepFlowItem} saving={false} saveLabel="Keep item" />
-    if (editor?.kind === 'account') return <SaveFooter onCancel={returnToList} onSave={saveAccount} saving={saving} saveLabel="Save account" />
-    if (editor?.kind === 'debt') return <SaveFooter onCancel={returnToList} onSave={saveDebt} saving={saving} saveLabel="Save debt" />
+    // Drilled-in editors step Back to the list; top-level sheets close via the
+    // header X only, so their save button stands alone at full width.
+    if (breakdown) return <SaveFooter onBack={() => { setBreakdown(null); setSheetError(null) }} onSave={keepBreakdown} saving={false} saveLabel="Keep breakdown" />
+    if (editor?.kind === 'flow') return <SaveFooter onBack={returnToList} guardBack={editorDirty} onSave={keepFlowItem} saving={false} saveLabel="Keep item" />
+    if (editor?.kind === 'account') return <SaveFooter onBack={returnToList} guardBack={editorDirty} onSave={saveAccount} saving={saving} saveLabel="Save account" />
+    if (editor?.kind === 'debt') return <SaveFooter onBack={returnToList} guardBack={editorDirty} onSave={saveDebt} saving={saving} saveLabel="Save debt" />
     if (activeSheet === 'plan') return <SaveFooter onSave={saveMonthlyPlan} saving={saving} saveLabel="Save monthly plan" disabled={!dirty} />
-    if (activeSheet === 'balances') return <SaveFooter onCancel={requestClose} onSave={saveBalances} saving={saving} saveLabel="Update balances" disabled={!dirty} />
+    if (activeSheet === 'balances') return <SaveFooter onSave={saveBalances} saving={saving} saveLabel="Update balances" disabled={!dirty} />
     if (activeSheet === 'accounts') return <SaveFooter onSave={requestClose} saving={false}
       saveLabel={accounts.length ? 'Done — use these accounts' : 'Skip for now'} />
     return null

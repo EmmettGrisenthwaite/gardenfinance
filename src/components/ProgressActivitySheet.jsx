@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Check, Clock3, ExternalLink, History, Loader2, Pencil, Sparkles } from 'lucide-react'
+import { ArrowRight, Check, ChevronLeft, Clock3, ExternalLink, History, Loader2, Pencil, Sparkles } from 'lucide-react'
 import BottomSheet from '@/components/ui/BottomSheet'
 import { applyFinancialActivity, markFinancialActivity } from '@/lib/financialActivities'
 import { buildFinancialPreview } from '@/lib/progressOutcome'
@@ -146,6 +146,13 @@ export default function ProgressActivitySheet({
   </div> : null}>
     {showHistory ? <ActivityList activities={activities} onSelect={activity => { setSelected(activity); setAmount(activity.amount ? String(activity.amount) : ''); setSourceAccountId(activity.source_account_id || ''); setDestinationAccountId(activity.destination_account_id || ''); setDebtId(activity.debt_id || ''); setGoalId(activity.goal_id || ''); setEditing(activity.status === 'pending'); setError(null) }}/>
       : <div className="space-y-4">
+        {/* Drill-up back sits at the top, where back affordances live app-wide. */}
+        {initialActivity == null && (
+          <button type="button" onClick={() => { setSelected(null); setError(null) }}
+            className="-ml-1 inline-flex min-h-11 items-center gap-1 rounded-xl px-1.5 text-[13px] font-semibold text-readable-secondary transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60">
+            <ChevronLeft className="h-4 w-4" /> Recent progress
+          </button>
+        )}
         <div className="rounded-2xl border border-emerald-300/16 bg-emerald-300/[0.055] p-4"><div className="flex gap-3"><Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-emerald-200"/><div><p className="text-[15px] font-semibold text-white">{selected.label}</p><p className="mt-1 text-[13px] leading-5 text-readable-secondary">{selected.kind === 'recurring_setup' ? `We'll remember the ${selected.recurrence || 'recurring'} setup without pretending money already moved.` : selected.kind === 'account_opening' ? 'Add its real details so Home and Advisor use the account as evidence.' : 'Review the amount and affected records below.'}</p></div></div></div>
 
         {selected.kind === 'recurring_setup' && <label className="flex min-h-12 items-center gap-3 rounded-xl border border-white/[0.1] bg-white/[0.035] px-3.5"><input type="checkbox" checked={firstMove} onChange={event => { setFirstMove(event.target.checked); setEditing(event.target.checked) }} className="h-4 w-4 accent-emerald-500"/><span className="text-[13px] font-semibold text-white">The first transfer happened too</span></label>}
@@ -166,7 +173,6 @@ export default function ProgressActivitySheet({
         {initialActivity == null && !selected.exclude_from_advisor && <button type="button" onClick={() => mark('exclude')} className="min-h-11 w-full text-[13px] font-semibold text-readable-secondary">Don&apos;t use this in Advisor</button>}
         {initialActivity == null && selected.status === 'pending' && selected.prompt_seen_at && <button type="button" onClick={() => mark('dismissed')} className="min-h-11 w-full text-[13px] font-semibold text-rose-100/80">Dismiss this unresolved update</button>}
         {error && <p role="alert" className="rounded-xl border border-rose-300/20 bg-rose-400/[0.08] px-3.5 py-3 text-[13px] leading-5 text-rose-100">{error}</p>}
-        {!showHistory && initialActivity == null && <button type="button" onClick={() => setSelected(null)} className="min-h-11 text-[13px] font-semibold text-readable-secondary">Back to recent progress</button>}
       </div>}
   </BottomSheet>
 }
