@@ -12,6 +12,7 @@ import { milestoneEventsFromState, groupGardenGoals } from '@/lib/gardenModel'
 import { reconcileGardenMilestones } from '@/lib/gardenProgress'
 import { getMoneySetupState } from '@/lib/moneySetup'
 import { selectHomeAction } from '@/lib/homeModel'
+import { deriveScenario } from '@/lib/scenario'
 import { buildPlanModel } from '@/lib/focusedPlan'
 import ProgressActivitySheet from '@/components/ProgressActivitySheet'
 import { listFinancialActivities } from '@/lib/financialActivities'
@@ -113,7 +114,8 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
     activities,
     reminders,
   }), [snapshot, profile, accounts, debts, goals, cashFlowItems, budgetLimits, setupState, plan, activities, reminders])
-  const action = useMemo(() => selectHomeAction({ setupState, planModel, plan, planLoading }), [setupState, planModel, plan, planLoading])
+  const scenario = useMemo(() => deriveScenario(snapshot), [snapshot])
+  const action = useMemo(() => selectHomeAction({ setupState, planModel, plan, planLoading, scenario }), [setupState, planModel, plan, planLoading, scenario])
   const reminderModel = useMemo(() => buildReminderModel({
     snapshot, profile, accounts, debts, goals, activities,
     reminders, events: reminderEvents,

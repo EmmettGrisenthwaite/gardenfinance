@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Sprout, ArrowRight, ArrowLeft, Check, Landmark, X } from 'lucide-react'
 import { ONBOARDING_ACCOUNTS_ROUTE } from '@/lib/routes'
+import { scenarioFromAnswers } from '@/lib/scenario'
 
 // ─── Step definitions ──────────────────────────────────────────────────────────
 const BASE_STEPS = [
@@ -119,7 +120,17 @@ function buildSteps(answers, profileOnly) {
   const age = Number(answers.age) || 0
   const emp = answers.employment_type
 
-  return BASE_STEPS
+  // The payoff moment: after the last question, name their situation in their
+  // own numbers before anything else happens. Settings' profile-only edit
+  // skips it — there is no "first plan" to start from there.
+  const finale = profileOnly ? [] : [{
+    id: 'starting_point',
+    type: 'starting_point',
+    question: 'Your starting point',
+    sub: 'What your answers say matters first — before generic advice ever enters the picture.',
+  }]
+
+  return [...BASE_STEPS, ...finale]
     // Employer 401k only makes sense for people with an employer.
     .filter(s => !(s.id === 'retirement' && (emp === 'freelance' || emp === 'student')))
     // Settings' "Edit profile" skips the money/debts re-entry (managed on /money).
@@ -151,6 +162,53 @@ function buildSteps(answers, profileOnly) {
       }
       return s
     })
+}
+
+// ─── Starting point (the payoff after the last question) ───────────────────────
+// Their situation, named, with their own numbers — computed locally from the
+// quiz answers, so it appears instantly and never waits on a network call.
+function StartingPointStep({ answers }) {
+  const scenario = useMemo(() => scenarioFromAnswers(answers), [answers])
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
+          Chapter one · {scenario.horizon}
+        </p>
+        <h3 className="mt-1.5 font-display text-[21px] font-medium leading-snug text-white">
+          {scenario.chapter} — {scenario.title}
+        </h3>
+      </div>
+
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45">Why this first</p>
+        <div className="mt-2 space-y-2">
+          {scenario.because.map((line, index) => (
+            <div key={index} className="flex gap-2.5 text-sm leading-5 text-white/75">
+              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-300/70" aria-hidden="true" />
+              {line}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/45">Your first moves</p>
+        <div className="mt-2 space-y-2">
+          {scenario.firstMoves.map((line, index) => (
+            <div key={index} className="flex gap-2.5 text-sm leading-5 text-white/75">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-[11px] font-bold text-emerald-200">{index + 1}</span>
+              {line}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <p className="text-xs leading-5 text-white/40">
+        Your accounts come next — every balance you add sharpens this chapter, and your Plan, Home, and Advisor all build from it.
+      </p>
+    </div>
+  )
 }
 
 // ─── Preview step (value prop before questions) ────────────────────────────────
@@ -331,6 +389,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
   function canAdvance() {
     if (current.type === 'preview') return true
     if (current.type === 'intro')   return true
+    if (current.type === 'starting_point') return true
     if (current.type === 'age')     return answers.age && Number(answers.age) > 0 && Number(answers.age) < 120
     if (current.type === 'money')   return true   // all optional — rough or skip
     if (current.type === 'debts')   return true   // optional
@@ -614,6 +673,9 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                 <DebtsStep debts={answers.debts} setDebts={d => set('debts', d)} />
               )}
 
+              {/* Starting point — the personalized payoff before finishing */}
+              {current.type === 'starting_point' && <StartingPointStep answers={answers} />}
+
               {/* Single select */}
               {current.type === 'single' && (
                 <div className="space-y-2">
@@ -663,11 +725,11 @@ export default function Onboarding({ onClose, profileOnly = false }) {
           </div>
 
           {/* Show Next/Finish for non-auto-advance steps */}
-          {(current.type === 'preview' || current.type === 'intro' || current.type === 'age' || current.type === 'multi' || current.type === 'money' || current.type === 'debts') && (
+          {(current.type === 'preview' || current.type === 'intro' || current.type === 'age' || current.type === 'multi' || current.type === 'money' || current.type === 'debts' || current.type === 'starting_point') && (
             isLast ? (
               <button onClick={finish} disabled={!canAdvance() || saving}
                 className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30">
-                {saving ? 'Saving…' : 'Finish setup'}
+                {saving ? 'Saving…' : current.type === 'starting_point' ? 'Start my plan' : 'Finish setup'}
                 {!saving && <Check className="w-4 h-4" />}
               </button>
             ) : (

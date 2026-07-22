@@ -1,5 +1,6 @@
 import { computeSnapshot, LIMITS } from '@/lib/finance'
 import { getDataGaps } from '@/lib/dataGaps'
+import { deriveScenario } from '@/lib/scenario'
 import { accountFamily, inferLiquidity, itemMonthlyAmount, subtypeLabel, taxTreatment } from '@/lib/moneyModel'
 
 // The advisor's system prompt + user-situation context, shared between the
@@ -403,6 +404,14 @@ export function buildContext(money, goals = [], debts = [], profile, extras = {}
     context += '  Debt-free date intentionally withheld until every active debt has APR and minimum-payment data\n'
   }
   context += `  NEXT-DOLLAR PRIORITY: ${snap.next.title} — ${snap.next.why}\n\n`
+
+  // The same chapter the user sees on Home and after onboarding — keep the
+  // advisor's framing aligned with it so every surface tells one story.
+  const scenario = deriveScenario(snap)
+  context += `CURRENT CHAPTER (the app frames the user's situation as "${scenario.chapter}" — align your framing with it unless the user asks about something else):\n`
+  context += `  ${scenario.title} (${scenario.horizon})\n`
+  scenario.because.forEach(line => { context += `  Evidence: ${line}\n` })
+  context += '\n'
 
   context += 'TYPICAL MONTHLY PLAN (planning amounts, not actual transaction spending):\n'
   context += `  Income ${dollars(snap.income)}; needs ${dollars(snap.needs)}; wants ${dollars(snap.wants)}; future allocations ${dollars(snap.futureAllocations)}\n`
