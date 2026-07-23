@@ -186,7 +186,12 @@ function SaveFooter({ onBack, guardBack = false, onSave, saving, saveLabel = 'Sa
   )
 }
 
-export default function Money({ homeMode = false, renderHomeHero = null }) {
+export default function Money({
+  homeMode = false,
+  workspaceMode = false,
+  renderHomeHero = null,
+  renderHomeActions = null,
+}) {
   const { user, profile, setProfile } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -261,12 +266,6 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
       if (debt) beginDebt(debt)
     }
   }, [loading, location.search, location.state]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!homeMode || loading || new URLSearchParams(location.search).get('section') !== 'money') return undefined
-    const frame = requestAnimationFrame(() => document.getElementById('home-money')?.scrollIntoView({ block: 'start' }))
-    return () => cancelAnimationFrame(frame)
-  }, [homeMode, loading, location.search])
 
   useEffect(() => {
     const reminderId = new URLSearchParams(location.search).get('reminder')
@@ -1125,28 +1124,34 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
 
   return (
     <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className={`mx-auto w-full px-4 pb-10 md:px-6 ${homeMode ? 'max-w-6xl' : 'max-w-3xl'}`}>
-      <PageHeader title={homeMode ? 'Home' : 'Money'} subtitle={homeMode ? 'A calm view of what is growing and what matters next.' : 'A clear plan first. Detail when you need it.'} actions={
-        <button type="button" onClick={() => openSheet('balances')} className="btn-ghost min-h-11 px-3" aria-label="Update balances"><RefreshCw className="h-4 w-4" /><span className="hidden sm:inline">Update</span></button>
-      } />
+      <PageHeader
+        title={homeMode && !workspaceMode ? 'Home' : 'Money'}
+        subtitle={homeMode && !workspaceMode ? 'What matters now, with detail when you ask for it.' : 'Your complete financial picture.'}
+        onBack={homeMode && workspaceMode ? () => navigate('/') : undefined}
+        backLabel="Home"
+        actions={homeMode && !workspaceMode
+          ? renderHomeActions?.()
+          : <button type="button" onClick={() => openSheet('balances')} className="btn-ghost min-h-11 px-3" aria-label="Update balances"><RefreshCw className="h-4 w-4" /><span className="hidden sm:inline">Update</span></button>}
+      />
 
       {error && <div role="alert" className="mb-4 flex gap-3 rounded-2xl border border-rose-300/20 bg-rose-400/[0.08] p-4 text-[13px] leading-5 text-rose-100"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>}
-      {!activeSheet && renderReminderCompletion()}
+      {!activeSheet && workspaceMode && renderReminderCompletion()}
 
-      {!homeMode && <div className="mb-4">
+      {(!homeMode || workspaceMode) && <div className="mb-4">
         <MoneySetupNudge profile={profile} accounts={accounts} debts={debts} goals={goals} cashFlowItems={cashFlowItems} onOpenGap={openSheet} />
       </div>}
 
-      {homeMode && renderHomeHero?.({
+      {homeMode && !workspaceMode && renderHomeHero?.({
         profile, accounts, debts, goals, cashFlowItems, budgetLimits, snapshot, trend, openSheet, renderNetWorth, refreshMoney: loadData,
       })}
-      {!homeMode && renderNetWorth()}
+      {(!homeMode || workspaceMode) && renderNetWorth()}
 
-      <section aria-label="Financial health" className="mt-4 grid grid-cols-2 gap-2.5">
+      {(!homeMode || workspaceMode) && <section aria-label="Financial health" className="mt-4 grid grid-cols-2 gap-2.5">
         <Metric label="Cash-flow margin" value={fmt(snapshot.cashFlowMargin)} note={`${Math.round(snapshot.savingsRate * 100)}% of typical income`} tone={snapshot.cashFlowMargin < 0 ? 'text-rose-100' : 'text-white'} />
         <Metric label="Emergency runway" value={`${snapshot.efMonths.toFixed(1)} mo`} note={`${fmt(snapshot.liquid)} liquid cash`} />
         <Metric label="Debt interest" value={`${fmt(snapshot.debtMonthlyInterest)}/mo`} note={snapshot.totalDebt ? `${snapshot.weightedDebtApr.toFixed(1)}% weighted APR` : 'No active debt cost'} />
         <Metric label="Left to assign" value={fmt(snapshot.unallocated)} note={`${fmt(snapshot.futureAllocations)} planned for future`} tone={snapshot.unallocated < 0 ? 'text-rose-100' : 'text-emerald-100'} />
-      </section>
+      </section>}
 
       {!homeMode && <section className={`mt-4 rounded-2xl border p-4 ${snapshot.next.urgent ? 'border-amber-300/20 bg-amber-300/[0.055]' : 'border-emerald-300/15 bg-emerald-300/[0.045]'}`}>
         <div className="flex gap-3">
@@ -1163,7 +1168,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
         </div>
       </section>}
 
-      <section id={homeMode ? 'home-money' : undefined} className="mt-6 scroll-mt-4">
+      {(!homeMode || workspaceMode) && <section id={homeMode ? 'home-money' : undefined} className="mt-6 scroll-mt-4">
         <div className="mb-3 flex items-end justify-between gap-3">
           <div><h2 className="text-[18px] font-semibold text-readable-primary">{homeMode ? 'Your money' : 'Your money, organized'}</h2><p className="mt-1 text-[13px] text-readable-secondary">Tap a section only when you want the detail.</p></div>
         </div>
@@ -1174,7 +1179,7 @@ export default function Money({ homeMode = false, renderHomeHero = null }) {
           <SummaryCard icon={WalletCards} title="Property and other assets" total={fmt(assetTotal)} meta={`${accountGroups.asset.length} ${accountGroups.asset.length === 1 ? 'asset' : 'assets'}`} detail={accountGroups.asset.length ? accountGroups.asset.map(account => subtypeLabel(account)).join(' · ') : 'Property, vehicles, and other assets'} onClick={() => openSheet('asset')} />
           <div className="md:col-span-2"><SummaryCard icon={CreditCard} title="Debts" total={fmt(snapshot.totalDebt)} meta={`${activeDebts.length} active · ${snapshot.weightedDebtApr.toFixed(1)}% weighted APR`} detail={snapshot.cardUtilization == null ? `${fmt(snapshot.requiredDebtPayments)}/mo required payments` : `${Math.round(snapshot.cardUtilization * 100)}% credit-card utilization`} onClick={() => openSheet('debts')} /></div>
         </div>
-      </section>
+      </section>}
 
       <BottomSheet open={Boolean(activeSheet)} title={sheetTitle()}
         subtitle={editor || breakdown ? 'Required fields first. Optional details stay tucked away.' : activeSheet === 'plan' ? 'Typical monthly amounts and targets—not transaction activity.' : activeSheet === 'accounts' ? 'Your saved records become the source of truth everywhere in the app.' : activeSheet === 'balances' ? 'A quick manual refresh across your tracked balances.' : FAMILY_META[activeSheet]?.subtitle}

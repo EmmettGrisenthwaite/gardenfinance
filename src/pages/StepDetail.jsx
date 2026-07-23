@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Check, Trash2, ClipboardList, Loader2 } from 'lucide-react'
+import { Check, Trash2, ClipboardList, Loader2, MoreHorizontal } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { milestonesToStage } from '@/context/GardenContext'
@@ -15,6 +15,7 @@ import ResourceLinks from '@/components/ResourceLinks'
 import PageHeader from '@/components/ui/PageHeader'
 import { recordStepActivity } from '@/lib/financialActivities'
 import { doneWhenForStep } from '@/lib/stepQuality'
+import BottomSheet from '@/components/ui/BottomSheet'
 
 function withCompletionCondition(step) {
   return step ? { ...step, doneWhen: doneWhenForStep(step) } : null
@@ -39,6 +40,7 @@ export default function StepDetail() {
   const [error, setError] = useState(null)
   const [completing, setCompleting] = useState(false)
   const [savingChange, setSavingChange] = useState(false)
+  const [optionsOpen, setOptionsOpen] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -208,16 +210,29 @@ export default function StepDetail() {
         subtitle="Everything you need to finish this move."
         onBack={() => navigate('/plan')}
         backLabel="Plan"
+        actions={!step.done && (
+          <button
+            type="button"
+            onClick={() => setOptionsOpen(true)}
+            aria-label="Step options"
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-readable-secondary transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60"
+          >
+            <MoreHorizontal className="h-5 w-5" />
+          </button>
+        )}
       />
 
       {/* The step */}
       <h1 className="mt-6 text-[24px] font-semibold text-white leading-snug tracking-[-0.02em] sm:text-[28px]">{step.text}</h1>
-      {(step.detail || step.impact) && (
-        <p className="mt-2 text-sm text-white/60 leading-relaxed">
-          {step.detail}
-          {step.impact && (
-            <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded bg-emerald-500/[0.14] text-emerald-200 text-[11px] font-semibold align-middle">{step.impact}</span>
-          )}
+      {step.detail && (
+        <div className="mt-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-readable-muted">Why this matters</p>
+          <p className="mt-1 text-sm leading-relaxed text-readable-secondary">{step.detail}</p>
+        </div>
+      )}
+      {step.impact && (
+        <p className="mt-2 inline-flex rounded-lg bg-emerald-500/[0.12] px-2.5 py-1.5 text-xs font-semibold text-emerald-100">
+          {step.impact}
         </p>
       )}
       {step.doneWhen && (
@@ -260,21 +275,7 @@ export default function StepDetail() {
             {completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="w-4 h-4" strokeWidth={3} />}
             {completing ? 'Saving…' : 'Mark done — grow my garden'}
           </button>
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-3 flex-wrap">
-              {step.apply && <ApplyAction step={step} onApply={applyAndMark} />}
-              <DueChip due={step.due} onSet={setDue} />
-            </div>
-            <button
-              onClick={() => { if (armed) removeStep(); else setArmed(true) }}
-              disabled={!plan || savingChange || completing}
-              className={`inline-flex items-center gap-1 rounded-md transition-colors text-[11px] font-semibold disabled:opacity-40 ${
-                armed ? 'px-2 py-1 text-rose-200 bg-rose-500/20 border border-rose-400/40'
-                      : 'p-1 text-white/30 hover:text-rose-300'}`}>
-              <Trash2 className="w-3.5 h-3.5" />
-              {armed ? 'Remove this step?' : 'Remove'}
-            </button>
-          </div>
+          {step.apply && <ApplyAction step={step} onApply={applyAndMark} />}
         </div>
       )}
 
@@ -283,6 +284,42 @@ export default function StepDetail() {
       {error && (
         <p className="mt-4 text-xs text-rose-200 bg-rose-500/15 border border-rose-400/25 px-3 py-2 rounded-lg text-center">{error}</p>
       )}
+
+      <BottomSheet
+        open={optionsOpen}
+        title="Step options"
+        subtitle="Manage this step without interrupting the guide."
+        onClose={() => {
+          setOptionsOpen(false)
+          setArmed(false)
+        }}
+        size="sm"
+      >
+        <div className="space-y-5">
+          <div>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-readable-muted">Due date</p>
+            <DueChip due={step.due} onSet={setDue} />
+          </div>
+          <div className="border-t border-white/[0.08] pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                if (armed) removeStep()
+                else setArmed(true)
+              }}
+              disabled={!plan || savingChange || completing}
+              className={`flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold transition-colors disabled:opacity-40 ${
+                armed
+                  ? 'border-rose-400/40 bg-rose-500/20 text-rose-100'
+                  : 'border-white/[0.10] bg-white/[0.04] text-readable-secondary hover:border-rose-400/30 hover:text-rose-200'
+              }`}
+            >
+              <Trash2 className="h-4 w-4" />
+              {armed ? 'Tap again to remove step' : 'Remove from Plan'}
+            </button>
+          </div>
+        </div>
+      </BottomSheet>
     </motion.div>
   )
 }

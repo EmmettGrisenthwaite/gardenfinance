@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ClipboardList, Target, MoreHorizontal, Trash2, History } from 'lucide-react'
+import { ClipboardList, Target, MoreHorizontal, Trash2, History, ChevronRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden, milestonesToStage } from '@/context/GardenContext'
@@ -17,15 +17,16 @@ import {
   UpNextCard,
   DoneAccordion,
   AddStepRow,
-  NextChapterCard,
+  CalmNextChapterCard,
   PlanPrerequisite,
   FocusQueue,
   LaterAccordion,
-  OutdatedStepReview,
+  CalmOutdatedStepReview,
 } from '@/components/PlanSteps'
 import GardenMeter from '@/components/GardenMeter'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
 import PageHeader from '@/components/ui/PageHeader'
+import BottomSheet from '@/components/ui/BottomSheet'
 import ProgressActivitySheet from '@/components/ProgressActivitySheet'
 import { listFinancialActivities, recordStepActivity } from '@/lib/financialActivities'
 import { isPromptableActivity } from '@/lib/progressOutcome'
@@ -90,6 +91,7 @@ export default function Plan() {
   const [reminderEvents, setReminderEvents] = useState([])
   const [pendingLinkedReminder, setPendingLinkedReminder] = useState(null)
   const [completionOffer, setCompletionOffer] = useState(null)
+  const [goalDetail, setGoalDetail] = useState(null)
   const [activitySheetOpen, setActivitySheetOpen] = useState(false)
   const [promptActivity, setPromptActivity] = useState(null)
   const [queuedActivity, setQueuedActivity] = useState(null)
@@ -900,11 +902,8 @@ export default function Plan() {
         subtitle={tab === 'steps' ? 'One clear move at a time.' : 'Grow the goals that matter most.'}
         actions={(
           <>
-          <button type="button" onClick={() => { setPromptActivity(null); setActivitySheetOpen(true) }} aria-label="Recent progress"
-            className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.1] text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
-            <History className="h-5 w-5" />
-          </button>
-          {plan && <div className="relative">
+          <GardenMeter total={gardenTotal} compact />
+          <div className="relative">
             <button onClick={() => setManageOpen(open => !open)} aria-label="Manage plan" aria-expanded={manageOpen}
               className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.1] text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
               <MoreHorizontal className="h-5 w-5" />
@@ -913,16 +912,20 @@ export default function Plan() {
               <>
                 <button aria-label="Close plan menu" onClick={() => setManageOpen(false)} className="fixed inset-0 z-20 cursor-default" />
                 <div className="absolute right-0 top-12 z-30 w-56 rounded-2xl border border-white/[0.12] bg-[#101a14] p-2 shadow-2xl shadow-black/40">
-                  <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-readable-muted">Plan management</p>
-                  <button onClick={() => { if (clearArmed) clearPlan(); else setClearArmed(true) }}
+                 <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-readable-muted">Plan management</p>
+                  <button type="button" onClick={() => { setManageOpen(false); setPromptActivity(null); setActivitySheetOpen(true) }}
+                    className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm text-readable-secondary hover:bg-white/[0.06] hover:text-white">
+                    <History className="h-4 w-4" /> Recent progress
+                  </button>
+                  {plan && <button onClick={() => { if (clearArmed) clearPlan(); else setClearArmed(true) }}
                     className={`flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm transition-colors ${clearArmed ? 'bg-rose-500/15 text-rose-200' : 'text-white/65 hover:bg-white/[0.06] hover:text-white'}`}>
                     <Trash2 className="h-4 w-4" />
                     {clearArmed ? 'Confirm clear plan' : 'Clear plan'}
-                  </button>
+                  </button>}
                 </div>
               </>
             )}
-          </div>}
+          </div>
           </>
         )}
       />
@@ -963,7 +966,6 @@ export default function Plan() {
             <PlanPrerequisite
               item={planModel.prerequisite}
               onOpen={openPrerequisite}
-              progress={<GardenMeter total={gardenTotal} embedded />}
             />
           ) : <>
             {upNext && !upNext.proposed && (
@@ -973,14 +975,13 @@ export default function Plan() {
                 onApply={applyAndMark}
                 onOpen={openStep}
                 busy={savingStep}
-                progress={<GardenMeter total={gardenTotal} embedded />}
               />
             )}
 
             {upNext && !upNext.proposed && <FocusQueue steps={afterThis} onOpen={openStep} />}
 
             {!growth && basePlanModel.candidates.length > 0 && (
-              <NextChapterCard
+              <CalmNextChapterCard
                 status={nextStatus}
                 draft={currentDraft || { title: 'Your focused next moves', steps: basePlanModel.candidates }}
                 error={nextError}
@@ -1001,7 +1002,7 @@ export default function Plan() {
             )}
           </>}
 
-          <OutdatedStepReview
+          <CalmOutdatedStepReview
             review={planModel.review}
             replacement={replacement}
             onKeep={keepOutdated}
@@ -1041,19 +1042,29 @@ export default function Plan() {
             onOpenContext={openReminderContext}
             onAddGoal={() => setModal('new')}
             completionOffer={completionOffer}
+            onDismissCompletionOffer={() => setCompletionOffer(null)}
             goalContent={goals.length === 0 ? (
               <div className="rounded-xl border border-dashed border-white/[0.1] px-5 py-6 text-center">
                 <p className="mx-auto max-w-xs text-[13px] leading-5 text-readable-secondary">Add a savings, purchase, or investment goal to track a clear amount and timeline.</p>
                 <button type="button" onClick={() => setModal('new')} className="mt-3 min-h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500">Add money goal</button>
               </div>
             ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-                {goals.map(goal => (
-                  <GoalItem key={goal.id} goal={goal}
-                    onEdit={setModal} onDelete={deleteGoal}
-                    onUpdateProgress={updateProgress} onContribute={contribute}
-                    howToContext={howToCtx} />
-                ))}
+              <div className="divide-y divide-white/[0.07]">
+                {goals.map(goal => {
+                  const target = Math.max(1, Number(goal.target_amount) || 0)
+                  const current = Math.max(0, Number(goal.current_amount) || 0)
+                  const percent = Math.min(100, Math.round((current / target) * 100))
+                  const type = goal.goal_type === 'investment' ? 'Investment' : goal.goal_type === 'purchase' ? 'Purchase' : 'Savings'
+                  return <button key={goal.id} type="button" onClick={() => setGoalDetail(goal)}
+                    className="flex min-h-[76px] w-full items-center gap-3 rounded-xl px-2 py-3 text-left hover:bg-white/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60">
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-3"><span className="truncate text-sm font-semibold text-white">{goal.name}</span><span className="text-xs font-semibold tabular-nums text-emerald-100">{percent}%</span></span>
+                      <span className="mt-1 flex items-center justify-between gap-3 text-xs text-readable-secondary"><span>{type}</span><span className="tabular-nums">${current.toLocaleString()} of ${target.toLocaleString()}</span></span>
+                      <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-white/10"><span className="block h-full rounded-full bg-emerald-400" style={{ width: `${percent}%` }}/></span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-readable-muted"/>
+                  </button>
+                })}
               </div>
             )}
           />
@@ -1063,6 +1074,14 @@ export default function Plan() {
       )}
 
       {modal && <GoalModal goal={modal === 'new' ? null : modal} onSave={saveGoal} onClose={() => { setModal(null); setPendingLinkedReminder(null) }} />}
+      <BottomSheet open={Boolean(goalDetail)} title={goalDetail?.name || 'Goal details'} subtitle="Progress, pace, and management in one place." onClose={() => setGoalDetail(null)} size="sm">
+        {goalDetail && <GoalItem goal={goalDetail}
+          onEdit={goal => { setGoalDetail(null); setModal(goal) }}
+          onDelete={async id => { await deleteGoal(id); setGoalDetail(null) }}
+          onUpdateProgress={async (id, value) => { await updateProgress(id, value); setGoalDetail(current => current ? { ...current, current_amount: value } : current) }}
+          onContribute={async (id, amount) => { await contribute(id, amount); setGoalDetail(current => current ? { ...current, current_amount: Number(current.current_amount || 0) + Number(amount || 0) } : current) }}
+          howToContext={howToCtx} />}
+      </BottomSheet>
       <ProgressActivitySheet
         open={activitySheetOpen}
         initialActivity={promptActivity}

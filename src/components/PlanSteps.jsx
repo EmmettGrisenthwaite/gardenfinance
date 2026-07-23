@@ -5,6 +5,7 @@ import { Check, Plus, Loader2, Calendar, X, ChevronDown, ChevronRight, Sparkles,
 import { applyLabel } from '@/lib/advisorPlans'
 import { fetchHowTo } from '@/lib/claude'
 import { guideEvidenceFingerprint, HOW_TO_SLOW_MS } from '@/lib/howToGuide'
+import BottomSheet from '@/components/ui/BottomSheet'
 
 // ── Due-date helpers ────────────────────────────────────────────────────────────
 export function dueMeta(due) {
@@ -539,4 +540,77 @@ export function NextChapterCard({ status, draft, error, onAdd, onDismiss, onRege
       </div>
     </div>
   )
+}
+
+export function CalmOutdatedStepReview({ review, replacement, onKeep, onReplace, busy = false }) {
+  const [open, setOpen] = useState(false)
+  const [preview, setPreview] = useState(false)
+  if (!review?.step) return null
+  return <>
+    <button type="button" onClick={() => setOpen(true)}
+      className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-amber-200/16 bg-amber-200/[0.04] px-4 text-left hover:bg-amber-200/[0.07]">
+      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-100" />
+      <span className="min-w-0 flex-1"><span className="block text-xs font-semibold text-amber-100">Plan check</span><span className="mt-0.5 block truncate text-[13px] text-readable-secondary">{review.reason}</span></span>
+      <ChevronRight className="h-4 w-4 text-readable-muted" />
+    </button>
+    <BottomSheet open={open} title="Review this step" subtitle="Your records changed; nothing is replaced automatically." onClose={() => { setOpen(false); setPreview(false) }} size="sm">
+      <p className="text-[15px] font-semibold leading-6 text-white">{review.step.text}</p>
+      <p className="mt-2 text-[13px] leading-5 text-readable-secondary">{review.reason}</p>
+      {preview && replacement && <div className="mt-4 rounded-xl border border-white/[0.09] bg-black/10 p-3">
+        <p className="text-xs font-semibold text-emerald-100">Replacement preview</p>
+        <p className="mt-1 text-sm font-semibold leading-5 text-white">{replacement.text}</p>
+        <p className="mt-1 text-xs leading-5 text-readable-secondary">{replacement.detail}</p>
+        <p className="mt-2 text-xs leading-5 text-white/[0.78]"><span className="font-semibold text-readable-secondary">Done when:</span> {replacement.doneWhen}</p>
+      </div>}
+      <div className="mt-5 flex flex-wrap gap-2">
+        {preview ? <>
+          <button type="button" onClick={() => onReplace?.(review.step, replacement)} disabled={busy || !replacement} className="btn-primary min-h-11">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Confirm replacement
+          </button>
+          <button type="button" onClick={() => setPreview(false)} disabled={busy} className="btn-ghost min-h-11 px-3">Back</button>
+        </> : <>
+          <button type="button" onClick={() => setPreview(true)} disabled={busy || !replacement} className="btn-primary min-h-11">Review replacement</button>
+          <button type="button" onClick={() => onKeep?.(review.step)} disabled={busy} className="btn-ghost min-h-11 px-3">Keep for now</button>
+        </>}
+      </div>
+      {!replacement && <p className="mt-2 text-[11px] text-readable-muted">No equally grounded replacement is available yet.</p>}
+    </BottomSheet>
+  </>
+}
+
+export function CalmNextChapterCard({ status, draft, error, onAdd, onDismiss, onRegenerate, onRetry, isEmpty = false }) {
+  const [open, setOpen] = useState(false)
+  if ((status === 'loading' || status === 'idle') && !draft?.steps?.length) {
+    return <div className="flex min-h-14 items-center gap-3 rounded-2xl border border-emerald-300/16 bg-emerald-300/[0.04] px-4" aria-live="polite"><Loader2 className="h-4 w-4 animate-spin text-emerald-200" /><span className="text-sm font-semibold text-white">Preparing grounded next steps</span></div>
+  }
+  if (status === 'error' && !draft?.steps?.length) {
+    return <button type="button" onClick={onRetry} className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-amber-300/18 bg-amber-300/[0.04] px-4 text-left"><RefreshCw className="h-4 w-4 text-amber-100"/><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Your current Plan is safe</span><span className="block truncate text-xs text-readable-secondary">{error || 'Try preparing the next chapter again.'}</span></span></button>
+  }
+  if (status === 'dismissed') {
+    return <button type="button" onClick={onRetry} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-readable-secondary hover:bg-white/[0.04] hover:text-white"><Sparkles className="h-4 w-4 text-emerald-200"/>{isEmpty ? 'Generate next steps' : 'Generate a new next chapter'}</button>
+  }
+  if (!draft?.steps?.length) return null
+  const saving = status === 'saving'
+  return <>
+    <button type="button" onClick={() => setOpen(true)}
+      className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-emerald-300/18 bg-emerald-300/[0.045] px-4 text-left hover:bg-emerald-300/[0.075]">
+      <Sparkles className="h-4 w-4 shrink-0 text-emerald-200"/>
+      <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">{draft.steps.length} grounded next {draft.steps.length === 1 ? 'step' : 'steps'} ready</span><span className="mt-0.5 block text-xs text-readable-secondary">Review before adding anything.</span></span>
+      <ChevronRight className="h-4 w-4 text-readable-muted"/>
+    </button>
+    <BottomSheet open={open} title={draft.title || 'Your next chapter'} subtitle="Rules chose the priorities. You approve every change." onClose={() => setOpen(false)} size="sm">
+      <div className="divide-y divide-white/[0.07]">
+        {draft.steps.map((step, index) => <div key={step.id || `${step.text}-${index}`} className="flex gap-3 py-3">
+          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-[11px] font-bold text-emerald-100">{index + 1}</span>
+          <div className="min-w-0"><p className="text-sm font-semibold leading-snug text-white">{step.text}</p>{step.detail && <p className="mt-1 text-xs leading-relaxed text-readable-secondary">{step.detail}</p>}{step.doneWhen && <p className="mt-1.5 text-xs leading-5 text-white/[0.78]"><span className="font-semibold text-readable-secondary">Done when:</span> {step.doneWhen}</p>}</div>
+        </div>)}
+      </div>
+      {status === 'error' && error && <p className="mt-3 rounded-xl border border-rose-300/25 bg-rose-300/[0.08] px-3 py-2 text-xs font-medium text-rose-100" role="alert">{error}</p>}
+      <div className="mt-5 flex flex-wrap gap-2">
+        <button type="button" onClick={onAdd} disabled={saving} className="btn-primary min-h-11 flex-1">{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4"/>}{saving ? 'Adding…' : `Add ${draft.steps.length === 1 ? 'this step' : `${draft.steps.length} steps`}`}</button>
+        <button type="button" onClick={onRegenerate} disabled={saving} className="btn-ghost min-h-11 px-3"><RefreshCw className="h-4 w-4"/> Regenerate</button>
+        <button type="button" onClick={onDismiss} disabled={saving} className="btn-ghost min-h-11 px-3">Not now</button>
+      </div>
+    </BottomSheet>
+  </>
 }

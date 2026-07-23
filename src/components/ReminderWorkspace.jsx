@@ -253,6 +253,61 @@ function ReminderSection({
   )
 }
 
+function DueNowCard({ reminder, position, total, busy, onDone, onAction, onEdit, onContext, onOpenQueue }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [customOpen, setCustomOpen] = useState(false)
+  const [customDate, setCustomDate] = useState(addCalendarDays(new Date(), 1))
+  const actionLabel = reminder.metadata?.action_label
+    || (reminder.linked_record_type === 'goal' ? 'Update goal'
+      : reminder.linked_record_type === 'debt' ? 'Update debt'
+        : reminder.linked_record_type === 'account' ? 'Open account'
+          : reminder.linked_record_type === 'monthly_plan' ? 'Open Monthly Plan'
+            : reminder.linked_record_type === 'money_records' ? 'Update balances' : null)
+  return (
+    <section className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.055] p-4">
+      <div className="flex items-start gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-300/12 text-emerald-200"><Clock3 className="h-4 w-4" /></span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-[13px] font-semibold text-emerald-100">Due now</p>
+            {total > 1 && <button type="button" onClick={onOpenQueue} className="text-xs font-semibold text-readable-secondary hover:text-white">{position} of {total}</button>}
+          </div>
+          <h2 className="mt-1 text-[17px] font-semibold leading-6 text-white">{reminder.title}</h2>
+          {reminder.detail && <p className="mt-1 text-[13px] leading-5 text-readable-secondary">{reminder.detail}</p>}
+          <p className="mt-2 text-xs font-semibold text-emerald-200">Due {formatDate(effectiveDue(reminder), { year: true })}</p>
+        </div>
+        <div className="relative">
+          <button type="button" onClick={() => setMenuOpen(value => !value)} aria-label={`More actions for ${reminder.title}`} aria-expanded={menuOpen}
+            className="flex h-11 w-11 items-center justify-center rounded-xl text-readable-secondary hover:bg-white/[0.06] hover:text-white">
+            <MoreHorizontal className="h-4 w-4" />
+          </button>
+          {menuOpen && <>
+            <button type="button" aria-label="Close reminder actions" onClick={() => setMenuOpen(false)} className="fixed inset-0 z-20 cursor-default" />
+            <div className="absolute right-0 top-11 z-30 w-56 rounded-2xl border border-white/[0.12] bg-[#101a14] p-2 shadow-2xl shadow-black/40">
+              <button type="button" onClick={() => { setMenuOpen(false); onAction(reminder, 'snoozed', addCalendarDays(new Date(), 1)) }} className="flex min-h-11 w-full items-center rounded-xl px-3 text-left text-sm font-semibold text-readable-secondary hover:bg-white/[0.06] hover:text-white">Snooze until tomorrow</button>
+              <button type="button" onClick={() => { setMenuOpen(false); onAction(reminder, 'snoozed', addCalendarDays(new Date(), 3)) }} className="flex min-h-11 w-full items-center rounded-xl px-3 text-left text-sm font-semibold text-readable-secondary hover:bg-white/[0.06] hover:text-white">Snooze three days</button>
+              <button type="button" onClick={() => { setMenuOpen(false); setCustomOpen(true) }} className="flex min-h-11 w-full items-center rounded-xl px-3 text-left text-sm font-semibold text-readable-secondary hover:bg-white/[0.06] hover:text-white">Choose snooze date</button>
+              <button type="button" onClick={() => { setMenuOpen(false); onAction(reminder, 'skipped') }} className="flex min-h-11 w-full items-center rounded-xl px-3 text-left text-sm font-semibold text-readable-secondary hover:bg-white/[0.06] hover:text-white">Skip this check-in</button>
+              <button type="button" onClick={() => { setMenuOpen(false); onEdit(reminder) }} className="flex min-h-11 w-full items-center rounded-xl px-3 text-left text-sm font-semibold text-readable-secondary hover:bg-white/[0.06] hover:text-white">Edit schedule</button>
+            </div>
+          </>}
+        </div>
+      </div>
+      {customOpen && <div className="mt-3 flex gap-2 rounded-xl border border-white/[0.09] bg-black/15 p-2.5">
+        <input aria-label="Custom snooze date" type="date" min={addCalendarDays(new Date(), 1)} value={customDate} onChange={event => setCustomDate(event.target.value)} className={`${inputClass} min-w-0 flex-1 py-2`} />
+        <button type="button" onClick={() => { setCustomOpen(false); onAction(reminder, 'snoozed', customDate) }} className="min-h-11 rounded-xl bg-white/[0.09] px-3 text-xs font-semibold text-white">Snooze</button>
+      </div>}
+      <div className="mt-4 flex items-center gap-3">
+        <button type="button" disabled={busy} onClick={() => onDone(reminder)}
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-55">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Done
+        </button>
+        {actionLabel && <button type="button" onClick={() => onContext(reminder)} className="min-h-11 px-2 text-[13px] font-semibold text-emerald-100 hover:text-white">{actionLabel} <ChevronRight className="ml-1 inline h-3.5 w-3.5" /></button>}
+      </div>
+    </section>
+  )
+}
+
 function ReminderEditor({ editor, setEditor, saving, error, goals, accounts, debts, onSave, onClose, onStatus }) {
   const titleRef = useRef(null)
   const draft = editor
@@ -354,7 +409,7 @@ function ReminderEditor({ editor, setEditor, saving, error, goals, accounts, deb
   )
 }
 
-export default function ReminderWorkspace({
+export function LegacyReminderWorkspace({
   model,
   reminders = [],
   events = [],
@@ -554,6 +609,243 @@ export default function ReminderWorkspace({
       )}
 
       {error && !editor && <p role="alert" className="rounded-xl border border-rose-300/25 bg-rose-400/10 px-3 py-2 text-sm text-rose-100">{error}</p>}
+      {editor && <ReminderEditor editor={editor} setEditor={setEditor} saving={Boolean(busyKey)} error={error}
+        goals={goals} accounts={accounts} debts={debts} onSave={saveEditor} onClose={() => { setEditor(null); setError(null) }} onStatus={setStatus} />}
+    </div>
+  )
+}
+
+export default function ReminderWorkspace({
+  model,
+  reminders = [],
+  events = [],
+  goals = [],
+  accounts = [],
+  debts = [],
+  initialReminderId = null,
+  onApproveSuggestion,
+  onDismissSuggestion,
+  onSaveReminder,
+  onReminderAction,
+  onReminderStatus,
+  onOpenContext,
+  onAddGoal,
+  goalContent,
+  completionOffer = null,
+  onDismissCompletionOffer,
+}) {
+  const [editor, setEditor] = useState(null)
+  const [busyKey, setBusyKey] = useState(null)
+  const [error, setError] = useState(null)
+  const [managerOpen, setManagerOpen] = useState(false)
+  const [dueQueueOpen, setDueQueueOpen] = useState(false)
+  const [queueSnoozeId, setQueueSnoozeId] = useState(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const openedReminderRef = useRef(null)
+
+  useEffect(() => {
+    if (!initialReminderId || openedReminderRef.current === initialReminderId) return
+    const reminder = reminders.find(item => item.id === initialReminderId)
+    if (!reminder) return
+    openedReminderRef.current = initialReminderId
+    setManagerOpen(true)
+    setEditor(editorFromReminder(reminder))
+  }, [initialReminderId, reminders])
+
+  const dueIds = useMemo(() => new Set(model.due.map(item => item.id)), [model.due])
+  const sectionItems = cadence => reminders
+    .filter(reminder => reminder.cadence === cadence && ['active', 'paused'].includes(reminder.status))
+    .sort((left, right) => {
+      const dueRank = Number(dueIds.has(right.id)) - Number(dueIds.has(left.id))
+      return dueRank || String(effectiveDue(left)).localeCompare(String(effectiveDue(right)))
+    })
+  const suggestion = cadence => model.suggestions.find(item => item.cadence === cadence) || null
+  const nextQuarterly = model.quarterly.find(reminder => reminder.status === 'active')
+  const archivedById = new Map(reminders.map(reminder => [reminder.id, reminder]))
+  const dueNow = model.due[0] || null
+
+  async function run(key, action, { closeEditor = false } = {}) {
+    setBusyKey(key)
+    setError(null)
+    try {
+      await action()
+      if (closeEditor) setEditor(null)
+    } catch (caught) {
+      setError(caught.message || 'That reminder could not be updated.')
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  function saveEditor(draft) {
+    const payload = {
+      id: draft.original?.id,
+      title: draft.title.trim(),
+      detail: draft.detail.trim(),
+      cadence: draft.cadence,
+      anchor_date: draft.anchor_date,
+      linked_record_type: draft.linked_record_type || null,
+      linked_record_id: draft.linked_record_id || null,
+      metadata: draft.original?.metadata || {},
+    }
+    if (draft.mode === 'candidate') {
+      const candidate = {
+        ...draft.original,
+        title: payload.title,
+        detail: payload.detail,
+        cadence: payload.cadence,
+        anchorDate: payload.anchor_date,
+        linkedRecordType: payload.linked_record_type,
+        linkedRecordId: payload.linked_record_id,
+        userEdited: true,
+      }
+      return run(draft.original.candidateKey, () => onApproveSuggestion(candidate), { closeEditor: true })
+    }
+    return run(draft.original?.id || 'new', () => onSaveReminder(payload), { closeEditor: true })
+  }
+
+  function setStatus(reminder, status) {
+    return run(reminder.id, () => onReminderStatus(reminder, status), { closeEditor: true })
+  }
+
+  const actionReminder = (reminder, action, until) =>
+    run(reminder.id, () => onReminderAction(reminder, action, until))
+
+  return (
+    <div className="space-y-3">
+      {completionOffer && (
+        <div className="fixed bottom-[calc(var(--mobile-dock-clearance)+.75rem)] left-3 right-3 z-40 mx-auto flex max-w-lg flex-col gap-3 rounded-2xl border border-emerald-300/25 bg-[#10251c]/95 p-3.5 shadow-2xl shadow-black/40 backdrop-blur-xl sm:flex-row sm:items-center md:bottom-5">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-white">Record this check-in too?</p>
+            <p className="mt-0.5 text-[13px] text-readable-secondary">Your linked record is updated. Mark “{completionOffer.title}” done?</p>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" disabled={busyKey === completionOffer.id} onClick={() => actionReminder(completionOffer, 'done')}
+              className="min-h-11 flex-1 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-55">
+              {busyKey === completionOffer.id ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : 'Mark done'}
+            </button>
+            <button type="button" onClick={onDismissCompletionOffer} className="btn-ghost min-h-11 px-3 text-sm">Not now</button>
+          </div>
+        </div>
+      )}
+
+      {dueNow ? (
+        <DueNowCard
+          reminder={dueNow}
+          position={1}
+          total={model.due.length}
+          busy={busyKey === dueNow.id}
+          onDone={reminder => actionReminder(reminder, 'done')}
+          onAction={actionReminder}
+          onEdit={reminder => { setManagerOpen(true); setEditor(editorFromReminder(reminder)) }}
+          onContext={onOpenContext}
+          onOpenQueue={() => setDueQueueOpen(true)}
+        />
+      ) : (
+        <section className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-white/[0.09] bg-white/[0.035] px-4">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-300/10 text-emerald-200"><Check className="h-4 w-4" /></span>
+          <div>
+            <h2 className="text-sm font-semibold text-white">You’re current</h2>
+            <p className="mt-0.5 text-[13px] text-readable-secondary">{nextQuarterly ? `Next check-in ${formatDate(effectiveDue(nextQuarterly), { year: true })}` : 'No recurring check-in is due.'}</p>
+          </div>
+        </section>
+      )}
+
+      <section className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-3 sm:p-4">
+        <div className="mb-2 flex items-center justify-between gap-3 px-1">
+          <div>
+            <h2 className="text-[16px] font-semibold text-white">Money Goals</h2>
+            <p className="mt-0.5 text-xs text-readable-secondary">Savings, purchases, and investments</p>
+          </div>
+          <button type="button" onClick={onAddGoal} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-emerald-100 hover:bg-emerald-300/[0.06]"><Plus className="h-4 w-4" /> Add goal</button>
+        </div>
+        {goalContent}
+      </section>
+
+      <button type="button" onClick={() => setManagerOpen(true)}
+        className="flex min-h-[68px] w-full items-center gap-3 rounded-2xl border border-white/[0.09] bg-white/[0.03] px-4 text-left hover:bg-white/[0.055] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.06] text-emerald-200"><CalendarCheck className="h-4 w-4" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-white">Routines</span>
+          <span className="mt-0.5 block text-xs text-readable-secondary">{model.weekly.length} weekly · {model.quarterly.length} quarterly{nextQuarterly ? ` · Next ${formatDate(effectiveDue(nextQuarterly))}` : ''}</span>
+        </span>
+        {model.review && <span className="rounded-full bg-amber-300/12 px-2 py-1 text-[11px] font-semibold text-amber-100">Review</span>}
+        <ChevronRight className="h-4 w-4 text-readable-muted" />
+      </button>
+
+      {error && !editor && <p role="alert" className="rounded-xl border border-rose-300/25 bg-rose-400/10 px-3 py-2 text-sm text-rose-100">{error}</p>}
+
+      <BottomSheet open={managerOpen} title="Manage routines" subtitle="Schedules and suggestions stay here until you need them." onClose={() => setManagerOpen(false)} size="lg">
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => setEditor(editorForNew('weekly'))} className="btn-ghost min-h-11 text-sm"><Clock3 className="h-4 w-4" /> Add weekly</button>
+            <button type="button" onClick={() => setEditor(editorForNew('quarterly'))} className="btn-ghost min-h-11 text-sm"><CalendarCheck className="h-4 w-4" /> Add quarterly</button>
+          </div>
+
+          {model.review && (
+            <section className="rounded-xl border border-amber-300/20 bg-amber-300/[0.055] p-3.5">
+              <p className="text-xs font-semibold text-amber-100">Schedule review</p>
+              <h3 className="mt-1 text-sm font-semibold text-white">{model.review.reminder.title}</h3>
+              <p className="mt-1 text-[13px] leading-5 text-readable-secondary">{model.review.reason} Nothing changes automatically.</p>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <button type="button" onClick={() => run(model.review.reminder.id, () => onReminderStatus(model.review.reminder, 'active', { review_suppressed_fingerprint: model.review.basisFingerprint }))} className="btn-ghost min-h-11 text-xs">Keep</button>
+                <button type="button" onClick={() => setEditor(editorFromReminder(model.review.reminder))} className="btn-ghost min-h-11 text-xs">Edit</button>
+                <button type="button" onClick={() => setStatus(model.review.reminder, 'archived')} className="min-h-11 rounded-xl border border-rose-300/20 bg-rose-400/[0.07] text-xs font-semibold text-rose-100">Archive</button>
+              </div>
+            </section>
+          )}
+
+          <ReminderSection cadence="weekly" title="Weekly reminders" description="Small check-ins for changing numbers"
+            items={sectionItems('weekly')} dueIds={dueIds} suggestion={suggestion('weekly')} busyKey={busyKey}
+            onEdit={reminder => setEditor(editorFromReminder(reminder))}
+            onAction={actionReminder}
+            onApprove={candidate => run(candidate.candidateKey, () => onApproveSuggestion(candidate))}
+            onAdjust={candidate => setEditor(editorFromCandidate(candidate))}
+            onDismiss={candidate => run(candidate.candidateKey, () => onDismissSuggestion(candidate))}
+            onContext={onOpenContext} />
+
+          <ReminderSection cadence="quarterly" title="Quarterly reminders" description="Occasional reviews for slower-moving decisions"
+            items={sectionItems('quarterly')} dueIds={dueIds} suggestion={suggestion('quarterly')} busyKey={busyKey}
+            onEdit={reminder => setEditor(editorFromReminder(reminder))}
+            onAction={actionReminder}
+            onApprove={candidate => run(candidate.candidateKey, () => onApproveSuggestion(candidate))}
+            onAdjust={candidate => setEditor(editorFromCandidate(candidate))}
+            onDismiss={candidate => run(candidate.candidateKey, () => onDismissSuggestion(candidate))}
+            onContext={onOpenContext} />
+
+          {(events.length > 0 || reminders.some(item => item.status === 'archived')) && (
+            <section className="rounded-2xl border border-white/[0.08] bg-white/[0.025]">
+              <button type="button" onClick={() => setHistoryOpen(value => !value)} aria-expanded={historyOpen}
+                className="flex min-h-12 w-full items-center gap-2 px-4 text-left text-sm font-semibold text-readable-secondary hover:text-white">
+                <CalendarClock className="h-4 w-4" /> Recent history
+                <ChevronDown className={`ml-auto h-4 w-4 transition-transform ${historyOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {historyOpen && <div className="space-y-2 border-t border-white/[0.07] px-4 py-3">
+                {events.slice(0, 12).map(event => {
+                  const reminder = archivedById.get(event.reminder_id)
+                  return <div key={event.id} className="flex items-start gap-3 py-1.5 text-[13px]">
+                    <span className="mt-0.5 text-emerald-200">{event.action === 'done' ? <Check className="h-4 w-4" /> : event.action === 'skipped' ? <SkipForward className="h-4 w-4" /> : <AlarmClock className="h-4 w-4" />}</span>
+                    <span className="min-w-0 flex-1"><span className="font-semibold text-white">{reminder?.title || 'Reminder'}</span><span className="block text-readable-secondary">{event.action === 'done' ? 'Completed' : event.action === 'skipped' ? 'Skipped' : `Snoozed until ${formatDate(event.snoozed_until)}`} · {formatDate(event.scheduled_for, { year: true })}</span></span>
+                  </div>
+                })}
+              </div>}
+            </section>
+          )}
+        </div>
+      </BottomSheet>
+
+      <BottomSheet open={dueQueueOpen} title={`${model.due.length} check-ins due`} subtitle="Handle one at a time. No reminder changes a balance." onClose={() => { setDueQueueOpen(false); setQueueSnoozeId(null) }} size="sm">
+        <div className="space-y-3">
+          {model.due.map(reminder => (
+            <ReminderCard key={reminder.id} reminder={reminder} due busy={busyKey === reminder.id} snoozeOpen={queueSnoozeId === reminder.id}
+              onEdit={item => setEditor(editorFromReminder(item))}
+              onAction={actionReminder}
+              onToggleSnooze={() => setQueueSnoozeId(current => current === reminder.id ? null : reminder.id)}
+              onContext={onOpenContext} />
+          ))}
+        </div>
+      </BottomSheet>
+
       {editor && <ReminderEditor editor={editor} setEditor={setEditor} saving={Boolean(busyKey)} error={error}
         goals={goals} accounts={accounts} debts={debts} onSave={saveEditor} onClose={() => { setEditor(null); setError(null) }} onStatus={setStatus} />}
     </div>

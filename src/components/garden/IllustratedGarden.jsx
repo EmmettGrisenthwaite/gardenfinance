@@ -202,6 +202,8 @@ export default function IllustratedGarden({
   momentum = 'resting',
   sceneTone = 'calm',
   reducedMotion = false,
+  compact = false,
+  onOpenStory,
   onSelectGoal,
   onSelectOverflow,
 }) {
@@ -223,7 +225,15 @@ export default function IllustratedGarden({
 
   const moving = visible && !reducedMotion
   return (
-    <section ref={rootRef} className={`illustrated-garden ${reducedMotion ? 'is-reduced-motion' : ''}`} aria-label={summary}>
+    <section ref={rootRef} className={`illustrated-garden ${compact ? 'illustrated-garden--compact' : ''} ${reducedMotion ? 'is-reduced-motion' : ''}`} aria-label={summary}>
+      <div role={onOpenStory ? 'button' : undefined} tabIndex={onOpenStory ? 0 : undefined}
+        onClick={onOpenStory}
+        onKeyDown={event => {
+          if (!onOpenStory || !['Enter', ' '].includes(event.key)) return
+          event.preventDefault()
+          onOpenStory()
+        }}
+        className="illustrated-garden-story-target" aria-label={onOpenStory ? `Open Garden Story. ${summary}` : undefined}>
       <div className="illustrated-garden-status">
         <div className="min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/80">Your permanent garden</p>
@@ -243,13 +253,14 @@ export default function IllustratedGarden({
         <LandscapeLayers layers={manifest.layers} legacyFlowerCount={layout.legacyFlowerCount} />
         {layout.visible.map(placement => <GoalPlant key={placement.goal.id} placement={placement} />)}
       </div>
+      </div>
 
       <div className="illustrated-garden-progress" aria-label="Progress to next garden stage">
         <span><span style={{ width: `${progress.percent}%` }} /></span>
         <p>{progress.nextThreshold == null ? 'Sanctuary complete' : `${progress.remaining} to ${STAGE_NAMES[stage + 1]}`}</p>
       </div>
 
-      {layout.visible.length > 0 && (
+      {!compact && layout.visible.length > 0 && (
         <div className="illustrated-goal-controls" aria-label="Active goal plants">
           {layout.visible.map(({ goal, percent, species }) => (
             <button key={goal.id} type="button" onClick={() => onSelectGoal?.(goal)} className="illustrated-goal-control">

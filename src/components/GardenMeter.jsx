@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { milestonesToStage, STAGE_NAMES, STAGE_THRESHOLDS } from '@/context/GardenContext'
 import { STAGE_COLORS } from '@/lib/gardenModel'
 
-export default function GardenMeter({ total, done, embedded = false }) {
+export default function GardenMeter({ total, done, embedded = false, compact = false }) {
   const navigate = useNavigate()
   const earned = Math.max(0, Number(total ?? done) || 0)
   const stage = milestonesToStage(earned)
@@ -24,20 +24,20 @@ export default function GardenMeter({ total, done, embedded = false }) {
   useEffect(() => { previous.current = earned }, [earned])
 
   return (
-    <button onClick={() => navigate('/')} aria-label={`See your ${STAGE_NAMES[stage]} garden`}
-      className={`flex min-h-11 w-full items-center gap-2.5 rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 ${embedded ? 'px-0 py-1' : 'border px-3 py-2'} ${
+    <button onClick={() => navigate(compact ? '/?garden=1' : '/')} aria-label={`See your ${STAGE_NAMES[stage]} garden`}
+      className={`flex min-h-11 items-center gap-2.5 rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 ${compact ? 'w-auto border border-white/[0.09] px-3 py-2' : `w-full ${embedded ? 'px-0 py-1' : 'border px-3 py-2'}`} ${
         pulse
           ? embedded ? 'bg-emerald-500/[0.08]' : 'border-emerald-400/40 bg-emerald-500/[0.14]'
           : embedded ? 'hover:bg-white/[0.025]' : 'border-white/[0.09] bg-white/[0.05] hover:bg-white/[0.08]'
       }`}>
       <span className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white/15" style={{ background: STAGE_COLORS[stage] }} />
       <span className="whitespace-nowrap text-xs font-bold text-white">{STAGE_NAMES[stage]}</span>
-      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+      {!compact && <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
         <span className={`block h-full rounded-full transition-all duration-500 ${pulse ? 'bg-emerald-300' : 'bg-emerald-400/80'}`} style={{ width: `${percent}%` }} />
-      </span>
-      <span className="whitespace-nowrap text-[11px] font-semibold tabular-nums text-emerald-100/90">
+      </span>}
+      {!compact && <span className="whitespace-nowrap text-[11px] font-semibold tabular-nums text-emerald-100/90">
         {next == null ? 'sanctuary complete' : `${next - earned} more → ${STAGE_NAMES[stage + 1]}`}
-      </span>
+      </span>}
     </button>
   )
 }

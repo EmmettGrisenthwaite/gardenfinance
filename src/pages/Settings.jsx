@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { getMemories, deleteMemory, createMemory } from '@/lib/memory'
 import Onboarding from '@/components/Onboarding'
+import BottomSheet from '@/components/ui/BottomSheet'
 import {
   ChevronLeft, UserCircle, Pencil, Wallet, ArrowRight, Download, ShieldCheck,
   LogOut, Trash2, Loader2, Brain, X, Plus,
@@ -72,6 +73,8 @@ export default function Settings() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
   const [editProfile, setEditProfile] = useState(false)
+  const [memorySheetOpen, setMemorySheetOpen] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -258,9 +261,23 @@ export default function Settings() {
             to="/money" trailing={<ArrowRight className="w-4 h-4 text-white/30" />} />
         </Card>
 
-        {/* What your advisor remembers */}
-        <Card label="What your advisor remembers">
-          <div className="px-4 py-3">
+        <Card label="Advisor">
+          <Row
+            icon={Brain}
+            title="Advisor memory"
+            sub={memoriesLoading ? 'Loading remembered facts…' : `${memories.length} fact${memories.length !== 1 ? 's' : ''} remembered`}
+            onClick={() => setMemorySheetOpen(true)}
+            trailing={<ArrowRight className="w-4 h-4 text-white/30" />}
+          />
+        </Card>
+
+        <BottomSheet
+          open={memorySheetOpen}
+          title="Advisor memory"
+          subtitle="Review the durable facts used to personalize your advice."
+          onClose={() => setMemorySheetOpen(false)}
+        >
+          <div>
             <div className="flex items-center gap-2 mb-3">
               <Brain className="w-4 h-4 text-emerald-300" />
               <span className="text-sm text-white/70">
@@ -363,7 +380,7 @@ export default function Settings() {
               )}
             </AnimatePresence>
           </div>
-        </Card>
+        </BottomSheet>
 
         {/* Data & privacy */}
         <Card label="Data & privacy">
@@ -386,9 +403,15 @@ export default function Settings() {
           <Row icon={LogOut} title="Sign out" onClick={signOut} />
         </Card>
 
-        {/* Danger zone */}
-        <Card label="Danger zone">
-          {!confirmDelete ? (
+        <Card label="Advanced">
+          <Row
+            icon={Trash2}
+            title="Advanced controls"
+            sub="Destructive data controls"
+            onClick={() => setAdvancedOpen(value => !value)}
+            trailing={<ArrowRight className={`w-4 h-4 text-white/30 transition-transform ${advancedOpen ? 'rotate-90' : ''}`} />}
+          />
+          {advancedOpen && (!confirmDelete ? (
             <Row icon={Trash2} title="Delete app data" sub="Permanently erase your Garden data" danger
               onClick={() => setConfirmDelete(true)} />
           ) : (
@@ -411,7 +434,7 @@ export default function Settings() {
                 </button>
               </div>
             </div>
-          )}
+          ))}
         </Card>
 
         <p className="text-center text-[11px] text-white/25 pt-1">Garden Financial · v{APP_VERSION}</p>

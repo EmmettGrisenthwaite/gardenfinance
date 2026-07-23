@@ -14,6 +14,7 @@ import {
 } from '@/lib/memory'
 import { listFinancialActivities } from '@/lib/financialActivities'
 import { listReminderEvents, listReminders } from '@/lib/reminders'
+import { selectAdvisorResponseAction, selectPendingAdvisorAttachment } from '@/lib/advisorResponseAction'
 import PlanCard from '@/components/PlanCard'
 import ResourceLinks from '@/components/ResourceLinks'
 import GuideCard from '@/components/GuideCard'
@@ -30,7 +31,8 @@ const GUIDE_INTENT = /\b(open|start|set\s?up|sign\s?up|create|switch|roll\s?over
 import {
   Send, Bot, Sparkles, RefreshCw, ArrowDown, Settings, MoreHorizontal, Wallet,
   Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Shield, Sprout,
-  ClipboardList, Loader2, Brain, Plus, X, ArrowRight,
+  ClipboardList, Loader2, Brain, Plus, ArrowRight,
+  ChevronDown,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -112,6 +114,7 @@ function TypingIndicator() {
 // ─── Message bubble ────────────────────────────────────────────────────────────
 function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goals, accounts, profile }) {
   const isUser = msg.role === 'user'
+  const [sourcesOpen, setSourcesOpen] = useState(false)
 
   function renderContent(text) {
     return text.split('\n').map((line, i) => {
@@ -161,11 +164,17 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
     )
   }
 
-  const hasArtifacts = msg.artifacts && msg.artifacts.length > 0
   // Tappable answers to the advisor's question — only on the latest reply
   // (answering moves the conversation on; stale options would mislead).
   const options = msg.options ?? msg.quickReplies ?? []
-  const showOptions = isLast && options.length > 0
+  const responseAction = selectAdvisorResponseAction({
+    isLast,
+    answerCount: options.length,
+    artifactCount: msg.artifacts?.length || 0,
+    plannable: Boolean(onAddToPlan && msg.plannable),
+  })
+  const showOptions = responseAction === 'answers'
+  const showArtifacts = responseAction === 'attachment'
 
   return (
     <motion.div className="mb-6 flex items-start gap-3"
@@ -181,13 +190,16 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
         {/* Web-search sources — real URLs from real search results, tappable */}
         {msg.sources?.length > 0 && (
           <div>
-            <div className="text-[10px] font-semibold text-readable-muted uppercase tracking-wider pl-1 mb-1">Sources</div>
-            <ResourceLinks resources={msg.sources} />
+            <button type="button" onClick={() => setSourcesOpen(value => !value)} aria-expanded={sourcesOpen}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-readable-secondary hover:bg-white/[0.04] hover:text-white">
+              Sources ({Math.min(3, msg.sources.length)}) <ChevronDown className={`h-3.5 w-3.5 transition-transform ${sourcesOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {sourcesOpen && <div className="mt-1"><ResourceLinks resources={msg.sources.slice(0, 3)} /></div>}
           </div>
         )}
 
         {/* Artifacts */}
-        {hasArtifacts && (
+        {showArtifacts && (
           <div className="space-y-2">
             {msg.artifacts.map((artifact, i) => (
               <ArtifactRenderer
@@ -225,7 +237,7 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
 
         {/* One "add this to my plan" CTA — only on the latest reply, and only
             when the model marked its advice as concretely actionable. */}
-        {onAddToPlan && isLast && msg.plannable && (
+        {responseAction === 'add_to_plan' && (
           <button
             onClick={() => onAddToPlan(msg.content)}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500/[0.12] border border-emerald-400/30 rounded-xl text-[13px] font-semibold text-emerald-100 hover:bg-emerald-500/25 hover:border-emerald-400/50 transition-all"
@@ -240,7 +252,7 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
 }
 
 // ─── Welcome / empty state ─────────────────────────────────────────────────────
-function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, progressDelta, suggestions }) {
+function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, progressDelta, suggestions, primaryGap }) {
   return (
     <motion.div className="py-5 text-center"
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -256,7 +268,9 @@ function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, p
         {progressDelta?.has
           ? `Since ${progressDelta.days} days ago: ${progressDelta.delta >= 0 ? '+' : ''}$${Math.abs(progressDelta.delta).toLocaleString()} net worth${progressDelta.stepsDone ? `, ${progressDelta.stepsDone} step${progressDelta.stepsDone !== 1 ? 's' : ''} done` : ''}. `
           : ''}
-        {hasData
+        {primaryGap
+          ? primaryGap.label
+          : hasData
           ? "I've looked at your numbers. Want me to tell you exactly where you stand and build you a plan?"
           : <>Ask me anything — and I'll build you a plan you can check off to grow your garden. Add your{' '}
             <Link to="/money" className="text-emerald-300 hover:text-emerald-200">money</Link>{' '}
@@ -266,7 +280,11 @@ function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, p
       </p>
 
       <div className="mb-7 flex justify-center">
-        {hasData ? (
+        {primaryGap ? (
+          <Link to={primaryGap.href} state={primaryGap.sheet ? { sheet: primaryGap.sheet } : undefined} className="btn-primary min-h-12 px-5">
+            <Wallet className="h-4 w-4" /> {primaryGap.cta || 'Add details'}
+          </Link>
+        ) : hasData ? (
           <motion.button
             onClick={onBuildPlan}
             disabled={analyzing || building}
@@ -514,18 +532,13 @@ export default function AIAdvisor() {
   // "stop asking" bookkeeping needed. The model gets the same ranked list in
   // its context and can ask about the top one in conversation too.
   const GAP_DISMISS_KEY = `advisor-gaps-dismissed-${user.id}`
-  const [dismissedGaps, setDismissedGaps] = useState(() => {
+  const [dismissedGaps] = useState(() => {
     try { return JSON.parse(localStorage.getItem(GAP_DISMISS_KEY)) ?? [] } catch { return [] }
   })
   const gaps = useMemo(
     () => getDataGaps({ profile, accounts, debts, goals, cashFlowItems }).filter(g => !dismissedGaps.includes(g.id)),
     [profile, accounts, debts, goals, cashFlowItems, dismissedGaps],
   )
-  function dismissGap(id) {
-    const next = [...dismissedGaps, id]
-    setDismissedGaps(next)
-    try { localStorage.setItem(GAP_DISMISS_KEY, JSON.stringify(next)) } catch {}
-  }
 
   // ── Send message ────────────────────────────────────────────────────────────
   async function send(text, opts = {}) {
@@ -768,7 +781,11 @@ export default function AIAdvisor() {
   }
 
   const isEmpty = messages.length === 0 && !loading && !analyzing && !historyLoading && !pendingPlan && !buildingPlan
-  const showPlanNudge = !noKey && !historyLoading && gaps.length === 0 && plans.length === 0 && messages.length > 0 && !pendingPlan
+  const pendingAttachment = selectPendingAdvisorAttachment({
+    plan: pendingPlan,
+    guide: pendingGuide,
+    goal: pendingGoal,
+  })
 
   return (
     <div className="flex h-full flex-col">
@@ -837,31 +854,6 @@ export default function AIAdvisor() {
         )}
       </AnimatePresence>
 
-      {/* One proactive prompt at a time: missing data first, then plan building. */}
-      {!noKey && !historyLoading && (gaps.length > 0 || showPlanNudge) && (
-        <div className="mx-auto w-full max-w-3xl flex-shrink-0 px-4 pt-3">
-          <div className="flex items-center gap-2.5 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2.5">
-            <Sparkles className="h-3.5 w-3.5 flex-shrink-0 text-emerald-200/70" />
-            <span className="min-w-0 flex-1 text-xs leading-snug text-readable-secondary">
-              {gaps.length > 0 ? (
-                <>{gaps[0].label}{gaps.length > 1 && <span className="text-readable-muted"> +{gaps.length - 1} more</span>}</>
-              ) : 'Your numbers are ready. Turn this conversation into a short action plan.'}
-            </span>
-            {gaps.length > 0 ? (
-              <Link to={gaps[0].href} state={gaps[0].sheet ? { sheet: gaps[0].sheet } : undefined}
-                className="flex-shrink-0 whitespace-nowrap text-xs font-semibold text-emerald-200 hover:text-emerald-100">{gaps[0].cta}</Link>
-            ) : (
-              <button type="button" onClick={handleBuildPlan} disabled={buildingPlan || loading || analyzing}
-                className="min-h-9 flex-shrink-0 rounded-lg px-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-300/[0.06] disabled:opacity-50">Build plan</button>
-            )}
-            {gaps.length > 0 && (
-              <button onClick={() => dismissGap(gaps[0].id)} aria-label="Dismiss"
-                className="-m-1 flex-shrink-0 p-1 text-readable-disabled hover:text-readable-primary"><X className="h-3.5 w-3.5" /></button>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Not-configured banner */}
       {noKey && (
         <div className="flex-shrink-0 max-w-3xl w-full mx-auto px-4 mt-4">
@@ -901,6 +893,7 @@ export default function AIAdvisor() {
               building={buildingPlan}
               progressDelta={progressDelta}
               suggestions={quickSuggestions}
+              primaryGap={gaps[0] || null}
             />
           )}
 
@@ -923,51 +916,33 @@ export default function AIAdvisor() {
           {/* Typing dots */}
           {(loading || analyzing) && messages[messages.length - 1]?.role === 'user' && <TypingIndicator />}
 
-          {/* Proposed action plan card */}
-          {pendingPlan && (
+          {/* One response attachment at a time. */}
+          {pendingAttachment?.kind === 'plan' ? (
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
-              <PlanCard plan={pendingPlan} saved={pendingPlan.saved} onSave={handleSavePlan} />
+              <PlanCard plan={pendingAttachment.value} saved={pendingAttachment.value.saved} onSave={handleSavePlan} />
             </motion.div>
-          )}
+          ) : pendingAttachment?.kind === 'guide' ? (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
+              <GuideCard guide={pendingAttachment.value} saved={pendingAttachment.value.saved}
+                onSave={handleSaveGuide} onDismiss={() => setPendingGuide(null)} />
+            </motion.div>
+          ) : pendingAttachment?.kind === 'goal' ? (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
+              <GoalSuggestionCard suggestion={pendingAttachment.value}
+                onAdd={handleSuggestedGoal}
+                onDismiss={() => setPendingGoal(null)} />
+            </motion.div>
+          ) : null}
           {buildingPlan && (
             <div className="flex items-center gap-2 mb-4 text-sm text-emerald-200/80">
               <Loader2 className="w-4 h-4 animate-spin" /> Building your action plan…
             </div>
           )}
 
-          {/* Inline how-to guide */}
-          {pendingGuide && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
-              <GuideCard guide={pendingGuide} saved={pendingGuide.saved}
-                onSave={handleSaveGuide} onDismiss={() => setPendingGuide(null)} />
-            </motion.div>
-          )}
-
-          {/* Inline goal suggestion */}
-          {pendingGoal && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
-              <GoalSuggestionCard suggestion={pendingGoal}
-                onAdd={handleSuggestedGoal}
-                onDismiss={() => setPendingGoal(null)} />
-            </motion.div>
-          )}
-
           {error && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-3">
               <p className="text-xs text-rose-200 bg-rose-500/15 border border-rose-400/25 inline-block px-3 py-2 rounded-lg">{error}</p>
             </motion.div>
-          )}
-
-          {/* Mid-conversation suggestion chips */}
-          {messages.length > 0 && !loading && !analyzing && (
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 md:flex-wrap md:overflow-x-visible md:-mx-0 md:px-0 mt-2 mb-2">
-              {quickSuggestions.map((s, i) => (
-                <button key={i} onClick={() => send(s.q ?? s.label)}
-                  className="flex min-h-9 flex-shrink-0 items-center gap-1 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 text-xs text-readable-secondary transition-colors hover:border-emerald-300/20 hover:text-white">
-                  <s.icon className="w-3 h-3 text-emerald-300/80" /> {s.label}
-                </button>
-              ))}
-            </div>
           )}
 
           <div ref={bottomRef} />

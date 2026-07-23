@@ -249,9 +249,6 @@ export default function Login() {
           )}
         </div>
 
-        <p className="text-center text-xs text-white/25 mt-6 font-medium">
-          Your finances. Your garden. Your future.
-        </p>
       </motion.div>
     </div>
   )

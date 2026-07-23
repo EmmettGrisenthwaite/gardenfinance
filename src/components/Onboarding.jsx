@@ -116,9 +116,47 @@ const BASE_STEPS = [
 // ─── Adaptive steps — the quiz reshapes itself around earlier answers ──────────
 // A self-employed 50-year-old shouldn't be asked about an employer 401k or see
 // "on my parents' plan" as an insurance option.
+const CALM_STEPS = [
+  BASE_STEPS.find(step => step.id === 'preview'),
+  {
+    id: 'basics_calm',
+    type: 'calm_basics',
+    question: 'A little about you',
+    sub: 'Age and work shape the advice you receive.',
+  },
+  BASE_STEPS.find(step => step.id === 'money'),
+  {
+    id: 'coverage_calm',
+    type: 'calm_coverage',
+    question: 'Your safety net and investing',
+    sub: 'These facts keep advice relevant and prevent repeat questions.',
+  },
+  {
+    ...BASE_STEPS.find(step => step.id === 'goal'),
+    type: 'calm_priority',
+    question: 'What matters most right now?',
+    sub: 'Choose one starting priority. You can change it anytime.',
+  },
+]
+
 function buildSteps(answers, profileOnly) {
   const age = Number(answers.age) || 0
   const emp = answers.employment_type
+
+  if (!profileOnly) {
+    return CALM_STEPS.map(step => {
+      if (step.id === 'goal' && age >= 45) {
+        return {
+          ...step,
+          options: [
+            { value: 'retirement_catchup', label: 'Catch up on retirement', icon: '🎯', sub: 'Make the most of catch-up contributions' },
+            ...step.options.map(option => option.value === 'start_investing' ? { ...option, label: 'Grow my investments' } : option),
+          ],
+        }
+      }
+      return step
+    })
+  }
 
   // The payoff moment: after the last question, name their situation in their
   // own numbers before anything else happens. Settings' profile-only edit
@@ -213,41 +251,12 @@ function StartingPointStep({ answers }) {
 
 // ─── Preview step (value prop before questions) ────────────────────────────────
 function PreviewStep() {
-  const features = [
-    {
-      emoji: '🤖',
-      title: 'Ask your advisor',
-      desc: 'Real advice built around your actual money, goals, and debt — powered by Claude AI. It turns guidance into a plan you can follow.',
-    },
-    {
-      emoji: '✅',
-      title: 'Build your plan',
-      desc: 'One tap adds the advisor’s steps to your plan. Open a Roth IRA, build an emergency fund — concrete, checkable steps.',
-    },
-    {
-      emoji: '🌱',
-      title: 'Grow your garden',
-      desc: 'Every step you check off makes your living 3D garden grow — from barren to flourishing. Your progress, visualized.',
-    },
-  ]
-
   return (
-    <div className="space-y-4">
-      {features.map((f, i) => (
-        <motion.div
-          key={f.title}
-          initial={{ opacity: 0, x: 16 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: i * 0.08, duration: 0.3 }}
-          className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.065] border border-white/[0.10]"
-        >
-          <div className="text-2xl flex-shrink-0 leading-none mt-0.5">{f.emoji}</div>
-          <div>
-            <div className="text-sm font-semibold text-white mb-0.5">{f.title}</div>
-            <div className="text-xs text-white/55 leading-relaxed">{f.desc}</div>
-          </div>
-        </motion.div>
-      ))}
+    <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] p-5">
+      <p className="text-base font-semibold text-white">One clear next move, grounded in your real numbers.</p>
+      <p className="mt-2 text-sm leading-6 text-readable-secondary">
+        Four short setup steps establish the essentials. Then Accounts opens so you can add details when you are ready.
+      </p>
     </div>
   )
 }
@@ -391,6 +400,14 @@ export default function Onboarding({ onClose, profileOnly = false }) {
     if (current.type === 'intro')   return true
     if (current.type === 'starting_point') return true
     if (current.type === 'age')     return answers.age && Number(answers.age) > 0 && Number(answers.age) < 120
+    if (current.type === 'calm_basics') {
+      return answers.age && Number(answers.age) > 0 && Number(answers.age) < 120 && !!answers.employment_type
+    }
+    if (current.type === 'calm_coverage') {
+      const retirementAnswered = ['freelance', 'student'].includes(answers.employment_type) || !!answers.employer_401k
+      return !!answers.health_insurance && retirementAnswered && answers.investment_types?.length > 0
+    }
+    if (current.type === 'calm_priority') return !!answers.primary_goal
     if (current.type === 'money')   return true   // all optional — rough or skip
     if (current.type === 'debts')   return true   // optional
     if (current.type === 'multi')   return answers[current.field]?.length > 0
@@ -558,10 +575,10 @@ export default function Onboarding({ onClose, profileOnly = false }) {
             // Preview step: big headline, no progress dots
             <div>
               <h2 className="font-display text-[22px] font-medium text-white leading-tight">
-                Your finances, visualized as a garden.
+                A calm plan for your money.
               </h2>
               <p className="text-white/70 text-xs mt-1.5">
-                The better your financial health, the more your garden thrives.
+                Your progress grows a living illustrated garden along the way.
               </p>
             </div>
           ) : (
@@ -636,6 +653,110 @@ export default function Onboarding({ onClose, profileOnly = false }) {
               )}
 
               {/* Money inputs — cash flow now, detailed accounts immediately after setup */}
+              {current.type === 'calm_basics' && (
+                <div className="space-y-4">
+                  <label className="block">
+                    <span className="text-sm font-medium text-white">Age</span>
+                    <div className="mt-1.5 flex items-center gap-3">
+                      <input
+                        type="number"
+                        min="16"
+                        max="99"
+                        value={answers.age}
+                        onChange={event => set('age', event.target.value)}
+                        placeholder="e.g. 34"
+                        autoFocus
+                        className="w-32 rounded-xl border-2 border-white/15 bg-white/[0.075] px-4 py-3 text-center text-xl font-bold tabular-nums text-white focus:border-emerald-500 focus:outline-none"
+                      />
+                      <span className="text-sm text-readable-secondary">years old</span>
+                    </div>
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium text-white">Work situation</span>
+                    <select
+                      value={answers.employment_type}
+                      onChange={event => {
+                        const value = event.target.value
+                        setAnswers(previous => ({
+                          ...previous,
+                          employment_type: value,
+                          employer_401k: ['freelance', 'student'].includes(value) ? 'na' : previous.employer_401k,
+                        }))
+                      }}
+                      className="mt-1.5 w-full rounded-xl border-2 border-white/15 bg-[#132019] px-3 py-3 text-base text-white focus:border-emerald-500 focus:outline-none"
+                    >
+                      <option value="">Choose one</option>
+                      <option value="w2">Salaried / W-2</option>
+                      <option value="freelance">Freelance / self-employed</option>
+                      <option value="student">Student</option>
+                      <option value="other">Other or between jobs</option>
+                    </select>
+                  </label>
+                </div>
+              )}
+
+              {current.type === 'calm_coverage' && (
+                <div className="space-y-4">
+                  <label className="block">
+                    <span className="text-sm font-medium text-white">Health coverage</span>
+                    <select
+                      value={answers.health_insurance}
+                      onChange={event => set('health_insurance', event.target.value)}
+                      className="mt-1.5 w-full rounded-xl border-2 border-white/15 bg-[#132019] px-3 py-3 text-base text-white focus:border-emerald-500 focus:outline-none"
+                    >
+                      <option value="">Choose one</option>
+                      <option value="employer">Covered through work</option>
+                      <option value="marketplace">Marketplace / ACA plan</option>
+                      {Number(answers.age) < 26 && <option value="parents">On a parent&apos;s plan</option>}
+                      <option value="spouse">On a spouse&apos;s plan</option>
+                      <option value="none">Not currently covered</option>
+                    </select>
+                  </label>
+
+                  {!['freelance', 'student'].includes(answers.employment_type) && (
+                    <label className="block">
+                      <span className="text-sm font-medium text-white">Workplace retirement plan</span>
+                      <select
+                        value={answers.employer_401k}
+                        onChange={event => set('employer_401k', event.target.value)}
+                        className="mt-1.5 w-full rounded-xl border-2 border-white/15 bg-[#132019] px-3 py-3 text-base text-white focus:border-emerald-500 focus:outline-none"
+                      >
+                        <option value="">Choose one</option>
+                        <option value="match">Offered with an employer match</option>
+                        <option value="no_match">Offered without a match</option>
+                        <option value="none">Not offered</option>
+                        <option value="unsure">I&apos;m not sure</option>
+                      </select>
+                    </label>
+                  )}
+
+                  <fieldset>
+                    <legend className="text-sm font-medium text-white">Accounts you already invest through</legend>
+                    <p className="mt-0.5 text-xs text-readable-muted">Choose all that apply.</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {BASE_STEPS.find(item => item.id === 'investing').options.map(option => {
+                        const selected = answers.investment_types.includes(option.value)
+                        return (
+                          <button
+                            type="button"
+                            key={option.value}
+                            aria-pressed={selected}
+                            onClick={() => toggleMulti('investment_types', option.value)}
+                            className={`min-h-11 rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors ${
+                              selected
+                                ? 'border-emerald-400/60 bg-emerald-500/[0.12] text-white'
+                                : 'border-white/10 bg-white/[0.045] text-readable-secondary hover:border-emerald-400/35'
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </fieldset>
+                </div>
+              )}
+
               {current.type === 'money' && (
                 <div className="space-y-3">
                   {[
@@ -690,6 +811,20 @@ export default function Onboarding({ onClose, profileOnly = false }) {
               )}
 
               {/* Multi select */}
+              {current.type === 'calm_priority' && (
+                <div className="space-y-2">
+                  {current.options.map(option => (
+                    <OptionCard
+                      key={option.value}
+                      option={option}
+                      selected={answers.primary_goal}
+                      onClick={value => set('primary_goal', value)}
+                      multi={false}
+                    />
+                  ))}
+                </div>
+              )}
+
               {current.type === 'multi' && (
                 <div className="space-y-2">
                   {current.options.map(opt => (
@@ -725,7 +860,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
           </div>
 
           {/* Show Next/Finish for non-auto-advance steps */}
-          {(current.type === 'preview' || current.type === 'intro' || current.type === 'age' || current.type === 'multi' || current.type === 'money' || current.type === 'debts' || current.type === 'starting_point') && (
+          {(current.type === 'preview' || current.type === 'intro' || current.type === 'age' || current.type === 'multi' || current.type === 'money' || current.type === 'debts' || current.type === 'starting_point' || current.type === 'calm_basics' || current.type === 'calm_coverage' || current.type === 'calm_priority') && (
             isLast ? (
               <button onClick={finish} disabled={!canAdvance() || saving}
                 className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30">

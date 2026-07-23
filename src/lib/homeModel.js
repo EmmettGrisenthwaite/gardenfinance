@@ -1,22 +1,46 @@
-export function selectHomeAction({ setupState, planModel, plan, planLoading = false, scenario = null } = {}) {
-  const prerequisite = planModel?.prerequisite || (setupState?.next ? {
-    title: setupState.next.label,
-    cta: setupState.next.cta,
-    sheet: setupState.next.sheet,
-  } : null)
-  if (prerequisite) {
+import { buildAttentionModel, reminderActionHref } from './attentionModel.js'
+
+export function selectHomeAction({
+  setupState,
+  planModel,
+  reminderModel,
+  activities,
+  plan,
+  planLoading = false,
+  scenario = null,
+  now,
+} = {}) {
+  const attention = buildAttentionModel({ setupState, planModel, reminderModel, activities, now })
+  const selected = attention.primary
+
+  if (selected.kind === 'setup') {
+    const prerequisite = selected.item
     return {
       kind: 'setup',
       eyebrow: 'Complete your money picture',
-      title: prerequisite.title,
+      title: prerequisite.title || prerequisite.label,
       detail: prerequisite.detail || 'Add the missing detail so your Plan and Advisor can make more useful recommendations.',
       cta: prerequisite.cta || 'Add details',
       sheet: prerequisite.sheet,
     }
   }
 
-  const unfinished = planModel?.focus?.find(step => !step.proposed)
-    || (planModel ? null : (Array.isArray(plan?.steps) ? plan.steps.find(step => !step.done && !step.supersededAt) : null))
+  if (selected.kind === 'reminder') {
+    const reminder = selected.item
+    return {
+      kind: 'reminder',
+      eyebrow: selected.reason === 'stale-evidence' ? 'Keep your numbers current' : 'Check-in due',
+      title: reminder.title,
+      detail: reminder.detail || 'A quick check-in keeps your next recommendation grounded.',
+      cta: reminder.metadata?.action_label || 'Open check-in',
+      href: reminderActionHref(reminder),
+    }
+  }
+
+  const fallbackStep = !planModel && Array.isArray(plan?.steps)
+    ? plan.steps.find(step => !step.done && !step.supersededAt)
+    : null
+  const unfinished = selected.kind === 'plan-step' ? selected.item : fallbackStep
   if (unfinished) {
     return {
       kind: 'plan-step',
@@ -41,7 +65,7 @@ export function selectHomeAction({ setupState, planModel, plan, planLoading = fa
     }
   }
 
-  const proposal = planModel?.focus?.find(step => step.proposed)
+  const proposal = selected.kind === 'plan-proposal' ? selected.item : null
   if (proposal) {
     return {
       kind: 'plan-proposal',
