@@ -15,6 +15,7 @@ import {
   investmentTypesFromAccounts, INVESTMENT_SUBTYPES, isWorkplaceAccount, itemMonthlyAmount,
   monthlyAmount, subtypeLabel, taxTreatment,
 } from '@/lib/moneyModel'
+import { headlineMetrics, moneySections } from '@/lib/moneyLanguage'
 import { netWorthTrend } from '@/lib/netWorth'
 import PageHeader from '@/components/ui/PageHeader'
 import BottomSheet from '@/components/ui/BottomSheet'
@@ -28,6 +29,10 @@ const fmt = value => {
 const number = value => Math.max(0, Number(value) || 0)
 const optionalNumber = value => value === '' || value === null || value === undefined ? null : Math.max(0, Number(value) || 0)
 const today = () => new Date().toISOString().slice(0, 10)
+
+const SECTION_ICONS = {
+  plan: CalendarDays, cash: Landmark, investment: LineChart, asset: WalletCards, debts: CreditCard,
+}
 
 const GROUP_LABELS = { income: 'Income', needs: 'Needs', wants: 'Wants', future: 'Future' }
 const FAMILY_META = {
@@ -324,7 +329,6 @@ export default function Money({
   const assetTotal = accountGroups.asset.filter(account => account.include_in_net_worth !== false)
     .reduce((sum, account) => sum + Number(account.balance || 0), 0)
   const monthlyDebtCategory = snapshot.budgetStatus.byCategory.debt_payments || 0
-  const planOutflow = snapshot.expenses + snapshot.futureAllocations
 
   function resetSheetState() {
     setEditor(null)
@@ -914,7 +918,9 @@ export default function Money({
         {family !== 'asset' && <Field label="Institution" hint="Never enter login details"><input value={draft.institution} onChange={event => updateDraft('institution', event.target.value)} placeholder="e.g. Fidelity" className={inputClass} /></Field>}
         <div className={`grid gap-4 ${family === 'asset' ? '' : 'sm:grid-cols-2'}`}>
           <Field label="Current balance" prefix="$"><input type="number" min="0" step="0.01" inputMode="decimal" value={draft.balance} onChange={event => updateDraft('balance', event.target.value)} className={inputClass} /></Field>
-          {family !== 'asset' && <Field label={family === 'cash' ? 'APY' : 'Expected annual return'} hint={family === 'investment' ? 'Estimate only' : null} suffix="%"><input type="number" min="0" step="0.01" inputMode="decimal" value={draft.interest_rate} onChange={event => updateDraft('interest_rate', event.target.value)} placeholder="Optional" className={inputClass} /></Field>}
+          {/* Lead with the plain name; keep the industry term as the hint so it
+              stays learnable instead of being a barrier. */}
+          {family !== 'asset' && <Field label={family === 'cash' ? 'Interest rate' : 'Expected annual return'} hint={family === 'investment' ? 'Estimate only' : 'APY'} suffix="%"><input type="number" min="0" step="0.01" inputMode="decimal" value={draft.interest_rate} onChange={event => updateDraft('interest_rate', event.target.value)} placeholder="Optional" className={inputClass} /></Field>}
         </div>
         {family === 'investment' && (
           <div className="rounded-xl border border-white/[0.09] bg-white/[0.035] px-3.5 py-3 text-xs leading-5 text-readable-secondary">
@@ -930,16 +936,16 @@ export default function Money({
                 <Field label="Year-to-date contribution" prefix="$"><input type="number" min="0" inputMode="decimal" value={draft.ytd_contribution} onChange={event => updateDraft('ytd_contribution', event.target.value)} className={inputClass} /></Field>
               </div>
               {workplace && <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="You contribute" suffix="%"><input type="number" min="0" inputMode="decimal" value={draft.contribution_percent} onChange={event => updateDraft('contribution_percent', event.target.value)} className={inputClass} /></Field>
-                <Field label="Employer match" suffix="%"><input type="number" min="0" inputMode="decimal" value={draft.employer_match_percent} onChange={event => updateDraft('employer_match_percent', event.target.value)} className={inputClass} /></Field>
-                <Field label="Match applies up to" suffix="%"><input type="number" min="0" inputMode="decimal" value={draft.employer_match_limit_percent} onChange={event => updateDraft('employer_match_limit_percent', event.target.value)} className={inputClass} /></Field>
+                <Field label="You contribute" hint="of your pay" suffix="%"><input type="number" min="0" inputMode="decimal" value={draft.contribution_percent} onChange={event => updateDraft('contribution_percent', event.target.value)} className={inputClass} /></Field>
+                <Field label="Employer matches" hint="of what you put in" suffix="%"><input type="number" min="0" inputMode="decimal" value={draft.employer_match_percent} onChange={event => updateDraft('employer_match_percent', event.target.value)} className={inputClass} /></Field>
+                <Field label="Matched up to" hint="of your pay" suffix="%"><input type="number" min="0" inputMode="decimal" value={draft.employer_match_limit_percent} onChange={event => updateDraft('employer_match_limit_percent', event.target.value)} className={inputClass} /></Field>
               </div>}
             </>}
-            {family === 'cash' && <Field label="Liquidity">
+            {family === 'cash' && <Field label="Can you spend it today?" hint="Counts toward your emergency fund">
               <select value={draft.is_liquid} onChange={event => updateDraft('is_liquid', event.target.value)} className={inputClass}>
-                <option value="auto" className="bg-[#0a1410]">Automatic for account type</option>
-                <option value="true" className="bg-[#0a1410]">Available now</option>
-                <option value="false" className="bg-[#0a1410]">Restricted or locked</option>
+                <option value="auto" className="bg-[#0a1410]">Decide by account type</option>
+                <option value="true" className="bg-[#0a1410]">Yes — available now</option>
+                <option value="false" className="bg-[#0a1410]">No — locked or penalized</option>
               </select>
             </Field>}
             <Field label="Last verified"><input type="date" value={draft.last_verified_at} onChange={event => updateDraft('last_verified_at', event.target.value)} className={inputClass} /></Field>
@@ -1020,11 +1026,11 @@ export default function Money({
         {showMore && <div className="space-y-4 border-t border-white/[0.08] pt-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Lender"><input value={draft.lender} onChange={event => updateDraft('lender', event.target.value)} placeholder="Optional" className={inputClass} /></Field>
-            <Field label="APR" suffix="%"><input type="number" min="0" step="0.01" inputMode="decimal" value={draft.interest_rate} onChange={event => updateDraft('interest_rate', event.target.value)} placeholder="Optional" className={inputClass} /></Field>
+            <Field label="Interest rate" hint="APR" suffix="%"><input type="number" min="0" step="0.01" inputMode="decimal" value={draft.interest_rate} onChange={event => updateDraft('interest_rate', event.target.value)} placeholder="Optional" className={inputClass} /></Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Minimum payment" prefix="$"><input type="number" min="0" inputMode="decimal" value={draft.minimum_payment} onChange={event => updateDraft('minimum_payment', event.target.value)} className={inputClass} /></Field>
-            <Field label="Planned payment" prefix="$"><input type="number" min="0" inputMode="decimal" value={draft.planned_payment} onChange={event => updateDraft('planned_payment', event.target.value)} className={inputClass} /></Field>
+            <Field label="Minimum payment" hint="What's required" prefix="$"><input type="number" min="0" inputMode="decimal" value={draft.minimum_payment} onChange={event => updateDraft('minimum_payment', event.target.value)} className={inputClass} /></Field>
+            <Field label="Planned payment" hint="What you actually pay" prefix="$"><input type="number" min="0" inputMode="decimal" value={draft.planned_payment} onChange={event => updateDraft('planned_payment', event.target.value)} className={inputClass} /></Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Due day" hint="1–31"><input type="number" min="1" max="31" inputMode="numeric" value={draft.due_day} onChange={event => updateDraft('due_day', event.target.value)} className={inputClass} /></Field>
@@ -1147,10 +1153,10 @@ export default function Money({
       {(!homeMode || workspaceMode) && renderNetWorth()}
 
       {(!homeMode || workspaceMode) && <section aria-label="Financial health" className="mt-4 grid grid-cols-2 gap-2.5">
-        <Metric label="Cash-flow margin" value={fmt(snapshot.cashFlowMargin)} note={`${Math.round(snapshot.savingsRate * 100)}% of typical income`} tone={snapshot.cashFlowMargin < 0 ? 'text-rose-100' : 'text-white'} />
-        <Metric label="Emergency runway" value={`${snapshot.efMonths.toFixed(1)} mo`} note={`${fmt(snapshot.liquid)} liquid cash`} />
-        <Metric label="Debt interest" value={`${fmt(snapshot.debtMonthlyInterest)}/mo`} note={snapshot.totalDebt ? `${snapshot.weightedDebtApr.toFixed(1)}% weighted APR` : 'No active debt cost'} />
-        <Metric label="Left to assign" value={fmt(snapshot.unallocated)} note={`${fmt(snapshot.futureAllocations)} planned for future`} tone={snapshot.unallocated < 0 ? 'text-rose-100' : 'text-emerald-100'} />
+        {headlineMetrics(snapshot).map(metric => (
+          <Metric key={metric.id} label={metric.label} value={metric.value} note={metric.note}
+            tone={metric.negative ? 'text-rose-100' : 'text-white'} />
+        ))}
       </section>}
 
       {!homeMode && <section className={`mt-4 rounded-2xl border p-4 ${snapshot.next.urgent ? 'border-amber-300/20 bg-amber-300/[0.055]' : 'border-emerald-300/15 bg-emerald-300/[0.045]'}`}>
@@ -1173,11 +1179,11 @@ export default function Money({
           <div><h2 className="text-[18px] font-semibold text-readable-primary">{homeMode ? 'Your money' : 'Your money, organized'}</h2><p className="mt-1 text-[13px] text-readable-secondary">Tap a section only when you want the detail.</p></div>
         </div>
         <div className="grid gap-2.5 md:grid-cols-2">
-          <SummaryCard icon={CalendarDays} title="Monthly plan" total={`${fmt(planOutflow)}/mo`} meta={`${cashFlowItems.length} populated ${cashFlowItems.length === 1 ? 'category' : 'categories'}`} detail={`${fmt(snapshot.income)} income · ${fmt(snapshot.unallocated)} left to assign`} onClick={() => openSheet('plan')} />
-          <SummaryCard icon={Landmark} title="Cash accounts" total={fmt(accountGroups.cash.reduce((sum, account) => sum + Number(account.balance || 0), 0))} meta={`${accountGroups.cash.length} ${accountGroups.cash.length === 1 ? 'account' : 'accounts'} · ${snapshot.weightedCashApy.toFixed(2)}% weighted APY`} detail={`About ${fmt(snapshot.annualCashInterest)}/yr estimated interest`} onClick={() => openSheet('cash')} />
-          <SummaryCard icon={LineChart} title="Investments" total={fmt(snapshot.invested)} meta={`${accountGroups.investment.length} ${accountGroups.investment.length === 1 ? 'account' : 'accounts'} · ${fmt(snapshot.investmentMonthlyContributions)}/mo contributed`} detail="Returns shown as estimates, never actual performance" onClick={() => openSheet('investment')} />
-          <SummaryCard icon={WalletCards} title="Property and other assets" total={fmt(assetTotal)} meta={`${accountGroups.asset.length} ${accountGroups.asset.length === 1 ? 'asset' : 'assets'}`} detail={accountGroups.asset.length ? accountGroups.asset.map(account => subtypeLabel(account)).join(' · ') : 'Property, vehicles, and other assets'} onClick={() => openSheet('asset')} />
-          <div className="md:col-span-2"><SummaryCard icon={CreditCard} title="Debts" total={fmt(snapshot.totalDebt)} meta={`${activeDebts.length} active · ${snapshot.weightedDebtApr.toFixed(1)}% weighted APR`} detail={snapshot.cardUtilization == null ? `${fmt(snapshot.requiredDebtPayments)}/mo required payments` : `${Math.round(snapshot.cardUtilization * 100)}% credit-card utilization`} onClick={() => openSheet('debts')} /></div>
+          {moneySections({ snapshot, accountGroups, cashFlowItems, activeDebts, assetTotal }).map(section => {
+            const card = <SummaryCard key={section.id} icon={SECTION_ICONS[section.id]} title={section.title}
+              total={section.total} meta={section.meta} detail={section.detail} onClick={() => openSheet(section.sheet)} />
+            return section.wide ? <div key={section.id} className="md:col-span-2">{card}</div> : card
+          })}
         </div>
       </section>}
 

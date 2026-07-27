@@ -15,6 +15,7 @@ import { milestoneEventsFromState, groupGardenGoals, stageProgress, STAGE_NAMES 
 import { reconcileGardenMilestones } from '@/lib/gardenProgress'
 import { getMoneySetupState } from '@/lib/moneySetup'
 import { selectHomeAction } from '@/lib/homeModel'
+import { headlineMetrics } from '@/lib/moneyLanguage'
 import { deriveScenario } from '@/lib/scenario'
 import { buildPlanModel } from '@/lib/focusedPlan'
 import ProgressActivitySheet from '@/components/ProgressActivitySheet'
@@ -248,9 +249,15 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
                 Open Money <ArrowRight className="h-4 w-4" />
               </button>
             </div>
+            {/* Same two numbers Money shows, named by the shared vocabulary so
+                a metric never has one name here and another there. */}
             <div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/[0.07] pt-3">
-              <div><p className="text-xs text-readable-secondary">Monthly margin</p><p className={`mt-0.5 text-[15px] font-semibold tabular-nums ${snapshot.cashFlowMargin < 0 ? 'text-rose-100' : 'text-white'}`}>{formatMoney(snapshot.cashFlowMargin)}</p></div>
-              <div><p className="text-xs text-readable-secondary">Emergency runway</p><p className="mt-0.5 text-[15px] font-semibold tabular-nums text-white">{snapshot.efMonths.toFixed(1)} months</p></div>
+              {headlineMetrics(snapshot).filter(metric => ['margin', 'emergency'].includes(metric.id)).map(metric => (
+                <div key={metric.id}>
+                  <p className="text-xs text-readable-secondary">{metric.label}</p>
+                  <p className={`mt-0.5 text-[15px] font-semibold tabular-nums ${metric.negative ? 'text-rose-100' : 'text-white'}`}>{metric.value}</p>
+                </div>
+              ))}
             </div>
           </section>
         </div>
