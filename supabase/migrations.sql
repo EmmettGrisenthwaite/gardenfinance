@@ -295,6 +295,69 @@ ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS term_end_date date;
 ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS include_in_net_worth boolean NOT NULL DEFAULT true;
 ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS last_verified_at date;
 
+-- ── Plaid bank-linking ───────────────────────────────────────────────────
+-- See supabase/migrations/20260803120000_plaid_link.sql for the full design
+-- rationale. access_token is never granted to `authenticated` — only
+-- service_role (edge functions) and the SECURITY DEFINER function below can
+-- reach this table.
+CREATE TABLE IF NOT EXISTS public.plaid_items (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id               uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  item_id               text NOT NULL,
+  access_token          text NOT NULL,
+  institution_id        text,
+  institution_name      text,
+  status                text NOT NULL DEFAULT 'active'
+                        CHECK (status IN ('active', 'error', 'revoked')),
+  error_code            text,
+  transactions_cursor   text,
+  last_synced_at        timestamptz,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, item_id)
+);
+ALTER TABLE public.plaid_items ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.plaid_items FROM authenticated, anon;
+CREATE INDEX IF NOT EXISTS idx_plaid_items_user ON public.plaid_items(user_id);
+CREATE INDEX IF NOT EXISTS idx_plaid_items_user_status ON public.plaid_items(user_id, status);
+
+ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS plaid_item_id uuid
+  REFERENCES public.plaid_items(id) ON DELETE SET NULL;
+ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS plaid_account_id text;
+ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual'
+  CHECK (source IN ('manual', 'plaid'));
+ALTER TABLE public.accounts ADD COLUMN IF NOT EXISTS last_synced_at timestamptz;
+
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS plaid_item_id uuid
+  REFERENCES public.plaid_items(id) ON DELETE SET NULL;
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS plaid_account_id text;
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual'
+  CHECK (source IN ('manual', 'plaid'));
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS last_synced_at timestamptz;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_user_plaid_account
+  ON public.accounts(user_id, plaid_account_id) WHERE plaid_account_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_debts_user_plaid_account
+  ON public.debts(user_id, plaid_account_id) WHERE plaid_account_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.list_plaid_connections()
+RETURNS TABLE (
+  id uuid, institution_name text, status text, error_code text,
+  created_at timestamptz, last_synced_at timestamptz
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT id, institution_name, status, error_code, created_at, last_synced_at
+  FROM public.plaid_items
+  WHERE user_id = auth.uid()
+  ORDER BY created_at DESC;
+$$;
+REVOKE ALL ON FUNCTION public.list_plaid_connections() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.list_plaid_connections() TO authenticated;
+
 CREATE INDEX IF NOT EXISTS idx_cash_flow_items_user_id ON public.cash_flow_items(user_id);
 CREATE INDEX IF NOT EXISTS idx_cash_flow_items_user_sort ON public.cash_flow_items(user_id, sort_order, created_at);
 

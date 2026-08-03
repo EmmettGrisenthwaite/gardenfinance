@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { getMemories, deleteMemory, createMemory } from '@/lib/memory'
+import { listPlaidConnections, removeAllPlaidConnections } from '@/lib/plaid'
 import Onboarding from '@/components/Onboarding'
 import BottomSheet from '@/components/ui/BottomSheet'
 import {
@@ -170,6 +171,9 @@ export default function Settings() {
       ])
       const failed = [g, d, a, p, c, s, m, bl, cf, r, re].find(result => result.error)
       if (failed) throw failed.error
+      // Institution name and status only — list_plaid_connections() is a
+      // SECURITY DEFINER RPC that never returns the access_token itself.
+      const plaidConnections = await listPlaidConnections().catch(() => [])
       const payload = {
         exported_at: new Date().toISOString(),
         account: { email: user.email, name },
@@ -177,6 +181,7 @@ export default function Settings() {
         plans: p.data ?? [], conversations: c.data ?? [], net_worth_snapshots: s.data ?? [],
         memories: m.data ?? [], budget_limits: bl.data ?? [], cash_flow_items: cf.data ?? [],
         reminders: r.data ?? [], reminder_events: re.data ?? [],
+        connected_banks: plaidConnections,
       }
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
@@ -195,6 +200,28 @@ export default function Settings() {
     setOperationError(null)
     const uid = user.id
     try {
+      // Revoke any live bank connections FIRST. accounts/debts rows and the
+      // auth account are deleted below, but a Plaid item is a live
+      // credential at a third party — "delete everything" should try to
+      // take it down too. This is best-effort and never blocks the rest of
+      // the deletion: a network hiccup or the plaid-remove function not
+      // being deployed yet look identical to a browser fetch failure, so
+      // there's no reliable way to tell "nothing to clean up" apart from
+      // "cleanup genuinely failed." Instead of guessing, we proceed either
+      // way and use a blocking alert (the page navigates to /login right
+      // after, so a banner would never be seen) to make a real failure
+      // impossible to miss.
+      try {
+        const { errors: plaidErrors } = await removeAllPlaidConnections()
+        if (plaidErrors?.length) {
+          window.alert(`Deleted your Garden Financial data, but ${plaidErrors.length} bank connection(s) could not be disconnected from Plaid. Contact support or check your bank's linked-apps settings to remove access.`)
+        }
+      } catch {
+        // Could not even reach the disconnect step (offline, or the
+        // function isn't deployed) — nothing to report unless the user
+        // actually had a connection, which the export/Money screen would
+        // have shown; silently proceeding matches the common case.
+      }
       const results = await Promise.all([
         supabase.from('goals').delete().eq('user_id', uid),
         supabase.from('debts').delete().eq('user_id', uid),

@@ -20,6 +20,7 @@ import { netWorthTrend } from '@/lib/netWorth'
 import PageHeader from '@/components/ui/PageHeader'
 import BottomSheet from '@/components/ui/BottomSheet'
 import MoneySetupNudge from '@/components/MoneySetupNudge'
+import ConnectBank from '@/components/ConnectBank'
 import { actOnReminder, listReminders } from '@/lib/reminders'
 
 const fmt = value => {
@@ -124,7 +125,7 @@ function EmptyState({ icon: Icon, title, copy, action, onAction }) {
   )
 }
 
-function RecordRow({ title, subtitle, value, onEdit, onDelete, confirming, onConfirmDelete, onCancelDelete, disabled }) {
+function RecordRow({ title, subtitle, value, onEdit, onDelete, confirming, onConfirmDelete, onCancelDelete, disabled, synced }) {
   if (confirming) {
     return (
       <div className="flex min-h-16 items-center gap-2 border-b border-white/[0.07] py-2.5 last:border-0">
@@ -140,7 +141,10 @@ function RecordRow({ title, subtitle, value, onEdit, onDelete, confirming, onCon
       <button type="button" onClick={onEdit}
         className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14px] font-semibold text-readable-primary">{title}</span>
+          <span className="flex items-center gap-1.5">
+            <span className="block truncate text-[14px] font-semibold text-readable-primary">{title}</span>
+            {synced && <span className="shrink-0 rounded-full bg-emerald-300/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-200">Synced</span>}
+          </span>
           <span className="mt-0.5 block truncate text-xs text-readable-secondary">{subtitle}</span>
         </span>
         <span className="shrink-0 text-[14px] font-semibold tabular-nums text-white">{value}</span>
@@ -966,7 +970,7 @@ export default function Money({
         {rows.length ? rows.map(account => {
           const freshness = daysSince(account.last_verified_at)
           const secondary = [account.institution, subtypeLabel(account), freshness === null ? 'Not verified' : freshness === 0 ? 'Verified today' : `Verified ${freshness}d ago`].filter(Boolean).join(' · ')
-          return <RecordRow key={account.id} title={account.name} subtitle={secondary} value={fmt(account.balance)}
+          return <RecordRow key={account.id} title={account.name} subtitle={secondary} value={fmt(account.balance)} synced={account.source === 'plaid'}
             onEdit={() => beginAccount(family, account)} onDelete={() => setDeleteTarget(account.id)} confirming={deleteTarget === account.id}
             onCancelDelete={() => setDeleteTarget(null)} onConfirmDelete={() => deleteRecord('accounts', account.id)} disabled={saving} />
         }) : <EmptyState icon={FAMILY_META[family].icon} title={`No ${family === 'asset' ? 'assets' : `${family} accounts`} yet`}
@@ -982,8 +986,10 @@ export default function Money({
     const investmentTotal = accountGroups.investment.reduce((sum, account) => sum + Number(account.balance || 0), 0)
     return (
       <div className="space-y-6">
-        <div className="rounded-2xl border border-emerald-300/18 bg-emerald-300/[0.06] p-4">
-          <p className="text-[15px] font-semibold text-white">Add the accounts you actually use</p>
+        <ConnectBank onConnected={loadData} />
+
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
+          <p className="text-[15px] font-semibold text-white">Or add an account manually</p>
           <p className="mt-1 text-[13px] leading-5 text-readable-secondary">Save each checking, savings, retirement, or brokerage account separately. Balances and account types update Home, net worth, Plan, and Advisor automatically.</p>
         </div>
 
@@ -1054,7 +1060,7 @@ export default function Money({
             <div><p className="text-[11px] font-bold uppercase tracking-wide text-readable-muted">Monthly interest</p><p className="mt-1 font-semibold tabular-nums text-white">{fmt(snapshot.debtMonthlyInterest)}</p></div>
             <div><p className="text-[11px] font-bold uppercase tracking-wide text-readable-muted">Planned payments</p><p className="mt-1 font-semibold tabular-nums text-white">{fmt(snapshot.plannedDebtPayments)}</p></div>
           </div>
-          {activeDebts.map(debt => <RecordRow key={debt.id} title={debt.name}
+          {activeDebts.map(debt => <RecordRow key={debt.id} title={debt.name} synced={debt.source === 'plaid'}
             subtitle={`${DEBT_TYPES.find(option => option.value === debt.type)?.label || 'Debt'}${debt.interest_rate == null ? ' · APR missing' : ` · ${Number(debt.interest_rate)}% APR`}${debt.minimum_payment == null ? ' · Minimum missing' : ` · ${fmt(debt.minimum_payment)} minimum`}`}
             value={fmt(debt.balance)} onEdit={() => beginDebt(debt)} onDelete={() => setDeleteTarget(debt.id)} confirming={deleteTarget === debt.id}
             onCancelDelete={() => setDeleteTarget(null)} onConfirmDelete={() => deleteRecord('debts', debt.id)} disabled={saving} />)}
