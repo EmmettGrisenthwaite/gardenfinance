@@ -30,13 +30,18 @@ test('the client can only read plaid connections through a token-free RPC', asyn
   assert.doesNotMatch(fn, /access_token/i)
 })
 
-test('accounts and debts gain nullable Plaid link columns with idempotent sync keys', async () => {
+test('accounts and debts gain nullable Plaid link columns with an upsert-able unique key', async () => {
   const sql = await readFile(migrationUrl, 'utf8')
   for (const table of ['accounts', 'debts']) {
     assert.match(sql, new RegExp(`ALTER TABLE public\\.${table} ADD COLUMN IF NOT EXISTS plaid_item_id uuid`, 'i'))
     assert.match(sql, new RegExp(`ALTER TABLE public\\.${table} ADD COLUMN IF NOT EXISTS plaid_account_id text`, 'i'))
     assert.match(sql, new RegExp(`ALTER TABLE public\\.${table} ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'manual'`, 'i'))
-    assert.match(sql, new RegExp(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_user_plaid_account`, 'i'))
+    // Must be a full UNIQUE constraint, not a partial index — PostgREST's
+    // plain `ON CONFLICT (user_id, plaid_account_id)` upsert can only target
+    // a full constraint (see plaid-exchange/plaid-sync). A partial `WHERE
+    // plaid_account_id IS NOT NULL` index fails with Postgres error 42P10.
+    assert.match(sql, new RegExp(`ALTER TABLE public\\.${table} ADD CONSTRAINT ${table}_user_plaid_account_key UNIQUE \\(user_id, plaid_account_id\\)`, 'i'))
+    assert.doesNotMatch(sql, new RegExp(`CREATE UNIQUE INDEX[^;]*idx_${table}_user_plaid_account`, 'i'))
   }
 })
 
@@ -45,6 +50,6 @@ test('the bootstrap SQL editor script stays in sync with the migration', async (
   assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.plaid_items/i)
   assert.match(sql, /REVOKE ALL ON public\.plaid_items FROM authenticated, anon/i)
   assert.match(sql, /CREATE OR REPLACE FUNCTION public\.list_plaid_connections/i)
-  assert.match(sql, /idx_accounts_user_plaid_account/i)
-  assert.match(sql, /idx_debts_user_plaid_account/i)
+  assert.match(sql, /accounts_user_plaid_account_key UNIQUE \(user_id, plaid_account_id\)/i)
+  assert.match(sql, /debts_user_plaid_account_key UNIQUE \(user_id, plaid_account_id\)/i)
 })

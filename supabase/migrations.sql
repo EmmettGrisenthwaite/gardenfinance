@@ -335,10 +335,10 @@ ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT '
   CHECK (source IN ('manual', 'plaid'));
 ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS last_synced_at timestamptz;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_user_plaid_account
-  ON public.accounts(user_id, plaid_account_id) WHERE plaid_account_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_debts_user_plaid_account
-  ON public.debts(user_id, plaid_account_id) WHERE plaid_account_id IS NOT NULL;
+ALTER TABLE public.accounts DROP CONSTRAINT IF EXISTS accounts_user_plaid_account_key;
+ALTER TABLE public.accounts ADD CONSTRAINT accounts_user_plaid_account_key UNIQUE (user_id, plaid_account_id);
+ALTER TABLE public.debts DROP CONSTRAINT IF EXISTS debts_user_plaid_account_key;
+ALTER TABLE public.debts ADD CONSTRAINT debts_user_plaid_account_key UNIQUE (user_id, plaid_account_id);
 
 CREATE OR REPLACE FUNCTION public.list_plaid_connections()
 RETURNS TABLE (

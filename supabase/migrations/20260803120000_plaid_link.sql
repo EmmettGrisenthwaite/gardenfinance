@@ -70,11 +70,18 @@ ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT '
 ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS last_synced_at timestamptz;
 
 -- One Plaid account maps to at most one row per user — lets sync use a plain
--- upsert instead of a read-then-write race.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_user_plaid_account
-  ON public.accounts(user_id, plaid_account_id) WHERE plaid_account_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_debts_user_plaid_account
-  ON public.debts(user_id, plaid_account_id) WHERE plaid_account_id IS NOT NULL;
+-- upsert instead of a read-then-write race. This is a full (non-partial)
+-- UNIQUE constraint rather than a `WHERE plaid_account_id IS NOT NULL`
+-- index: Postgres's NULL != NULL means manual rows (plaid_account_id NULL)
+-- never collide either way, but only a full constraint can be targeted by
+-- plain `ON CONFLICT (user_id, plaid_account_id)` — a partial index needs
+-- its exact WHERE clause repeated at every call site, which PostgREST's
+-- upsert doesn't do, and fails with "no unique or exclusion constraint
+-- matching the ON CONFLICT specification" (42P10).
+ALTER TABLE public.accounts DROP CONSTRAINT IF EXISTS accounts_user_plaid_account_key;
+ALTER TABLE public.accounts ADD CONSTRAINT accounts_user_plaid_account_key UNIQUE (user_id, plaid_account_id);
+ALTER TABLE public.debts DROP CONSTRAINT IF EXISTS debts_user_plaid_account_key;
+ALTER TABLE public.debts ADD CONSTRAINT debts_user_plaid_account_key UNIQUE (user_id, plaid_account_id);
 
 -- ── Safe read surface for the client ─────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.list_plaid_connections()
