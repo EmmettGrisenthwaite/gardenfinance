@@ -16,7 +16,6 @@ import { reconcileGardenMilestones } from '@/lib/gardenProgress'
 import { getMoneySetupState } from '@/lib/moneySetup'
 import { selectHomeAction } from '@/lib/homeModel'
 import { headlineMetrics } from '@/lib/moneyLanguage'
-import { deriveScenario } from '@/lib/scenario'
 import { buildPlanModel } from '@/lib/focusedPlan'
 import ProgressActivitySheet from '@/components/ProgressActivitySheet'
 import { listFinancialActivities } from '@/lib/financialActivities'
@@ -128,14 +127,13 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
     activities,
     reminders,
   }), [snapshot, profile, accounts, debts, goals, cashFlowItems, budgetLimits, setupState, plan, activities, reminders])
-  const scenario = useMemo(() => deriveScenario(snapshot), [snapshot])
   const reminderModel = useMemo(() => buildReminderModel({
     snapshot, profile, accounts, debts, goals, activities,
     reminders, events: reminderEvents,
   }), [snapshot, profile, accounts, debts, goals, activities, reminders, reminderEvents])
   const action = useMemo(() => selectHomeAction({
-    setupState, planModel, reminderModel, activities, plan, planLoading, scenario,
-  }), [setupState, planModel, reminderModel, activities, plan, planLoading, scenario])
+    setupState, planModel, reminderModel, activities, plan, planLoading,
+  }), [setupState, planModel, reminderModel, activities, plan, planLoading])
   const grouped = useMemo(() => groupGardenGoals(goals, milestones, 3), [goals, milestones])
   const gardenStageProgress = useMemo(() => stageProgress(milestoneTotal), [milestoneTotal])
   const selectedPercent = selectedGoal

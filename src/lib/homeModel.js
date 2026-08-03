@@ -7,7 +7,6 @@ export function selectHomeAction({
   activities,
   plan,
   planLoading = false,
-  scenario = null,
   now,
 } = {}) {
   const attention = buildAttentionModel({ setupState, planModel, reminderModel, activities, now })
@@ -44,9 +43,7 @@ export function selectHomeAction({
   if (unfinished) {
     return {
       kind: 'plan-step',
-      // Name the chapter so the next step reads as part of THEIR story, not a
-      // generic to-do ("Extinguish · up next" instead of a bare label).
-      eyebrow: scenario?.chapter ? `${scenario.chapter} · up next` : 'Up next in your Plan',
+      eyebrow: 'Up next in your Plan',
       title: unfinished.text || 'Continue your next step',
       detail: unfinished.detail || unfinished.impact || 'One focused action keeps your financial plan moving.',
       doneWhen: unfinished.doneWhen || null,
