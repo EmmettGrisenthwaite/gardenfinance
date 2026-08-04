@@ -789,9 +789,13 @@ export default function Money({
     if (editor?.kind === 'debt') return <SaveFooter onBack={returnToList} guardBack={editorDirty} onSave={saveDebt} saving={saving} saveLabel="Save debt" />
     if (activeSheet === 'plan') return <SaveFooter onSave={saveMonthlyPlan} saving={saving} saveLabel="Save monthly plan" disabled={!dirty} />
     if (activeSheet === 'balances') return <SaveFooter onSave={saveBalances} saving={saving} saveLabel="Update balances" disabled={!dirty} />
+    // "Provisional" is a claim about the route, so only promise it when the
+    // route will actually say so — with balances but no debts recorded it
+    // still withholds certainty (unknown debt could outrank savings), so that
+    // case is not "Done" either.
     if (activeSheet === 'accounts') return <SaveFooter onSave={requestClose} saving={false}
       saveLabel={new URLSearchParams(location.search).get('setup') === '1'
-        ? (accounts.length || debts.length ? 'Done — show my money route' : 'Skip — show a provisional route')
+        ? (accounts.length && debts.length ? 'Done — show my money route' : 'Continue — show my route')
         : (accounts.length ? 'Done — use these accounts' : 'Skip for now')} />
     return null
   }

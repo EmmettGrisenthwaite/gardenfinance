@@ -421,8 +421,28 @@ export function buildMoneyRoute({
   // payoff that's already the highest verified cost in the picture. Surfaced
   // separately so the UI can say "do this — it's certain" even while the
   // route as a whole stays provisional.
+  //
+  // Certainty must also account for a category we were never told about, not
+  // just for facts we know are missing. High-interest debt sits mid-ladder:
+  // anything ranked above it (repairing a deficit, coverage, the starter
+  // reserve, an employer match) stays correct no matter what debt exists, but
+  // anything ranked below it (the full reserve, goals, investing) could be
+  // outranked by a card we've never seen. With zero debt records the app
+  // cannot distinguish "no debt" from "never entered" — so it declines to
+  // claim certainty rather than confidently routing money past a possible
+  // 24% APR balance.
+  const OUTRANKS_UNKNOWN_DEBT = new Set([
+    'repair_budget', 'repair_allocations', 'choose_health_coverage',
+    'starter_emergency', 'capture_employer_match',
+  ])
   const topAllocation = finalAllocations.find(item => item.amount > 0 && item.destinationType !== 'unassigned')
-  const primaryMoveConfident = Boolean(topAllocation) && topAllocation.confidence === 'verified'
+  const debtEvidenceRecorded = debts.length > 0
+  const topOutranksUnknownDebt = Boolean(topAllocation) && (
+    OUTRANKS_UNKNOWN_DEBT.has(topAllocation.key) || topAllocation.destinationType === 'debt'
+  )
+  const primaryMoveConfident = Boolean(topAllocation)
+    && topAllocation.confidence === 'verified'
+    && (debtEvidenceRecorded || topOutranksUnknownDebt)
 
   return {
     chapter,

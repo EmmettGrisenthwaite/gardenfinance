@@ -158,6 +158,46 @@ test('the top move is reported confident even while the route stays provisional'
   assert.equal(route.primaryMoveConfident, true)
 })
 
+test('certainty is withheld when a whole category was never recorded', () => {
+  // Regression: the setup sheet lets a user skip the debts section, and the
+  // app cannot tell "no debt" from "never entered". Routing the full monthly
+  // surplus into savings while an unseen 24% card compounds is exactly the
+  // advice that must not carry a certainty claim.
+  const noDebtEvidence = buildMoneyRoute(state({
+    profile: { monthly_income: 4500, monthly_expenses: 3200, health_insurance: 'employer', employer_401k: 'no_match' },
+    accounts: [
+      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 600 },
+      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: 1200 },
+    ],
+    debts: [],
+  }))
+  assert.equal(noDebtEvidence.allocations[0].key, 'full_emergency')
+  assert.equal(noDebtEvidence.primaryMoveConfident, false)
+
+  // The same route becomes certain once debt is actually known to be absent.
+  const debtsKnownPaidOff = buildMoneyRoute(state({
+    profile: { monthly_income: 4500, monthly_expenses: 3200, health_insurance: 'employer', employer_401k: 'no_match' },
+    accounts: [
+      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 600 },
+      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: 1200 },
+    ],
+    debts: [{ id: 'old', name: 'Paid card', balance: 0, interest_rate: 22, minimum_payment: 25 }],
+  }))
+  assert.equal(debtsKnownPaidOff.primaryMoveConfident, true)
+})
+
+test('a move that outranks debt stays certain even with no debt recorded', () => {
+  // The starter reserve sits ABOVE high-interest debt in the ladder, so an
+  // unknown card cannot displace it — withholding certainty here would be
+  // needlessly timid about a genuinely correct recommendation.
+  const route = buildMoneyRoute(state({
+    accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 200 }],
+    debts: [],
+  }))
+  assert.equal(route.allocations[0].key, 'starter_emergency')
+  assert.equal(route.primaryMoveConfident, true)
+})
+
 test('the top debt payoff acknowledges an already-covered starter reserve', () => {
   const input = state({
     accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 1800 }],
