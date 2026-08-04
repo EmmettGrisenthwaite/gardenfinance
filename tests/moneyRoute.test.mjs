@@ -121,6 +121,32 @@ test('user adjustments cannot exceed the recorded monthly amount', () => {
   assert.deepEqual(route.allocations.filter(item => item.adjustable).map(item => item.amount), [800, 100])
 })
 
+test('an unconfirmed employer match outranks a debt-bookkeeping reconciliation blocker', () => {
+  // Regression: found via a live blind-test walkthrough. A user who told
+  // onboarding "yes, my employer matches" but hasn't added the workplace
+  // account yet, PLUS has a debt whose minimum isn't itemized in the Monthly
+  // Plan, produces two blockers. MoneyRouteCard only ever headlines
+  // blockers[0] — the higher-value "capture the match" fact must win that
+  // slot over a low-stakes accounting nit that doesn't change any amount.
+  const cashFlowItems = [
+    { kind: 'income', group_key: 'income', category_key: 'paycheck', amount: 4500, monthly_amount: 4500 },
+    { kind: 'expense', group_key: 'needs', category_key: 'housing', amount: 3200, monthly_amount: 3200 },
+  ]
+  const input = state({
+    profile: { monthly_income: 4500, monthly_expenses: 3200, health_insurance: 'employer', employer_401k: 'match' },
+    cashFlowItems,
+    accounts: [
+      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 600 },
+      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: 1200 },
+    ],
+    debts: [{ id: 'visa', name: 'Visa Card', balance: 2400, interest_rate: 24, minimum_payment: 60 }],
+  })
+  const route = buildMoneyRoute(input)
+  assert.equal(route.blockers.some(item => item.id === 'employer_match_details'), true)
+  assert.equal(route.blockers.some(item => item.id === 'debt_payment_gap'), true)
+  assert.equal(route.blockers[0].id, 'employer_match_details')
+})
+
 test('approval creates no more than three structured focused steps', () => {
   const route = buildMoneyRoute(state({
     profile: { monthly_income: 5000, monthly_expenses: 4100, health_insurance: 'employer', employer_401k: 'unsure' },

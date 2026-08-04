@@ -693,8 +693,15 @@ export function staleStepReason(step, snapshot, activities, fingerprint) {
     return `Current cash flow no longer supports the suggested ${money(recurringAmount)}/mo commitment.`
   }
 
+  // A recurring/monthly step (recurringAmount above) represents an ongoing
+  // flow paid from future income, not a lump sum that must already be sitting
+  // in the source account today — it was already checked against cash-flow
+  // capacity, not a balance. Money Route's amounts are sized off the monthly
+  // surplus, not any single account's balance, so applying this lump-sum
+  // check to those steps flagged nearly every real plan as stale on day one
+  // (e.g. "$1,240/mo toward a debt" against a $600 checking balance).
   const sourceId = step.outcome?.sourceAccountId
-  if (sourceId && num(step.outcome?.amount) > 0) {
+  if (sourceId && num(step.outcome?.amount) > 0 && !recurringAmount) {
     const source = (snapshot.accounts || []).find(account => account.id === sourceId)
     if (!source || num(source.balance) < num(step.outcome.amount)) return 'The source balance no longer supports this transfer amount.'
   }

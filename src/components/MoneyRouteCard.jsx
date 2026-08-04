@@ -85,6 +85,21 @@ export default function MoneyRouteCard({
             <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 text-amber-100" />
             <div><p className="text-[13px] font-semibold text-amber-50">One fact could refine this route</p><p className="mt-0.5 text-xs leading-5 text-readable-secondary">{blocker.title}. {blocker.detail}</p></div>
           </div>
+          {/* route.blockers can hold more than one missing fact, but only the
+              first drives the headline copy above — list the rest so a second
+              (often equally or more valuable) fact is never silently dropped. */}
+          {!compact && route.blockers.length > 1 && (
+            <ul className="mt-2.5 space-y-1.5 border-t border-amber-200/10 pt-2.5">
+              {route.blockers.slice(1).map(item => (
+                <li key={item.id}>
+                  <button type="button" onClick={() => onResolveBlocker?.(item)} disabled={busy}
+                    className="min-h-9 w-full rounded-lg px-1 text-left text-xs font-semibold text-amber-50/85 hover:text-amber-50 hover:underline disabled:opacity-50">
+                    Also: {item.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

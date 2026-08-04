@@ -266,6 +266,32 @@ test('generated account, insurance, debt, match, reserve, and goal work becomes 
   for (const step of cases) assert.ok(staleStepReason(step, current, [], fp), step.intentKey)
 })
 
+test('a recurring monthly commitment is not judged against a single account balance', () => {
+  // Regression: found via a live blind-test walkthrough. Money Route sizes a
+  // recurring step off the monthly cash-flow surplus, not any one account's
+  // balance — a "$1,240/mo toward this debt" commitment doesn't require
+  // $1,240 to already be sitting in checking today. Applying the one-time
+  // lump-sum balance check to it flagged nearly every real Money Route plan
+  // as stale immediately after creation.
+  const current = snapshot({
+    accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 600 }],
+  })
+  const fp = focusPlanFingerprint({ snapshot: current, plan: { steps: [] } })
+  const recurringStep = {
+    source: 'money-route', intentKey: 'fund.investment.primary', priorityKey: 'invest',
+    outcome: { amount: 1240, recurrence: 'monthly', sourceAccountId: 'checking' },
+  }
+  assert.equal(staleStepReason(recurringStep, current, [], fp), null)
+
+  // A genuine one-time transfer against an insufficient balance must still
+  // be caught — only the recurring case is exempt.
+  const oneTimeStep = {
+    source: 'money-route', intentKey: 'fund.investment.primary', priorityKey: 'invest',
+    outcome: { amount: 1240, sourceAccountId: 'checking' },
+  }
+  assert.ok(staleStepReason(oneTimeStep, current, [], fp))
+})
+
 test('manual work is never marked stale and Keep lasts only for the current fingerprint', () => {
   const current = snapshot()
   const plan = { steps: [] }

@@ -1093,7 +1093,10 @@ export default function Money({
           <button type="button" onClick={() => beginDebt()} className="btn-ghost mt-4 min-h-11 w-full"><Plus className="h-4 w-4" /> Add debt</button>
         </> : <EmptyState icon={CreditCard} title="No active debts tracked" copy="If you add one, only name, type, and balance are required. Rates and payment details stay optional." action="Add debt" onAction={() => beginDebt()} />}
         {activeDebts.length > 0 && !snapshot.debtFree && <p className="mt-4 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-3 text-xs leading-5 text-readable-secondary">Add an APR and minimum payment for every active debt to unlock an honest debt-free date.</p>}
-        {snapshot.debtFree && !snapshot.debtFree.stuck && <p className="mt-4 rounded-xl border border-emerald-300/14 bg-emerald-300/[0.05] px-3.5 py-3 text-[13px] leading-5 text-emerald-100">At your planned payments, the minimum-aware avalanche reaches debt-free in about {snapshot.debtFree.months} months ({snapshot.debtFree.debtFreeLabel}).</p>}
+        {/* debtFreedomWithMinimums returns a truthy { months: 0, totalInterest: 0 }
+            placeholder for an empty debt list — gate on totalDebt too, or the
+            empty state renders "debt-free in about 0 months ()" with no label. */}
+        {snapshot.totalDebt > 0 && snapshot.debtFree && !snapshot.debtFree.stuck && <p className="mt-4 rounded-xl border border-emerald-300/14 bg-emerald-300/[0.05] px-3.5 py-3 text-[13px] leading-5 text-emerald-100">At your planned payments, the minimum-aware avalanche reaches debt-free in about {snapshot.debtFree.months} months ({snapshot.debtFree.debtFreeLabel}).</p>}
       </div>
     )
   }

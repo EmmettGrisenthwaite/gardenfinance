@@ -192,19 +192,12 @@ export function buildMoneyRoute({
       sheet: setupState.next.sheet || 'plan',
     }))
   }
-  if (unrecordedDebtMinimums > 0) {
-    blockers.push(routeBlocker({
-      id: 'debt_payment_gap', title: `Add ${money(unrecordedDebtMinimums)} of required debt payments to your Monthly Plan`,
-      detail: 'This amount was reserved before calculating money left to assign.', sheet: 'plan',
-    }))
-  } else if (missingMinimum) {
-    blockers.push(routeBlocker({
-      id: 'debt_minimum', title: `Add the minimum payment for ${missingMinimum.name}`,
-      detail: 'The route currently assumes your lump monthly spending already includes this required payment.',
-      sheet: 'debts', recordId: missingMinimum.id,
-    }))
-  }
 
+  // Employer match is evaluated before the debt/balance bookkeeping blockers
+  // below: only the highest-ranked blocker is ever surfaced in the UI
+  // (MoneyRouteCard shows blockers[0] as the headline), and an unconfirmed or
+  // undetailed match is worth more to a user than a reconciliation nit — it's
+  // the "free money" priority everywhere else in the app.
   const workplaceAccounts = accounts.filter(isWorkplaceAccount)
   const workplace = workplaceAccounts[0] || null
   const profileMatch = profile?.employer_401k
@@ -243,6 +236,19 @@ export function buildMoneyRoute({
       id: 'employer_match_details', title: 'Add your employer-match limit and current contribution',
       detail: 'The match is recorded, but the app needs the percentages before it can calculate the payroll change.',
       sheet: 'investment', recordId: workplace?.id || null,
+    }))
+  }
+
+  if (unrecordedDebtMinimums > 0) {
+    blockers.push(routeBlocker({
+      id: 'debt_payment_gap', title: `Add ${money(unrecordedDebtMinimums)} of required debt payments to your Monthly Plan`,
+      detail: 'This amount was reserved before calculating money left to assign.', sheet: 'plan',
+    }))
+  } else if (missingMinimum) {
+    blockers.push(routeBlocker({
+      id: 'debt_minimum', title: `Add the minimum payment for ${missingMinimum.name}`,
+      detail: 'The route currently assumes your lump monthly spending already includes this required payment.',
+      sheet: 'debts', recordId: missingMinimum.id,
     }))
   }
   if (unratedDebt) {
@@ -540,9 +546,15 @@ function allocationStep(route, allocation, index) {
   if (isDebt) outcome.debtId = allocation.destinationId || null
   if (isGoal) outcome.goalId = allocation.destinationId || null
   if (!isDebt && !isGoal) outcome.destinationAccountId = allocation.destinationId || null
+  // outcome.recurrence above is unconditionally 'monthly' — every allocation
+  // step is an ongoing commitment. Without "/mo" here, this step ("Pay
+  // $1,240 to Visa Card") sits directly above buildInitialPlan's automation
+  // step ("Schedule $1,240 monthly toward Visa Card") and reads as a second,
+  // separate $1,240 outflow rather than the same recurring amount described
+  // two ways — the automation step exists to set up autopay FOR this one.
   return stepBase(route, index, {
     key: allocation.key,
-    text: `${isDebt ? 'Pay' : 'Move'} ${money(amount)} ${isDebt ? 'to' : 'toward'} ${allocation.label.replace(/^Pay extra toward |^Build the |^Grow |^Fund |^Increase investing in /, '')}`,
+    text: `${isDebt ? 'Pay' : 'Move'} ${money(amount)}/mo ${isDebt ? 'to' : 'toward'} ${allocation.label.replace(/^Pay extra toward |^Build the |^Grow |^Fund |^Increase investing in /, '')}`,
     detail: allocation.reason,
     doneWhen: `${money(amount)} is ${isDebt ? 'paid and the debt balance is updated' : 'transferred and the destination record reflects it'}.`,
     impact: isDebt ? `Directs ${money(amount)}/mo to the highest verified debt cost` : `Assigns ${money(amount)}/mo to this priority`,
