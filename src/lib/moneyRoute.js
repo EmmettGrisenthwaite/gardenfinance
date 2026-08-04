@@ -161,11 +161,24 @@ export function buildMoneyRoute({
     snapshot, profile, accounts, debts, goals, activities, setupState,
   })))}`
   const detailedFlow = (snapshot.cashFlowItems || []).length > 0
-  const rawAvailable = detailedFlow ? num(snapshot.unallocated) : num(snapshot.cashFlowMargin)
+  // marginAmount is the SAME figure Home's "Left over monthly" tile shows
+  // (moneyLanguage.js reads snapshot.cashFlowMargin directly) — every step
+  // subtracted below is reported on the route so the UI can show its own
+  // total as a visible reconciliation of that number, never a second,
+  // unexplained figure sitting next to it.
+  const marginAmount = num(snapshot.cashFlowMargin)
+  const alreadyAllocatedAmount = detailedFlow ? Math.max(0, roundMoney(snapshot.futureAllocations)) : 0
+  const rawAvailable = marginAmount - alreadyAllocatedAmount
   const debtMinimums = num(snapshot.requiredDebtPayments)
   const recordedDebtPayments = num(snapshot.budgetStatus?.byCategory?.debt_payments)
   const unrecordedDebtMinimums = detailedFlow ? Math.max(0, debtMinimums - recordedDebtPayments) : 0
+  const reservedAmount = Math.max(0, roundMoney(unrecordedDebtMinimums))
   const availableMonthlyAmount = Math.max(0, Math.round(rawAvailable - unrecordedDebtMinimums))
+  const reconciliation = [
+    { label: 'Left over monthly', amount: roundMoney(marginAmount) },
+    ...(alreadyAllocatedAmount > 0 ? [{ label: 'Already assigned elsewhere', amount: -alreadyAllocatedAmount }] : []),
+    ...(reservedAmount > 0 ? [{ label: 'Reserved for required payments not yet in your Monthly Plan', amount: -reservedAmount }] : []),
+  ]
   const alreadyCommitted = [
     ...(num(snapshot.expenses) > 0 ? [{ key: 'expenses', label: 'Typical spending', amount: roundMoney(snapshot.expenses), included: true }] : []),
     ...(debtMinimums > 0 ? [{
@@ -334,11 +347,19 @@ export function buildMoneyRoute({
       .sort((left, right) => num(right.interest_rate) - num(left.interest_rate))
     for (const debt of highInterest) {
       if (remaining <= 0) break
+      // When this debt is the very first thing allocated, say so explicitly
+      // if the starter reserve is already covered — otherwise directing the
+      // full monthly amount at one debt can read as reckless rather than as
+      // the deliberate, math-backed move it is.
+      const isFirstMove = allocations.length === 0
+      const reserveCovered = starterGap === 0 && num(snapshot.liquid) > 0
       remaining = addAllocation(allocations, {
         key: `debt.${debt.id || debt.name}`, label: `Pay extra toward ${debt.name}`,
         maxAmount: num(debt.balance), destinationType: 'debt', destinationId: debt.id || null,
         sourceAccountId: source?.id || null,
-        reason: `${num(debt.interest_rate)}% APR makes this the highest verified debt cost.`,
+        reason: isFirstMove && reserveCovered
+          ? `Your ${money(THRESHOLDS.starterEmergency)} starter reserve is already covered, so ${num(debt.interest_rate)}% APR makes this the highest verified use of new money.`
+          : `${num(debt.interest_rate)}% APR makes this the highest verified debt cost.`,
       }, remaining)
     }
 
@@ -393,10 +414,21 @@ export function buildMoneyRoute({
     ? `${baseFingerprint}-${hashState(JSON.stringify(adjustments))}`
     : baseFingerprint
   const provisional = blockers.length > 0 || finalAllocations.some(item => item.confidence !== 'verified')
+  // "Provisional" describes the ROUTE — whether a later priority could still
+  // shift. It should never read as "don't trust this" when the very next
+  // action is fully verified: a missing fact about, say, an employer match
+  // can only ever add a NEW higher-ranked step, never invalidate a debt
+  // payoff that's already the highest verified cost in the picture. Surfaced
+  // separately so the UI can say "do this — it's certain" even while the
+  // route as a whole stays provisional.
+  const topAllocation = finalAllocations.find(item => item.amount > 0 && item.destinationType !== 'unassigned')
+  const primaryMoveConfident = Boolean(topAllocation) && topAllocation.confidence === 'verified'
 
   return {
     chapter,
     availableMonthlyAmount,
+    reservedAmount,
+    reconciliation,
     allocations: finalAllocations,
     alreadyCommitted,
     blockers,
@@ -404,6 +436,7 @@ export function buildMoneyRoute({
     primaryQuestion: blockers.find(blocker => blocker.question)?.question || null,
     nextDestination: nextDestinationFor(finalAllocations, snapshot, goals),
     provisional,
+    primaryMoveConfident,
     complete: !provisional,
     baseFingerprint,
     fingerprint,

@@ -204,6 +204,38 @@ function PreviewStep() {
 }
 
 // ─── Option card ───────────────────────────────────────────────────────────────
+// Compact single-select chips — same visual language as the multi-select
+// investment grid on the same screen (icon + label, 2 columns, no sub-text).
+// Selection state is always visible at a glance, unlike a native <select>
+// where the current answer is hidden until the dropdown opens — that
+// visibility is also what tells a user which of several combined fields on
+// one screen still needs an answer, without a separate error indicator.
+function ChipSelect({ options, value, onChange }) {
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-2">
+      {options.map(option => {
+        const selected = value === option.value
+        return (
+          <button
+            type="button"
+            key={option.value}
+            aria-pressed={selected}
+            onClick={() => onChange(option.value)}
+            className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors ${
+              selected
+                ? 'border-emerald-400/60 bg-emerald-500/[0.12] text-white'
+                : 'border-white/10 bg-white/[0.045] text-readable-secondary hover:border-emerald-400/35'
+            }`}
+          >
+            {option.icon && <span className="shrink-0 text-base leading-none">{option.icon}</span>}
+            <span className="min-w-0 flex-1 truncate">{option.label}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function OptionCard({ option, selected, onClick, multi }) {
   const active = multi ? selected.includes(option.value) : selected === option.value
   return (
@@ -612,63 +644,57 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                       <span className="text-sm text-readable-secondary">years old</span>
                     </div>
                   </label>
-                  <label className="block">
+                  <div>
                     <span className="text-sm font-medium text-white">Work situation</span>
-                    <select
+                    <ChipSelect
                       value={answers.employment_type}
-                      onChange={event => {
-                        const value = event.target.value
-                        setAnswers(previous => ({
-                          ...previous,
-                          employment_type: value,
-                          employer_401k: ['freelance', 'student'].includes(value) ? 'na' : previous.employer_401k,
-                        }))
-                      }}
-                      className="mt-1.5 w-full rounded-xl border-2 border-white/15 bg-[#132019] px-3 py-3 text-base text-white focus:border-emerald-500 focus:outline-none"
-                    >
-                      <option value="">Choose one</option>
-                      <option value="w2">Salaried / W-2</option>
-                      <option value="freelance">Freelance / self-employed</option>
-                      <option value="student">Student</option>
-                      <option value="other">Other or between jobs</option>
-                    </select>
-                  </label>
+                      options={[
+                        { value: 'w2', label: 'Salaried / W-2', icon: '💼' },
+                        { value: 'freelance', label: 'Freelance / self-employed', icon: '🧑‍💻' },
+                        { value: 'student', label: 'Student', icon: '🎓' },
+                        { value: 'other', label: 'Other or between jobs', icon: '🌀' },
+                      ]}
+                      onChange={value => setAnswers(previous => ({
+                        ...previous,
+                        employment_type: value,
+                        employer_401k: ['freelance', 'student'].includes(value) ? 'na' : previous.employer_401k,
+                      }))}
+                    />
+                  </div>
                 </div>
               )}
 
               {current.type === 'calm_coverage' && (
                 <div className="space-y-4">
-                  <label className="block">
+                  <div>
                     <span className="text-sm font-medium text-white">Health coverage</span>
-                    <select
+                    <ChipSelect
                       value={answers.health_insurance}
-                      onChange={event => set('health_insurance', event.target.value)}
-                      className="mt-1.5 w-full rounded-xl border-2 border-white/15 bg-[#132019] px-3 py-3 text-base text-white focus:border-emerald-500 focus:outline-none"
-                    >
-                      <option value="">Choose one</option>
-                      <option value="employer">Covered through work</option>
-                      <option value="marketplace">Marketplace / ACA plan</option>
-                      {Number(answers.age) < 26 && <option value="parents">On a parent&apos;s plan</option>}
-                      <option value="spouse">On a spouse&apos;s plan</option>
-                      <option value="none">Not currently covered</option>
-                    </select>
-                  </label>
+                      onChange={value => set('health_insurance', value)}
+                      options={[
+                        { value: 'employer', label: 'Covered through work', icon: '🏢' },
+                        { value: 'marketplace', label: 'Marketplace / ACA plan', icon: '🛒' },
+                        ...(Number(answers.age) < 26 ? [{ value: 'parents', label: "On a parent's plan", icon: '👨‍👩‍👧' }] : []),
+                        { value: 'spouse', label: "On a spouse's plan", icon: '💑' },
+                        { value: 'none', label: 'Not currently covered', icon: '⚠️' },
+                      ]}
+                    />
+                  </div>
 
                   {!['freelance', 'student'].includes(answers.employment_type) && (
-                    <label className="block">
+                    <div>
                       <span className="text-sm font-medium text-white">Workplace retirement plan</span>
-                      <select
+                      <ChipSelect
                         value={answers.employer_401k}
-                        onChange={event => set('employer_401k', event.target.value)}
-                        className="mt-1.5 w-full rounded-xl border-2 border-white/15 bg-[#132019] px-3 py-3 text-base text-white focus:border-emerald-500 focus:outline-none"
-                      >
-                        <option value="">Choose one</option>
-                        <option value="match">Offered with an employer match</option>
-                        <option value="no_match">Offered without a match</option>
-                        <option value="none">Not offered</option>
-                        <option value="unsure">I&apos;m not sure</option>
-                      </select>
-                    </label>
+                        onChange={value => set('employer_401k', value)}
+                        options={[
+                          { value: 'match', label: 'Offered, with a match', icon: '🎯' },
+                          { value: 'no_match', label: 'Offered, no match', icon: '📋' },
+                          { value: 'none', label: 'Not offered', icon: '❌' },
+                          { value: 'unsure', label: "I'm not sure", icon: '🤷' },
+                        ]}
+                      />
+                    </div>
                   )}
 
                   <fieldset>

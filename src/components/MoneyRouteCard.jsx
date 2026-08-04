@@ -7,6 +7,13 @@ function routeItems(route) {
   return (route?.allocations || []).filter(item => item.amount > 0 || !item.adjustable)
 }
 
+// "Provisional" describes whether a LATER priority could still shift — it
+// must never sit on the headline when the very next action is already fully
+// verified, or a correct, confident recommendation reads as shaky.
+function shouldShowProvisionalBadge(route) {
+  return route.provisional && !route.primaryMoveConfident
+}
+
 export function MoneyRouteSummary({ route }) {
   if (!route) return null
   const visible = routeItems(route).filter(item => !['hold_for_coverage', 'unassigned'].includes(item.key)).slice(0, 3)
@@ -15,7 +22,7 @@ export function MoneyRouteSummary({ route }) {
       <div className="flex items-center gap-2">
         <Route className="h-4 w-4 text-emerald-200" />
         <p className="text-[13px] font-semibold text-white">Money Route</p>
-        {route.provisional && <span className="ml-auto rounded-full border border-amber-200/20 bg-amber-300/[0.08] px-2 py-0.5 text-[11px] font-semibold text-amber-50">Provisional</span>}
+        {shouldShowProvisionalBadge(route) && <span className="ml-auto rounded-full border border-amber-200/20 bg-amber-300/[0.08] px-2 py-0.5 text-[11px] font-semibold text-amber-50">Provisional</span>}
       </div>
       <p className="mt-2 text-[13px] leading-5 text-readable-secondary">
         <strong className="font-semibold text-white">{formatMoney(route.availableMonthlyAmount)}/mo</strong>
@@ -50,14 +57,27 @@ export default function MoneyRouteCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/80">{compact ? 'Your monthly route' : 'Your first money route'}</p>
-            {route.provisional && <span className="rounded-full border border-amber-200/20 bg-amber-300/[0.08] px-2 py-0.5 text-[11px] font-semibold text-amber-50">Provisional</span>}
+            {shouldShowProvisionalBadge(route) && <span className="rounded-full border border-amber-200/20 bg-amber-300/[0.08] px-2 py-0.5 text-[11px] font-semibold text-amber-50">Provisional</span>}
           </div>
           <h2 className="mt-1.5 text-[20px] font-semibold leading-7 tracking-[-0.02em] text-white">
             {route.availableMonthlyAmount > 0
               ? `${formatMoney(route.availableMonthlyAmount)} left to assign each month`
               : `${route.chapter} comes first`}
           </h2>
-          <p className="mt-1 text-[13px] leading-5 text-readable-secondary">{route.chapter} is the current chapter. Required payments and recorded allocations are kept separate so this money is not counted twice.</p>
+          {/* The reconciliation is what stops this figure from ever reading as
+              a second, unexplained number next to Home's "Left over monthly"
+              — every subtraction between the two is spelled out here. */}
+          {!compact && route.reconciliation?.length > 1 && (
+            <p className="mt-1 text-xs leading-5 text-readable-muted">
+              {formatMoney(route.reconciliation[0].amount)} left over
+              {route.reconciliation.slice(1).map(line => ` − ${formatMoney(Math.abs(line.amount))} ${line.label.toLowerCase()}`).join('')}
+            </p>
+          )}
+          <p className="mt-1 text-[13px] leading-5 text-readable-secondary">
+            {route.primaryMoveConfident
+              ? <><span className="font-semibold text-emerald-100">This step is certain — </span>{route.chapter.toLowerCase()} comes first no matter what you answer below.</>
+              : <>{route.chapter} is the current chapter. Required payments and recorded allocations are kept separate so this money is not counted twice.</>}
+          </p>
         </div>
       </div>
 
@@ -123,6 +143,12 @@ export default function MoneyRouteCard({
         {!compact && question && <button type="button" onClick={() => setQuestionOpen(open => !open)} disabled={busy} className="btn-ghost min-h-11 flex-1"><CircleHelp className="h-4 w-4" /> Answer one question</button>}
         {!compact && !question && blocker && onResolveBlocker && <button type="button" onClick={() => onResolveBlocker(blocker)} disabled={busy} className="btn-ghost min-h-11 flex-1"><Check className="h-4 w-4" /> Add missing detail</button>}
       </div>
+
+      {!compact && (
+        <p className="mt-3 text-center text-[11px] leading-4 text-readable-muted">
+          Ranked by guaranteed return: safety net, then free money, then high-interest debt, then savings and investing.
+        </p>
+      )}
     </section>
   )
 }

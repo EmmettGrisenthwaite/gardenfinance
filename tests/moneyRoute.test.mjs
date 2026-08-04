@@ -121,6 +121,52 @@ test('user adjustments cannot exceed the recorded monthly amount', () => {
   assert.deepEqual(route.allocations.filter(item => item.adjustable).map(item => item.amount), [800, 100])
 })
 
+test('the route exposes a reconciliation that sums to the same figure Home shows', () => {
+  // "Left over monthly" (Home, via moneyLanguage.js) and the route's
+  // available amount must never be two silently different numbers — the
+  // route reports every subtraction between them so the UI can show its own
+  // total as a visible breakdown of the headline figure, not a second one.
+  const cashFlowItems = [
+    { kind: 'income', group_key: 'income', category_key: 'paycheck', amount: 4500, monthly_amount: 4500 },
+    { kind: 'expense', group_key: 'needs', category_key: 'housing', amount: 3200, monthly_amount: 3200 },
+  ]
+  const input = state({
+    profile: { monthly_income: 4500, monthly_expenses: 3200, health_insurance: 'employer', employer_401k: 'none' },
+    cashFlowItems,
+    accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 1800 }],
+    debts: [{ id: 'visa', name: 'Visa Card', balance: 2400, interest_rate: 24, minimum_payment: 60 }],
+  })
+  const route = buildMoneyRoute(input)
+  assert.equal(route.reservedAmount, 60)
+  const total = route.reconciliation.reduce((sum, line) => sum + line.amount, 0)
+  assert.equal(Math.round(total), route.availableMonthlyAmount)
+  assert.equal(route.reconciliation[0].label, 'Left over monthly')
+  assert.equal(route.reconciliation[0].amount, 1300)
+})
+
+test('the top move is reported confident even while the route stays provisional', () => {
+  const input = state({
+    profile: { monthly_income: 5000, monthly_expenses: 4100, health_insurance: 'employer', employer_401k: 'unsure' },
+    accounts: [
+      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 1600 },
+      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 1400 },
+    ],
+    debts: [{ id: 'card', name: 'Credit card', balance: 3400, interest_rate: 24, minimum_payment: 85 }],
+  })
+  const route = buildMoneyRoute(input)
+  assert.equal(route.provisional, true)
+  assert.equal(route.primaryMoveConfident, true)
+})
+
+test('the top debt payoff acknowledges an already-covered starter reserve', () => {
+  const input = state({
+    accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 1800 }],
+    debts: [{ id: 'card', name: 'Card', balance: 2400, interest_rate: 24, minimum_payment: 60 }],
+  })
+  const route = buildMoneyRoute(input)
+  assert.match(route.allocations[0].reason, /starter reserve is already covered/)
+})
+
 test('an unconfirmed employer match outranks a debt-bookkeeping reconciliation blocker', () => {
   // Regression: found via a live blind-test walkthrough. A user who told
   // onboarding "yes, my employer matches" but hasn't added the workplace
