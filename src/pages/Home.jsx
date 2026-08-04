@@ -17,6 +17,8 @@ import { getMoneySetupState } from '@/lib/moneySetup'
 import { selectHomeAction } from '@/lib/homeModel'
 import { headlineMetrics } from '@/lib/moneyLanguage'
 import { buildPlanModel } from '@/lib/focusedPlan'
+import { useMoneyRoute } from '@/hooks/useMoneyRoute'
+import MoneyRouteCard from '@/components/MoneyRouteCard'
 import ProgressActivitySheet from '@/components/ProgressActivitySheet'
 import { listFinancialActivities } from '@/lib/financialActivities'
 import { isPromptableActivity } from '@/lib/progressOutcome'
@@ -120,13 +122,18 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
   const setupState = useMemo(() => getMoneySetupState({
     profile, accounts, debts, goals, cashFlowItems,
   }), [profile, accounts, debts, goals, cashFlowItems])
+  const { route: moneyRoute } = useMoneyRoute({
+    snapshot: { ...snapshot, profile, accounts, debts, goals, cashFlowItems, budgetLimits },
+    profile, accounts, debts, goals, activities, setupState,
+  }, user.id)
   const planModel = useMemo(() => buildPlanModel({
     snapshot: { ...snapshot, profile, accounts, debts, goals, cashFlowItems, budgetLimits },
     setupState,
     plan,
     activities,
     reminders,
-  }), [snapshot, profile, accounts, debts, goals, cashFlowItems, budgetLimits, setupState, plan, activities, reminders])
+    moneyRoute,
+  }), [snapshot, profile, accounts, debts, goals, cashFlowItems, budgetLimits, setupState, plan, activities, reminders, moneyRoute])
   const reminderModel = useMemo(() => buildReminderModel({
     snapshot, profile, accounts, debts, goals, activities,
     reminders, events: reminderEvents,
@@ -139,10 +146,18 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
   const selectedPercent = selectedGoal
     ? Math.min(100, Math.round((Number(selectedGoal.current_amount || 0) / Math.max(1, Number(selectedGoal.target_amount || 0))) * 100))
     : 0
+  const hasMoneyRoute = snapshot.income > 0 || snapshot.expenses > 0 || accounts.length > 0 || debts.length > 0
+  const approvedRouteStep = [...planModel.focus, ...planModel.later]
+    .find(step => !step.proposed && step.source === 'money-route') || null
 
   function runAction() {
     if (action.kind === 'setup') openSheet(action.sheet)
     else if (action.href) navigate(action.href)
+  }
+
+  function runMoneyRoute() {
+    if (approvedRouteStep?.id) navigate(`/plan/step/${approvedRouteStep.id}`)
+    else navigate('/advisor?firstRoute=1')
   }
 
   function openGoal(goal) {
@@ -207,7 +222,12 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
         />
 
         <div className="grid gap-3">
-          <motion.section key={action.kind + action.title}
+          {hasMoneyRoute ? <MoneyRouteCard
+            route={moneyRoute}
+            variant="home"
+            onPrimary={runMoneyRoute}
+            primaryLabel={approvedRouteStep ? 'Do the next move' : 'Review this route'}
+          /> : <motion.section key={action.kind + action.title}
             initial={reducedMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}
             className="rounded-[24px] border border-emerald-200/15 bg-[linear-gradient(145deg,rgba(18,41,31,.96),rgba(8,20,15,.98))] p-4 shadow-[0_18px_45px_rgba(0,0,0,.2)] sm:p-5">
             <div className="flex items-start gap-3">
@@ -230,7 +250,7 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
                 </button>}
               </div>
             </div>
-          </motion.section>
+          </motion.section>}
           <section aria-label="Money snapshot" className="rounded-[22px] border border-white/[0.09] bg-white/[0.04] p-4 sm:p-5">
             <div className="flex items-start justify-between gap-3">
               <div>

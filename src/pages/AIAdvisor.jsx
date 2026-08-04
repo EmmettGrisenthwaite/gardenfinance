@@ -3,10 +3,13 @@ import { useLocation, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { callClaude, requestPlan, requestGuide, suggestGoal, chatConfigured } from '@/lib/claude'
-import { savePlan, appendSteps, applyStep, addGoal, normalizeSteps, listPlans } from '@/lib/advisorPlans'
+import { savePlan, appendSteps, applyStep, addGoal, listPlans } from '@/lib/advisorPlans'
 import { buildContext, buildSystemPrompt } from '@/lib/advisorContext'
-import { getDataGaps } from '@/lib/dataGaps'
 import { computeSnapshot } from '@/lib/finance'
+import { getMoneySetupState } from '@/lib/moneySetup'
+import { formatMoneyRouteForAdvisor } from '@/lib/moneyRoute'
+import { buildPlanModel } from '@/lib/focusedPlan'
+import { useMoneyRoute } from '@/hooks/useMoneyRoute'
 import { netWorthTrend } from '@/lib/netWorth'
 import {
   createMemory, getMemories, findSimilarMemory,
@@ -15,7 +18,8 @@ import {
 import { listFinancialActivities } from '@/lib/financialActivities'
 import { listReminderEvents, listReminders } from '@/lib/reminders'
 import { selectAdvisorResponseAction, selectPendingAdvisorAttachment } from '@/lib/advisorResponseAction'
-import PlanCard from '@/components/PlanCard'
+import MoneyRouteCard from '@/components/MoneyRouteCard'
+import BottomSheet from '@/components/ui/BottomSheet'
 import ResourceLinks from '@/components/ResourceLinks'
 import GuideCard from '@/components/GuideCard'
 import GoalSuggestionCard from '@/components/GoalSuggestionCard'
@@ -31,7 +35,7 @@ const GUIDE_INTENT = /\b(open|start|set\s?up|sign\s?up|create|switch|roll\s?over
 import {
   Send, Bot, Sparkles, RefreshCw, ArrowDown, Settings, MoreHorizontal, Wallet,
   Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Shield, Sprout,
-  ClipboardList, Loader2, Brain, Plus, ArrowRight,
+  Brain, Plus, ArrowRight,
   ChevronDown,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -252,7 +256,10 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
 }
 
 // ─── Welcome / empty state ─────────────────────────────────────────────────────
-function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, progressDelta, suggestions, primaryGap }) {
+function WelcomeScreen({
+  hasData, onSuggest, progressDelta, suggestions, moneyRoute,
+  onUseRoute, onAdjustRoute, onAnswerRoute, onResolveBlocker, routeBusy,
+}) {
   return (
     <motion.div className="py-5 text-center"
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -263,15 +270,13 @@ function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, p
         </div>
       </div>
       <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-100/75">Personal to your numbers</p>
-      <h2 className="font-display text-[25px] font-medium tracking-[-0.02em] text-white">Make the next move clear.</h2>
-      <p className="mx-auto mb-6 mt-2 max-w-sm text-sm leading-relaxed text-readable-secondary">
+      <h2 className="text-[25px] font-semibold tracking-[-0.02em] text-white">Here is where your money goes next.</h2>
+      <p className="mx-auto mb-5 mt-2 max-w-sm text-sm leading-relaxed text-readable-secondary">
         {progressDelta?.has
           ? `Since ${progressDelta.days} days ago: ${progressDelta.delta >= 0 ? '+' : ''}$${Math.abs(progressDelta.delta).toLocaleString()} net worth${progressDelta.stepsDone ? `, ${progressDelta.stepsDone} step${progressDelta.stepsDone !== 1 ? 's' : ''} done` : ''}. `
           : ''}
-        {primaryGap
-          ? primaryGap.label
-          : hasData
-          ? "I've looked at your numbers. Want me to tell you exactly where you stand and build you a plan?"
+        {hasData
+          ? 'This route uses your recorded income, spending, accounts, debts, and goals. Missing facts are shown without hiding the recommendation.'
           : <>Ask me anything — and I'll build you a plan you can check off to grow your garden. Add your{' '}
             <Link to="/money" className="text-emerald-300 hover:text-emerald-200">money</Link>{' '}
             and{' '}
@@ -279,28 +284,10 @@ function WelcomeScreen({ hasData, onSuggest, analyzing, onBuildPlan, building, p
             for advice that's about you.</>}
       </p>
 
-      <div className="mb-7 flex justify-center">
-        {primaryGap ? (
-          <Link to={primaryGap.href} state={primaryGap.sheet ? { sheet: primaryGap.sheet } : undefined} className="btn-primary min-h-12 px-5">
-            <Wallet className="h-4 w-4" /> {primaryGap.cta || 'Add details'}
-          </Link>
-        ) : hasData ? (
-          <motion.button
-            onClick={onBuildPlan}
-            disabled={analyzing || building}
-            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-            className="btn-primary min-h-12 px-5"
-          >
-            {building ? (
-              <>
-                <motion.div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
-                  animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} />
-                Reviewing your finances…
-              </>
-            ) : (
-              <><ClipboardList className="h-4 w-4" /> Review my finances</>
-            )}
-          </motion.button>
+      <div className="mb-7">
+        {hasData ? (
+          <MoneyRouteCard route={moneyRoute} onPrimary={onUseRoute} onAdjust={onAdjustRoute}
+            onAnswer={onAnswerRoute} onResolveBlocker={onResolveBlocker} busy={routeBusy} />
         ) : (
           <Link to="/money" className="btn-primary min-h-12 px-5"><Wallet className="h-4 w-4" /> Add my numbers</Link>
         )}
@@ -349,13 +336,15 @@ export default function AIAdvisor() {
   const [reminderEvents, setReminderEvents] = useState([])
   const [error, setError]               = useState(null)
   const [atBottom, setAtBottom]         = useState(true)
-  const [pendingPlan, setPendingPlan]   = useState(null)
-  const [buildingPlan, setBuildingPlan] = useState(false)
   const [pendingGoal, setPendingGoal]   = useState(null)
   const [pendingGuide, setPendingGuide] = useState(null)
   const [progressDelta, setProgressDelta] = useState(null)
   const [toast, setToast] = useState(null)   // transient status pill, optionally with a next action
   const [menuOpen, setMenuOpen] = useState(false)
+  const [routeBusy, setRouteBusy] = useState(false)
+  const [routeAdjustOpen, setRouteAdjustOpen] = useState(false)
+  const [routeDraft, setRouteDraft] = useState({})
+  const [routeError, setRouteError] = useState(null)
   const toastTimer = useRef(null)
   function flashToast(message, action = null) {
     setToast({ message, action })
@@ -381,7 +370,7 @@ export default function AIAdvisor() {
         supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order'),
         supabase.from('budget_limits').select('*').eq('user_id', user.id),
         getMemories(),
-        listFinancialActivities(user.id, { limit: 20 }),
+        listFinancialActivities(user.id),
         listReminders(user.id),
         listReminderEvents(user.id, { limit: 20 }),
       ])
@@ -486,7 +475,7 @@ export default function AIAdvisor() {
   useEffect(() => {
     if (atBottom) bottomRef.current?.scrollIntoView({ behavior: loading || analyzing ? 'auto' : 'smooth' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, loading, pendingPlan, buildingPlan, pendingGoal])
+  }, [messages, loading, pendingGoal])
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current
@@ -503,13 +492,23 @@ export default function AIAdvisor() {
       - debts.reduce((s, d) => s + (Number(d.balance) || 0), 0),
   }), [profile, accounts, debts])
 
+  const financialSnapshot = useMemo(() => computeSnapshot({
+    profile, accounts, debts, goals, cashFlowItems, budgetLimits,
+  }), [profile, accounts, debts, goals, cashFlowItems, budgetLimits])
+  const setupState = useMemo(() => getMoneySetupState({
+    profile, accounts, debts, goals, cashFlowItems,
+  }), [profile, accounts, debts, goals, cashFlowItems])
+  const { route: moneyRoute, saveAdjustments: saveRouteAdjustments } = useMoneyRoute({
+    snapshot: financialSnapshot, profile, accounts, debts, goals, activities, setupState,
+  }, user.id)
+
   const systemPrompt = useMemo(() => {
     const ctx = buildContext(money, goals, debts, profile, {
       plans, accounts, cashFlowItems, budgetLimits, activities, reminders, reminderEvents,
     })
     const memoriesText = formatMemoriesForContext(memories)
-    return buildSystemPrompt(ctx, memoriesText)
-  }, [money, goals, debts, profile, plans, accounts, cashFlowItems, budgetLimits, activities, reminders, reminderEvents, memories])
+    return `${buildSystemPrompt(ctx, memoriesText)}\n\n${formatMoneyRouteForAdvisor(moneyRoute)}`
+  }, [money, goals, debts, profile, plans, accounts, cashFlowItems, budgetLimits, activities, reminders, reminderEvents, memories, moneyRoute])
 
   const noKey  = !chatConfigured
   const hasData = goals.length > 0 || debts.length > 0 || plans.length > 0 || money.income > 0 || money.expenses > 0 || money.netWorth !== 0
@@ -525,20 +524,6 @@ export default function AIAdvisor() {
       SUGGESTIONS[2],
     ]
   }, [accounts])
-
-  // ── Data gaps — a light, dismissable nudge to fill in what sharpens advice
-  // most (a debt's rate, an investment balance…). Purely derived from live
-  // data, so once a field is filled the gap vanishes on its own — no separate
-  // "stop asking" bookkeeping needed. The model gets the same ranked list in
-  // its context and can ask about the top one in conversation too.
-  const GAP_DISMISS_KEY = `advisor-gaps-dismissed-${user.id}`
-  const [dismissedGaps] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(GAP_DISMISS_KEY)) ?? [] } catch { return [] }
-  })
-  const gaps = useMemo(
-    () => getDataGaps({ profile, accounts, debts, goals, cashFlowItems }).filter(g => !dismissedGaps.includes(g.id)),
-    [profile, accounts, debts, goals, cashFlowItems, dismissedGaps],
-  )
 
   // ── Send message ────────────────────────────────────────────────────────────
   async function send(text, opts = {}) {
@@ -607,37 +592,85 @@ export default function AIAdvisor() {
     }
   }
 
-  // ── Build plan ──────────────────────────────────────────────────────────────
-  async function handleBuildPlan() {
-    if (buildingPlan || loading || analyzing || noKey) return
-    setError(null)
-    setBuildingPlan(true)
-    setAtBottom(true)
+  async function handleUseMoneyRoute() {
+    if (routeBusy) return
+    setRouteBusy(true)
+    setRouteError(null)
     try {
-      const planMsgs = [
-        ...messages,
-        { role: 'user', content: 'Based on my actual numbers, build me a short, concrete financial action plan I can follow — 3 to 5 ordered steps. Where a step means starting a savings/investment goal or adding a recurring budget line, include its apply action so I can add it in one tap.' },
-      ]
-      const plan = await requestPlan(planMsgs, systemPrompt)
-      setPendingPlan({ ...plan, steps: normalizeSteps(plan.steps), saved: false })
-    } catch (err) {
-      setError(err.message ?? 'Could not build a plan. Try again.')
+      const currentPlan = plans[0] || null
+      const admission = buildPlanModel({
+        snapshot: financialSnapshot, setupState, plan: currentPlan, activities, reminders, moneyRoute,
+      })
+      const result = await appendSteps(user.id, admission.candidates.slice(0, Math.max(0, 3 - admission.approvedCount)), {
+        source: 'money-route', group: 'Initial Money Route', dedupeCompleted: true,
+      })
+      setPlans(result.plan ? [result.plan] : await listPlans(user.id))
+      try { localStorage.setItem(`money-route-reviewed-${user.id}`, moneyRoute.fingerprint) } catch {}
+      const params = new URLSearchParams(location.search)
+      if (params.has('firstRoute')) navigate('/advisor', { replace: true })
+      flashToast(result.added
+        ? `Added ${result.added} focused step${result.added === 1 ? '' : 's'} to Plan`
+        : 'This route is already reflected in your Plan',
+      { to: '/plan', label: 'View Plan' })
+    } catch (caught) {
+      setRouteError(caught.message ?? 'Could not add this route. Your current Plan was not changed.')
     } finally {
-      setBuildingPlan(false)
+      setRouteBusy(false)
     }
   }
 
-  async function handleSavePlan() {
-    try {
-      await savePlan(user.id, pendingPlan)
-      setPendingPlan(p => ({ ...p, saved: true }))
-      setError(null)
-      flashToast('Added your action plan to Plan', { to: '/plan', label: 'View Plan' })
-      return true
-    } catch (err) {
-      setError(err.message ?? 'Could not save that plan. Please try again.')
-      return false
+  function openRouteAdjustments() {
+    setRouteDraft(Object.fromEntries(moneyRoute.allocations
+      .filter(item => item.adjustable && item.amount > 0)
+      .map(item => [item.key, String(item.amount)])))
+    setRouteError(null)
+    setRouteAdjustOpen(true)
+  }
+
+  function saveAdjustedRoute() {
+    const amounts = Object.fromEntries(Object.entries(routeDraft)
+      .map(([key, value]) => [key, Math.max(0, Math.round(Number(value) || 0))]))
+    const total = Object.values(amounts).reduce((sum, value) => sum + value, 0)
+    if (total > moneyRoute.availableMonthlyAmount) {
+      setRouteError(`Those amounts are $${(total - moneyRoute.availableMonthlyAmount).toLocaleString()} over the money available each month.`)
+      return
     }
+    saveRouteAdjustments(amounts)
+    setRouteAdjustOpen(false)
+    setRouteError(null)
+  }
+
+  async function answerRouteQuestion(key, value) {
+    if (key !== 'employer_match' || routeBusy) return
+    if (value === 'unsure') {
+      flashToast('Your current route stays provisional until you can check the match')
+      return
+    }
+    setRouteBusy(true)
+    setRouteError(null)
+    try {
+      const { data, error: updateError } = await supabase.from('profiles')
+        .update({ employer_401k: value }).eq('id', user.id).select().single()
+      if (updateError) throw updateError
+      if (data) setProfile(data)
+      flashToast(value === 'match'
+        ? 'Match recorded. Add its percentages to make the payroll amount exact.'
+        : 'No match recorded. The rest of your route is now clearer.')
+    } catch (caught) {
+      setRouteError(caught.message ?? 'Could not save that answer.')
+    } finally {
+      setRouteBusy(false)
+    }
+  }
+
+  function resolveRouteBlocker(blocker) {
+    const params = new URLSearchParams({ section: 'money', sheet: blocker.sheet || 'plan' })
+    if (blocker.recordId && blocker.sheet === 'debts') params.set('debtId', blocker.recordId)
+    if (blocker.recordId && blocker.sheet === 'investment') {
+      params.set('sheet', 'accounts')
+      params.set('accountId', blocker.recordId)
+    }
+    navigate(`/?${params.toString()}`)
   }
 
   async function handleSaveGuide() {
@@ -685,7 +718,6 @@ export default function AIAdvisor() {
     const snapshot = messages
     setMessages([])
     setError(null)
-    setPendingPlan(null)
     setPendingGoal(null)
     setPendingGuide(null)
     localStorage.removeItem(STORAGE_KEY)
@@ -698,6 +730,21 @@ export default function AIAdvisor() {
   async function handleAddToPlan(messageContent) {
     setLoading(true)
     try {
+      if (/\b(pay|debt|save|saving|invest|contribut|transfer|emergency|employer match|money left|surplus)\b/i.test(messageContent)) {
+        const admission = buildPlanModel({
+          snapshot: financialSnapshot, setupState, plan: plans[0] || null,
+          activities, reminders, moneyRoute,
+        })
+        const result = await appendSteps(user.id, admission.candidates, {
+          source: 'money-route', group: 'Money Route', dedupeCompleted: true,
+        })
+        if (result.plan) setPlans([result.plan])
+        flashToast(result.added
+          ? `Added ${result.added} route step${result.added === 1 ? '' : 's'} to Plan`
+          : 'That advice is already reflected in your Plan',
+        { to: '/plan', label: 'View Plan' })
+        return
+      }
       const planMsgs = [
         ...messages,
         { role: 'user', content: `Turn this advice into 2-4 actionable plan steps: "${messageContent.slice(0, 2000)}"` },
@@ -780,9 +827,9 @@ export default function AIAdvisor() {
     return true
   }
 
-  const isEmpty = messages.length === 0 && !loading && !analyzing && !historyLoading && !pendingPlan && !buildingPlan
+  const isEmpty = messages.length === 0 && !loading && !analyzing && !historyLoading
+  const showFirstRouteReview = new URLSearchParams(location.search).get('firstRoute') === '1' && !isEmpty
   const pendingAttachment = selectPendingAdvisorAttachment({
-    plan: pendingPlan,
     guide: pendingGuide,
     goal: pendingGoal,
   })
@@ -884,17 +931,26 @@ export default function AIAdvisor() {
         </AnimatePresence>
         <div className={`mx-auto max-w-3xl px-4 py-6 ${isEmpty ? 'flex min-h-full flex-col justify-center' : ''}`}>
 
-          {isEmpty && !noKey && (
+          {isEmpty && (
             <WelcomeScreen
               hasData={hasData}
               onSuggest={send}
-              analyzing={analyzing}
-              onBuildPlan={handleBuildPlan}
-              building={buildingPlan}
               progressDelta={progressDelta}
               suggestions={quickSuggestions}
-              primaryGap={gaps[0] || null}
+              moneyRoute={moneyRoute}
+              onUseRoute={handleUseMoneyRoute}
+              onAdjustRoute={openRouteAdjustments}
+              onAnswerRoute={answerRouteQuestion}
+              onResolveBlocker={resolveRouteBlocker}
+              routeBusy={routeBusy}
             />
+          )}
+
+          {showFirstRouteReview && (
+            <div className="mb-6">
+              <MoneyRouteCard route={moneyRoute} onPrimary={handleUseMoneyRoute} onAdjust={openRouteAdjustments}
+                onAnswer={answerRouteQuestion} onResolveBlocker={resolveRouteBlocker} busy={routeBusy} />
+            </div>
           )}
 
           <AnimatePresence>
@@ -917,11 +973,7 @@ export default function AIAdvisor() {
           {(loading || analyzing) && messages[messages.length - 1]?.role === 'user' && <TypingIndicator />}
 
           {/* One response attachment at a time. */}
-          {pendingAttachment?.kind === 'plan' ? (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
-              <PlanCard plan={pendingAttachment.value} saved={pendingAttachment.value.saved} onSave={handleSavePlan} />
-            </motion.div>
-          ) : pendingAttachment?.kind === 'guide' ? (
+          {pendingAttachment?.kind === 'guide' ? (
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4">
               <GuideCard guide={pendingAttachment.value} saved={pendingAttachment.value.saved}
                 onSave={handleSaveGuide} onDismiss={() => setPendingGuide(null)} />
@@ -933,16 +985,13 @@ export default function AIAdvisor() {
                 onDismiss={() => setPendingGoal(null)} />
             </motion.div>
           ) : null}
-          {buildingPlan && (
-            <div className="flex items-center gap-2 mb-4 text-sm text-emerald-200/80">
-              <Loader2 className="w-4 h-4 animate-spin" /> Building your action plan…
-            </div>
-          )}
-
           {error && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-3">
               <p className="text-xs text-rose-200 bg-rose-500/15 border border-rose-400/25 inline-block px-3 py-2 rounded-lg">{error}</p>
             </motion.div>
+          )}
+          {routeError && !routeAdjustOpen && (
+            <p className="mb-4 rounded-lg border border-rose-400/25 bg-rose-500/15 px-3 py-2 text-center text-xs text-rose-100">{routeError}</p>
           )}
 
           <div ref={bottomRef} />
@@ -980,6 +1029,27 @@ export default function AIAdvisor() {
           </form>
         </div>
       </div>
+
+      <BottomSheet open={routeAdjustOpen} title="Adjust your monthly route"
+        subtitle={`Keep the total at or below $${moneyRoute.availableMonthlyAmount.toLocaleString()} per month. Any remainder stays unassigned.`}
+        onClose={() => { setRouteAdjustOpen(false); setRouteError(null) }} size="sm"
+        footer={<div className="flex gap-2"><button type="button" onClick={() => setRouteAdjustOpen(false)} className="btn-ghost min-h-11 flex-1">Cancel</button><button type="button" onClick={saveAdjustedRoute} className="btn-primary min-h-11 flex-1">Use these amounts</button></div>}>
+        <div className="space-y-4">
+          {moneyRoute.allocations.filter(item => item.adjustable && item.amount > 0).map(item => (
+            <label key={item.key} className="block">
+              <span className="text-[13px] font-semibold text-white">{item.label}</span>
+              <span className="mt-0.5 block text-xs leading-5 text-readable-secondary">{item.reason}</span>
+              <span className="mt-2 flex items-center rounded-xl border border-white/[0.12] bg-white/[0.045] px-3 focus-within:border-emerald-300/40">
+                <span className="text-readable-secondary">$</span>
+                <input type="number" min="0" step="25" inputMode="decimal" value={routeDraft[item.key] ?? ''}
+                  onChange={event => { setRouteDraft(current => ({ ...current, [item.key]: event.target.value })); setRouteError(null) }}
+                  className="min-h-12 w-full bg-transparent px-2 text-base font-semibold tabular-nums text-white focus:outline-none" />
+              </span>
+            </label>
+          ))}
+          {routeError && <p role="alert" className="rounded-xl border border-rose-300/20 bg-rose-400/[0.08] px-3.5 py-3 text-[13px] leading-5 text-rose-100">{routeError}</p>}
+        </div>
+      </BottomSheet>
     </div>
   )
 }

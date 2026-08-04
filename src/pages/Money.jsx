@@ -362,10 +362,15 @@ export default function Money({
   }
 
   function closeSheet() {
+    const params = new URLSearchParams(location.search)
+    const finishingFirstRouteSetup = homeMode && activeSheet === 'accounts' && params.get('setup') === '1'
     setActiveSheet(null)
     resetSheetState()
+    if (finishingFirstRouteSetup) {
+      navigate('/advisor?firstRoute=1', { replace: true })
+      return
+    }
     if (homeMode) {
-      const params = new URLSearchParams(location.search)
       if (params.has('sheet')) {
         params.delete('sheet')
         params.delete('setup')
@@ -592,7 +597,7 @@ export default function Money({
     })
     setEditorDirty(false)
     setSheetError(null)
-    setShowMore(false)
+    setShowMore(new URLSearchParams(location.search).get('setup') === '1' && family === 'investment')
     setDeleteTarget(null)
   }
 
@@ -662,7 +667,7 @@ export default function Money({
     })
     setEditorDirty(false)
     setSheetError(null)
-    setShowMore(false)
+    setShowMore(new URLSearchParams(location.search).get('setup') === '1')
     setDeleteTarget(null)
   }
 
@@ -785,7 +790,9 @@ export default function Money({
     if (activeSheet === 'plan') return <SaveFooter onSave={saveMonthlyPlan} saving={saving} saveLabel="Save monthly plan" disabled={!dirty} />
     if (activeSheet === 'balances') return <SaveFooter onSave={saveBalances} saving={saving} saveLabel="Update balances" disabled={!dirty} />
     if (activeSheet === 'accounts') return <SaveFooter onSave={requestClose} saving={false}
-      saveLabel={accounts.length ? 'Done — use these accounts' : 'Skip for now'} />
+      saveLabel={new URLSearchParams(location.search).get('setup') === '1'
+        ? (accounts.length || debts.length ? 'Done — show my money route' : 'Skip — show a provisional route')
+        : (accounts.length ? 'Done — use these accounts' : 'Skip for now')} />
     return null
   }
 
@@ -984,6 +991,7 @@ export default function Money({
   function renderAccountSetup() {
     const cashTotal = accountGroups.cash.reduce((sum, account) => sum + Number(account.balance || 0), 0)
     const investmentTotal = accountGroups.investment.reduce((sum, account) => sum + Number(account.balance || 0), 0)
+    const debtTotal = debts.reduce((sum, debt) => sum + Number(debt.balance || 0), 0)
     return (
       <div className="space-y-6">
         <ConnectBank onConnected={loadData} />
@@ -1013,6 +1021,24 @@ export default function Money({
             <span className="text-[13px] font-semibold tabular-nums text-readable-secondary">{fmt(investmentTotal)}</span>
           </div>
           {renderAccountList('investment')}
+        </section>
+
+        <section className="border-t border-white/[0.08] pt-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-emerald-200" />
+              <div><h3 className="text-[15px] font-semibold text-white">Debts that affect the route</h3><p className="mt-0.5 text-xs text-readable-secondary">Balance is enough to start. APR and minimum payment make the order precise.</p></div>
+            </div>
+            <span className="text-[13px] font-semibold tabular-nums text-readable-secondary">{fmt(debtTotal)}</span>
+          </div>
+          {debts.length ? debts.map(debt => (
+            <RecordRow key={debt.id} title={debt.name}
+              subtitle={[debt.type ? DEBT_TYPES.find(option => option.value === debt.type)?.label : null, debt.interest_rate == null ? 'APR unknown' : `${debt.interest_rate}% APR`, debt.minimum_payment == null ? 'Minimum unknown' : `${fmt(debt.minimum_payment)}/mo minimum`].filter(Boolean).join(' · ')}
+              value={fmt(debt.balance)} onEdit={() => beginDebt(debt)} onDelete={() => setDeleteTarget(debt.id)}
+              confirming={deleteTarget === debt.id} onCancelDelete={() => setDeleteTarget(null)}
+              onConfirmDelete={() => deleteRecord('debts', debt.id)} disabled={saving} />
+          )) : <EmptyState icon={CreditCard} title="No debts added" copy="Skip this if you do not have debt. Otherwise add the balance, APR, and minimum payment." action="Add debt" onAction={() => beginDebt()} />}
+          {debts.length > 0 && <button type="button" onClick={() => beginDebt()} className="btn-ghost mt-4 min-h-11 w-full"><Plus className="h-4 w-4" /> Add debt</button>}
         </section>
 
         <p className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-3 text-xs leading-5 text-readable-muted">Never enter credentials or full account numbers. Manual balances are enough.</p>

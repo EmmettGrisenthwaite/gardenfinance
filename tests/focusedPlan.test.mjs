@@ -11,6 +11,7 @@ import {
   staleStepReason,
   validateFocusPlanResult,
 } from '../src/lib/focusedPlan.js'
+import { buildMoneyRoute } from '../src/lib/moneyRoute.js'
 
 function snapshot(overrides = {}) {
   return computeSnapshot({
@@ -106,6 +107,24 @@ test('the shared model gives Plan and Home one prerequisite before generating ne
   assert.equal(model.focus.length, 1)
   assert.equal(model.focus[0].id, 'manual')
   assert.equal(model.candidates.length, 0)
+})
+
+test('Money Route turns a missing fact into a focus step without hiding verified allocations', () => {
+  const state = snapshot({
+    profile: { monthly_income: 5000, monthly_expenses: 4100, health_insurance: 'employer', employer_401k: 'unsure', investment_types: ['401k'] },
+    accounts: [{ id: 'cash', name: 'Checking', type: 'checking', subtype: 'checking', balance: 2000 }],
+    debts: [{ id: 'card', name: 'Card', balance: 3400, interest_rate: 24, minimum_payment: 85 }],
+  })
+  const setupState = { next: { id: 'invest_amount', label: 'Add investment details', sheet: 'investment' } }
+  const moneyRoute = buildMoneyRoute({
+    snapshot: state, profile: state.profile, accounts: state.accounts, debts: state.debts, setupState,
+  })
+  const model = buildPlanModel({ snapshot: state, setupState, moneyRoute, plan: { steps: [] } })
+  assert.equal(model.prerequisite, null)
+  assert.equal(model.candidates.length, 3)
+  assert.deepEqual(model.candidates.map(step => step.intentKey), [
+    'verify.employer_match', 'pay.debt.card', 'setup.pay.debt.card',
+  ])
 })
 
 test('existing work fills focus first and every extra step is preserved in Later', () => {

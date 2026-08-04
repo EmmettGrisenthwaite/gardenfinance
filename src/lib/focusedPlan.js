@@ -2,6 +2,7 @@ import { financialPriorities, THRESHOLDS } from './finance.js'
 import { filterFreshPlanSteps, samePlanStep } from './planReplenishment.js'
 import { isWorkplaceAccount } from './moneyModel.js'
 import { doneWhenForStep } from './stepQuality.js'
+import { buildInitialPlan } from './moneyRoute.js'
 
 export const FOCUS_SIZE = 3
 
@@ -69,10 +70,11 @@ function hashState(value) {
   return (hash >>> 0).toString(36)
 }
 
-export function focusPlanFingerprint({ snapshot = {}, setupState, plan, activities = [], reminders = [] } = {}) {
+export function focusPlanFingerprint({ snapshot = {}, setupState, plan, activities = [], reminders = [], moneyRoute = null } = {}) {
   const steps = Array.isArray(plan?.steps) ? plan.steps : []
   const state = {
     setup: setupState?.next?.id || null,
+    moneyRoute: moneyRoute?.fingerprint || null,
     profile: {
       income: num(snapshot.income),
       expenses: num(snapshot.expenses),
@@ -711,15 +713,41 @@ function prerequisiteFromSetup(setupState) {
   }
 }
 
-export function buildPlanModel({ snapshot = {}, setupState, plan, activities = [], reminders = [], now = new Date(), proposals = [] } = {}) {
-  const fingerprint = focusPlanFingerprint({ snapshot, setupState, plan, activities, reminders })
-  const prerequisite = prerequisiteFromSetup(setupState)
+function candidatesFromMoneyRoute(moneyRoute, plan, activities) {
+  const existing = Array.isArray(plan?.steps) ? plan.steps : []
+  const routeSteps = buildInitialPlan(moneyRoute).filter(candidate => !existing.some(step => (
+    !step?.done
+    && !step?.supersededAt
+    && !(step?.intentKey || step?.intent_key)
+    && inferredPriority(step) === candidate.priorityKey
+  )))
+  const { fresh } = filterFreshPlanSteps(existing, routeSteps, { dedupeCompleted: true })
+  return fresh.filter(candidate => !activities.some(activity => {
+    if (activity?.intent_key !== candidate.intentKey || activity?.status !== 'applied') return false
+    if (candidate.completionPolicy !== 'repeatable') return true
+    const previousState = activity?.metadata?.state_fingerprint || activity?.state_fingerprint
+    const nextState = candidate.outcome?.stateFingerprint
+    return !previousState || !nextState || previousState === nextState
+  })).map(candidate => ({
+    ...candidate,
+    id: `proposal:${candidate.candidateKey}`,
+    proposed: true,
+  }))
+}
+
+export function buildPlanModel({ snapshot = {}, setupState, plan, activities = [], reminders = [], moneyRoute = null, now = new Date(), proposals = [] } = {}) {
+  const fingerprint = focusPlanFingerprint({ snapshot, setupState, plan, activities, reminders, moneyRoute })
+  // Money Route turns missing facts into reviewable confirmation steps. A gap
+  // can refine the route without hiding every other verified recommendation.
+  const prerequisite = moneyRoute ? null : prerequisiteFromSetup(setupState)
   const active = orderFocusSteps((plan?.steps || [])
     .filter(step => !step.done && !step.supersededAt)
     .map(step => ({ ...step, doneWhen: doneWhenForStep(step) })))
   const approvedFocus = active.slice(0, FOCUS_SIZE)
   const later = active.slice(FOCUS_SIZE)
-  const candidates = prerequisite ? [] : buildFocusCandidates({ snapshot, plan, activities, reminders, now, fingerprint })
+  const candidates = moneyRoute
+    ? candidatesFromMoneyRoute(moneyRoute, plan, activities)
+    : prerequisite ? [] : buildFocusCandidates({ snapshot, plan, activities, reminders, now, fingerprint })
   const wording = new Map((proposals || []).map(step => [step.candidateKey, step]))
   const proposed = candidates.map(candidate => {
     const improved = wording.get(candidate.candidateKey)

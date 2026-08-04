@@ -37,6 +37,8 @@ import {
   validateFocusPlanResult,
 } from '@/lib/focusedPlan'
 import { getMoneySetupState } from '@/lib/moneySetup'
+import { useMoneyRoute } from '@/hooks/useMoneyRoute'
+import { MoneyRouteSummary } from '@/components/MoneyRouteCard'
 import { filterFreshPlanSteps } from '@/lib/planReplenishment'
 import { buildReminderModel } from '@/lib/reminderModel'
 import {
@@ -219,18 +221,21 @@ export default function Plan() {
   const setupState = useMemo(() => getMoneySetupState({
     profile, accounts, debts, goals, cashFlowItems,
   }), [profile, accounts, debts, goals, cashFlowItems])
+  const { route: moneyRoute } = useMoneyRoute({
+    snapshot, profile, accounts, debts, goals, activities, setupState,
+  }, user.id)
   const reminderModel = useMemo(() => buildReminderModel({
     snapshot, profile, accounts, debts, goals, activities,
     reminders, events: reminderEvents,
   }), [snapshot, profile, accounts, debts, goals, activities, reminders, reminderEvents])
   const basePlanModel = useMemo(() => buildPlanModel({
-    snapshot, setupState, plan, activities, reminders,
-  }), [snapshot, setupState, plan, activities, reminders])
+    snapshot, setupState, plan, activities, reminders, moneyRoute,
+  }), [snapshot, setupState, plan, activities, reminders, moneyRoute])
   const currentFingerprint = basePlanModel.fingerprint
   const currentDraft = nextChapter?.fingerprint === currentFingerprint ? nextChapter.draft : null
   const planModel = useMemo(() => buildPlanModel({
-    snapshot, setupState, plan, activities, reminders, proposals: currentDraft?.steps || [],
-  }), [snapshot, setupState, plan, activities, reminders, currentDraft])
+    snapshot, setupState, plan, activities, reminders, moneyRoute, proposals: currentDraft?.steps || [],
+  }), [snapshot, setupState, plan, activities, reminders, moneyRoute, currentDraft])
   const activeSteps = useMemo(() => steps.filter(step => !step.done && !step.supersededAt), [steps])
   const upNext = planModel.focus[0] ?? null
   const afterThis = planModel.focus.slice(1, 3)
@@ -960,6 +965,8 @@ export default function Plan() {
       ) : tab === 'steps' ? (
         <motion.div key="steps" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.18 }} className="space-y-3">
+
+          <MoneyRouteSummary route={moneyRoute} />
 
           {/* One thin line of garden progress — the reward, always visible */}
           {planModel.prerequisite ? (
