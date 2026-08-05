@@ -109,7 +109,7 @@ test('the shared model gives Plan and Home one prerequisite before generating ne
   assert.equal(model.candidates.length, 0)
 })
 
-test('the plan is money moves — a missing fact refines it instead of becoming a step', () => {
+test('claiming an employer match leads the plan, ahead of the debt payoff', () => {
   const state = snapshot({
     profile: { monthly_income: 5000, monthly_expenses: 4100, health_insurance: 'employer', employer_401k: 'unsure', investment_types: ['401k'], onboarding_complete: true },
     accounts: [{ id: 'cash', name: 'Checking', type: 'checking', subtype: 'checking', balance: 2000 }],
@@ -121,12 +121,10 @@ test('the plan is money moves — a missing fact refines it instead of becoming 
   })
   const model = buildPlanModel({ snapshot: state, setupState, moneyRoute, plan: { steps: [] } })
   assert.equal(model.prerequisite, null)
-  // Every step moves money. The unconfirmed employer match shows up as a
-  // refinement on the plan card, never as a chore in the plan itself.
+  // An unconfirmed match still outranks a 24% card, so finding out is step one.
   assert.deepEqual(model.routeCandidates.map(step => step.intentKey), [
-    'pay.debt.card', 'setup.pay.debt.card',
+    'verify.employer_match', 'pay.debt.card', 'setup.pay.debt.card',
   ])
-  assert.equal(moneyRoute.refinements.some(item => item.id === 'employer_match_unknown'), true)
 })
 
 test('existing work fills focus first and every extra step is preserved in Later', () => {

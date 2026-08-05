@@ -41,10 +41,14 @@ test('an unknown employer match refines the plan rather than withholding it', ()
     debts: [{ id: 'card', name: 'Credit card', balance: 3400, interest_rate: 24, minimum_payment: 85 }],
   })
   const route = buildMoneyRoute(input)
-  // "Unsure" is still an answer, so the plan stands; the match detail is an
-  // optional refinement, never a reason to hide verified debt guidance.
+  // "Unsure" is still an answer, so the plan stands. Finding out becomes a
+  // real step ranked above the debt payoff — a match beats any interest rate,
+  // so it must not be demoted to fine print just because the % is unknown.
   assert.equal(route.ready, true)
-  assert.equal(route.refinements.some(item => item.id === 'employer_match_unknown'), true)
+  const keys = route.allocations.map(item => item.key)
+  assert.equal(keys[0], 'confirm_employer_match')
+  assert.ok(keys.some(key => key.startsWith('debt.')))
+  assert.ok(keys.indexOf('confirm_employer_match') < keys.findIndex(key => key.startsWith('debt.')))
   assert.equal(route.allocations.some(item => item.destinationType === 'debt' && item.amount === 900), true)
   assert.equal(route.conditionalChanges.length, 1)
 })
@@ -214,16 +218,16 @@ test('the top debt payoff acknowledges an already-covered starter reserve', () =
     debts: [{ id: 'card', name: 'Card', balance: 2400, interest_rate: 24, minimum_payment: 60 }],
   })
   const route = buildMoneyRoute(input)
-  assert.match(route.allocations[0].reason, /starter reserve is already covered/)
+  assert.match(route.allocations[0].reason, /already have \$1,000 set aside for emergencies/)
 })
 
-test('an unconfirmed employer match outranks a debt-bookkeeping reconciliation blocker', () => {
-  // Regression: found via a live blind-test walkthrough. A user who told
-  // onboarding "yes, my employer matches" but hasn't added the workplace
-  // account yet, PLUS has a debt whose minimum isn't itemized in the Monthly
-  // Plan, produces two blockers. MoneyRouteCard only ever headlines
-  // blockers[0] — the higher-value "capture the match" fact must win that
-  // slot over a low-stakes accounting nit that doesn't change any amount.
+test('a claimed employer match leads the plan even before the percentage is known', () => {
+  // Regression: found via a live blind-test walkthrough. The user answered
+  // "yes, my employer matches" in setup, but because the exact percentages
+  // were missing the plan sent every dollar to a 26% card and demoted the
+  // match to an "Optional:" footnote — while the same card's footer claimed
+  // free money outranks debt. Claiming a match is the single highest-return
+  // action available, so "go find out and claim it" is itself step one.
   const cashFlowItems = [
     { kind: 'income', group_key: 'income', category_key: 'paycheck', amount: 4500, monthly_amount: 4500 },
     { kind: 'expense', group_key: 'needs', category_key: 'housing', amount: 3200, monthly_amount: 3200 },
@@ -238,9 +242,13 @@ test('an unconfirmed employer match outranks a debt-bookkeeping reconciliation b
     debts: [{ id: 'visa', name: 'Visa Card', balance: 2400, interest_rate: 24, minimum_payment: 60 }],
   })
   const route = buildMoneyRoute(input)
-  assert.equal(route.refinements.some(item => item.id === 'employer_match_details'), true)
-  assert.equal(route.refinements.some(item => item.id === 'debt_payment_gap'), true)
-  assert.equal(route.refinements[0].id, 'employer_match_details')
+  const keys = route.allocations.map(item => item.key)
+  assert.equal(keys[0], 'capture_employer_match', 'the match must lead the plan')
+  assert.ok(keys.indexOf('capture_employer_match') < keys.findIndex(key => key.startsWith('debt.')))
+  // It is a real step, not fine print.
+  const steps = buildInitialPlan(route)
+  assert.equal(steps[0].intentKey.startsWith('capture.employer_match'), true)
+  assert.match(steps[0].text, /employer match/i)
 })
 
 test('the plan is several real money moves, not one suggestion', () => {

@@ -107,6 +107,12 @@ export default function MoneyRouteCard({
       </ol>
       {items.length > limit && <p className="mt-2 text-xs text-readable-secondary">+{items.length - limit} more funded this month</p>}
 
+      {/* Anything the user entered but the plan deliberately leaves alone —
+          silence about a debt they typed in reads as lost data. */}
+      {!compact && (route.notes || []).map(note => (
+        <p key={note} className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-xs leading-5 text-readable-secondary">{note}</p>
+      ))}
+
       <div className={`mt-4 flex ${compact ? 'items-center' : 'flex-col sm:flex-row'} gap-2`}>
         {onPrimary && <button type="button" onClick={onPrimary} disabled={busy} className="btn-primary min-h-11 flex-1 disabled:opacity-50">
           {busy ? 'Saving…' : primaryLabel} <ArrowRight className="h-4 w-4" />
@@ -125,7 +131,7 @@ export default function MoneyRouteCard({
 
       {!compact && (
         <p className="mt-3 text-center text-[11px] leading-4 text-readable-muted">
-          Ordered by guaranteed return: safety net, then free money, then high-interest debt, then savings and investing.
+          Ordered by what earns you most: a cash cushion, free money from your employer, expensive debt, then saving and investing.
         </p>
       )}
     </section>

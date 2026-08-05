@@ -86,7 +86,7 @@ const BASE_STEPS = [
   {
     id: 'money',
     question: 'Now your monthly picture — rough is fine.',
-    sub: 'Add typical income and spending here. Detailed accounts come next in the real Accounts workspace.',
+    sub: 'Roughly what comes in and what goes out. You can fine-tune it later.',
     type: 'money',
   },
   {
@@ -142,7 +142,7 @@ const CALM_STEPS = [
     id: 'coverage_calm',
     type: 'calm_coverage',
     question: 'Your safety net and investing',
-    sub: 'These facts keep advice relevant and prevent repeat questions.',
+    sub: 'So your plan fits your life — and we never ask you twice.',
   },
   {
     ...BASE_STEPS.find(step => step.id === 'goal'),
@@ -820,7 +820,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                     </span>
                     <div>
                       <p className="text-sm font-semibold text-white">Retirement and brokerage come later</p>
-                      <p className="mt-1 text-xs leading-5 text-readable-secondary">These two set your safety-net target. You can add investment accounts, or connect a bank to sync balances automatically, right after setup.</p>
+                      <p className="mt-1 text-xs leading-5 text-readable-secondary">These two set your emergency-fund target. Add retirement and investment accounts — or connect your bank — right after setup.</p>
                     </div>
                   </div>
                 </div>

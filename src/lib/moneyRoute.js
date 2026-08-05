@@ -175,7 +175,7 @@ function upcomingPriorities({ snapshot, goals, allocations }) {
     upcoming.push({
       key: 'full_emergency',
       label: `Grow emergency savings to ${snapshot.efTargetMonths || 3} months`,
-      reason: `Builds toward ${money(efTargetAmount)} of liquid reserves once higher-cost debt is gone.`,
+      reason: `Gets you to ${money(efTargetAmount)} in cash once the expensive debt is gone.`,
     })
   }
 
@@ -294,32 +294,17 @@ export function buildMoneyRoute({
     || !known(workplace.employer_match_limit_percent)
     || !known(workplace.contribution_percent))
 
+  // A match is the highest-return money available — better than paying off
+  // even a 26% card. Not knowing the exact percentage is no reason to demote
+  // it to a footnote: "go find out and claim it" is itself the right next
+  // action, so it becomes a real step in the plan (added at the match rung of
+  // the ladder below) rather than optional fine print.
   if (matchUnknown) {
-    const question = {
-      key: 'employer_match',
-      prompt: 'Does your employer match contributions to your workplace retirement plan?',
-      options: [
-        { value: 'match', label: 'Yes, there is a match' },
-        { value: 'no_match', label: 'No employer match' },
-        { value: 'unsure', label: 'I need to check' },
-      ],
-    }
-    blockers.push(routeBlocker({
-      id: 'employer_match_unknown', title: 'Confirm whether your employer offers a retirement match',
-      detail: 'A match could redirect only the amount needed to capture it; the rest of this route still stands.',
-      sheet: 'investment', question,
-    }))
     conditionalChanges.push({
       key: 'employer_match_unknown',
-      title: 'One fact could improve this route',
-      detail: 'If a match exists, direct only enough payroll contribution to capture it. Keep the remaining monthly money on the current route.',
+      title: 'One fact could improve this plan',
+      detail: 'If a match exists, put in just enough to claim all of it. The rest of the plan stays the same.',
     })
-  } else if (matchDetailsMissing) {
-    blockers.push(routeBlocker({
-      id: 'employer_match_details', title: 'Add your employer-match limit and current contribution',
-      detail: 'The match is recorded, but the app needs the percentages before it can calculate the payroll change.',
-      sheet: 'investment', recordId: workplace?.id || null,
-    }))
   }
 
   if (unrecordedDebtMinimums > 0) {
@@ -386,7 +371,7 @@ export function buildMoneyRoute({
         key: 'starter_emergency', label: `Build the ${money(THRESHOLDS.starterEmergency)} starter reserve`,
         maxAmount: starterGap, destinationType: 'account', destinationId: emergency?.id || null,
         sourceAccountId: source?.id || null,
-        reason: 'A small liquid buffer prevents routine surprises from becoming new debt.',
+        reason: 'A small cash cushion keeps a surprise bill from turning into new debt.',
       }, remaining)
     }
 
@@ -411,6 +396,22 @@ export function buildMoneyRoute({
           confidence: 'provisional', adjustable: false,
         })
       }
+    } else if (matchExpected && matchDetailsMissing) {
+      // They told us a match exists. Claiming it beats every other use of a
+      // dollar here, so it leads the plan even before we know the percentage.
+      allocations.push({
+        key: 'capture_employer_match', label: 'Claim your full employer match',
+        amount: 0, destinationType: 'account', destinationId: workplace?.id || null,
+        reason: 'You said your employer matches contributions. Check a pay stub or your benefits page for the match rate, then put in at least that much — no other dollar here earns as fast.',
+        adjustable: false,
+      })
+    } else if (matchUnknown) {
+      allocations.push({
+        key: 'confirm_employer_match', label: 'Find out if your employer matches',
+        amount: 0, destinationType: 'profile', destinationId: null,
+        reason: 'If there is a match, it beats everything else on this list. One message to HR or a look at your benefits page settles it.',
+        adjustable: false,
+      })
     }
 
     const highInterest = activeDebts.filter(debt => known(debt.interest_rate) && num(debt.interest_rate) > THRESHOLDS.highApr)
@@ -428,8 +429,8 @@ export function buildMoneyRoute({
         maxAmount: num(debt.balance), destinationType: 'debt', destinationId: debt.id || null,
         sourceAccountId: source?.id || null,
         reason: isFirstMove && reserveCovered
-          ? `Your ${money(THRESHOLDS.starterEmergency)} starter reserve is already covered, so ${num(debt.interest_rate)}% APR makes this the highest verified use of new money.`
-          : `${num(debt.interest_rate)}% APR makes this the highest verified debt cost.`,
+          ? `You already have ${money(THRESHOLDS.starterEmergency)} set aside for emergencies, so at ${num(debt.interest_rate)}% this is the most expensive money you owe.`
+          : `At ${num(debt.interest_rate)}%, this is the most expensive debt you carry.`,
       }, remaining)
     }
 
@@ -442,7 +443,7 @@ export function buildMoneyRoute({
         key: 'full_emergency', label: `Grow emergency savings to ${snapshot.efTargetMonths || 3} months`,
         maxAmount: fullReserveGap, destinationType: 'account', destinationId: emergency?.id || null,
         sourceAccountId: source?.id || null,
-        reason: `The recorded target is ${money(snapshot.efTargetAmount)} of liquid reserves.`,
+        reason: `Enough cash to cover ${snapshot.efTargetMonths || 3} months of your spending — ${money(snapshot.efTargetAmount)}.`,
       }, remaining)
     }
 
@@ -454,13 +455,13 @@ export function buildMoneyRoute({
           key: `goal.${goal.id || goal.name}`, label: `Fund ${goal.name}`,
           maxAmount: Math.max(0, num(goal.target_amount) - num(goal.current_amount)),
           destinationType: 'goal', destinationId: goal.id || null,
-          reason: 'Higher protection and debt priorities are covered, so the nearest active goal is next.',
+          reason: 'Your cushion and expensive debt are handled, so your closest goal is next.',
         }, remaining)
       } else if (investment) {
         remaining = addAllocation(allocations, {
           key: `investment.${investment.id || investment.name}`, label: `Increase investing in ${investment.name}`,
           destinationType: 'account', destinationId: investment.id || null,
-          reason: 'Core protections are covered, so remaining monthly money can support long-term growth.',
+          reason: 'The essentials are handled, so this money can start growing long term.',
         }, remaining)
       } else {
         allocations.push({
@@ -473,7 +474,7 @@ export function buildMoneyRoute({
     if (remaining > 0) {
       remaining = addAllocation(allocations, {
         key: 'unassigned', label: 'Left unassigned for now', destinationType: 'unassigned', destinationId: null,
-        reason: 'This amount stays available until the next destination is confirmed.', adjustable: false,
+        reason: 'Not assigned yet — it stays available until you choose where it goes.', adjustable: false,
       }, remaining)
     }
   }
@@ -489,12 +490,21 @@ export function buildMoneyRoute({
   const missingInputs = missingPlanInputs({ snapshot, profile, accounts, debts })
   const ready = missingInputs.length === 0
 
+  // A debt the user typed in and then never sees again reads as lost data, so
+  // say plainly that leaving it on minimums is the deliberate choice.
+  const lowRateDebts = activeDebts.filter(debt => known(debt.interest_rate)
+    && num(debt.interest_rate) <= THRESHOLDS.highApr)
+  const notes = lowRateDebts.length
+    ? [`${lowRateDebts.map(debt => debt.name).join(' and ')} ${lowRateDebts.length === 1 ? 'is' : 'are'} not in this plan on purpose — at ${lowRateDebts.map(debt => `${num(debt.interest_rate)}%`).join(' and ')}, paying ${lowRateDebts.length === 1 ? 'it' : 'them'} down early earns you less than the moves above. Keep paying the minimum.`]
+    : []
+
   return {
     availableMonthlyAmount,
     reservedAmount,
     reconciliation,
     allocations: finalAllocations,
     upcoming: upcomingPriorities({ snapshot, goals, allocations: finalAllocations }),
+    notes,
     alreadyCommitted,
     missingInputs,
     ready,
@@ -555,11 +565,22 @@ function allocationStep(route, allocation, index) {
       intentKey: 'choose.health_insurance', priorityKey: 'insurance', outcome: { kind: 'information_only' }, basis,
     })
   }
+  if (allocation.key === 'confirm_employer_match') {
+    return stepBase(route, index, {
+      key: allocation.key, text: allocation.label, detail: allocation.reason,
+      doneWhen: 'You know whether your employer matches, and it is saved here.',
+      intentKey: 'verify.employer_match', priorityKey: 'capture_match',
+      outcome: { kind: 'information_only' },
+      basis: { recordType: 'profile', recordId: null },
+    })
+  }
   if (allocation.key === 'capture_employer_match') {
     const percent = allocation.label.match(/to ([\d.]+)%/)?.[1]
     return stepBase(route, index, {
       key: allocation.key, text: allocation.label, detail: allocation.reason,
-      doneWhen: `The workplace account contribution setting shows ${percent || 'the full matched'}%.`,
+      doneWhen: percent
+        ? `The workplace account contribution setting shows ${percent}%.`
+        : 'Your contribution is at least the percentage your employer matches.',
       intentKey: `capture.employer_match.${allocation.destinationId || 'workplace'}`, priorityKey: 'capture_match',
       outcome: { kind: 'recurring_setup', amount: amount || null, destinationAccountId: allocation.destinationId || null, contributionPercent: percent ? Number(percent) : null },
       basis,
@@ -623,7 +644,7 @@ export function buildInitialPlan(route) {
   const steps = []
   const actionable = (route.allocations || []).filter(item => (
     !['unassigned', 'hold_for_coverage'].includes(item.key)
-    && (item.amount > 0 || ['repair_budget', 'repair_allocations', 'choose_health_coverage', 'capture_employer_match', 'open_investment_account'].includes(item.key))
+    && (item.amount > 0 || ['repair_budget', 'repair_allocations', 'choose_health_coverage', 'capture_employer_match', 'confirm_employer_match', 'open_investment_account'].includes(item.key))
   ))
 
   for (const allocation of actionable) {
