@@ -1,88 +1,82 @@
-import { useState } from 'react'
-import { ArrowRight, Check, CircleHelp, Route, SlidersHorizontal } from 'lucide-react'
+import { ArrowRight, ClipboardList, ListChecks, SlidersHorizontal } from 'lucide-react'
 
 const formatMoney = value => `$${Math.max(0, Math.round(Number(value) || 0)).toLocaleString()}`
 
-function routeItems(route) {
-  return (route?.allocations || []).filter(item => item.amount > 0 || !item.adjustable)
-}
+// Labels are written as destinations ("Pay extra toward Visa Card") so they
+// read cleanly in the plan list; strip the verb prefix when a bare name is
+// what the sentence needs.
+const bareName = label => label.replace(/^Pay extra toward |^Build the |^Grow |^Fund |^Increase investing in /, '')
 
-// "Provisional" describes whether a LATER priority could still shift — it
-// must never sit on the headline when the very next action is already fully
-// verified, or a correct, confident recommendation reads as shaky.
-function shouldShowProvisionalBadge(route) {
-  return route.provisional && !route.primaryMoveConfident
+function planItems(route) {
+  return (route?.allocations || []).filter(item => (
+    !['hold_for_coverage', 'unassigned'].includes(item.key) && (item.amount > 0 || !item.adjustable)
+  ))
 }
 
 export function MoneyRouteSummary({ route }) {
-  if (!route) return null
-  const visible = routeItems(route).filter(item => !['hold_for_coverage', 'unassigned'].includes(item.key)).slice(0, 3)
+  if (!route?.ready) return null
+  const visible = planItems(route).slice(0, 3)
+  if (!visible.length) return null
   return (
-    <section aria-label="Money route" className="rounded-2xl border border-emerald-300/14 bg-emerald-300/[0.045] px-4 py-3.5">
+    <section aria-label="Your plan" className="rounded-2xl border border-emerald-300/14 bg-emerald-300/[0.045] px-4 py-3.5">
       <div className="flex items-center gap-2">
-        <Route className="h-4 w-4 text-emerald-200" />
-        <p className="text-[13px] font-semibold text-white">Money Route</p>
-        {shouldShowProvisionalBadge(route) && <span className="ml-auto rounded-full border border-amber-200/20 bg-amber-300/[0.08] px-2 py-0.5 text-[11px] font-semibold text-amber-50">Provisional</span>}
+        <ListChecks className="h-4 w-4 text-emerald-200" />
+        <p className="text-[13px] font-semibold text-white">Your plan</p>
       </div>
       <p className="mt-2 text-[13px] leading-5 text-readable-secondary">
         <strong className="font-semibold text-white">{formatMoney(route.availableMonthlyAmount)}/mo</strong>
-        {visible.length ? ` → ${visible.map(item => item.label.replace(/^Pay extra toward |^Build the |^Grow |^Fund |^Increase investing in /, '')).join(' → ')}` : ' available after recorded commitments'}
+        {` → ${visible.map(item => bareName(item.label)).join(' → ')}`}
       </p>
-      {route.blockers[0] && <p className="mt-1.5 text-xs leading-5 text-amber-50/90">Could change after: {route.blockers[0].title}</p>}
     </section>
   )
 }
 
+/**
+ * The plan the app recommends. Shown only once every required input exists,
+ * so it never needs hedging language — if something is missing the caller
+ * renders the setup prompt instead.
+ */
 export default function MoneyRouteCard({
   route,
   variant = 'advisor',
   onPrimary,
-  primaryLabel = 'Use this plan',
+  primaryLabel = 'Add this to my Plan',
   onAdjust,
-  onAnswer,
   onResolveBlocker,
   busy = false,
 }) {
-  const [questionOpen, setQuestionOpen] = useState(false)
-  if (!route) return null
-  const items = routeItems(route)
+  if (!route?.ready) return null
+  const items = planItems(route)
   const compact = variant === 'home'
-  const question = route.primaryQuestion
-  const blocker = route.blockers?.[0]
+  const limit = compact ? 3 : 5
+  // Home stays tight; the full card shows the sequence.
+  const upcoming = compact
+    ? (route.upcoming || []).slice(0, Math.max(0, 3 - items.length))
+    : (route.upcoming || []).slice(0, Math.max(0, 5 - items.slice(0, limit).length))
+  const refinement = route.refinements?.[0]
 
   return (
     <section className={`overflow-hidden rounded-[24px] border border-emerald-200/16 bg-[linear-gradient(145deg,rgba(18,41,31,.97),rgba(8,20,15,.99))] shadow-[0_18px_45px_rgba(0,0,0,.2)] ${compact ? 'p-4 sm:p-5' : 'p-5'}`}>
       <div className="flex items-start gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-200/15 bg-emerald-300/[0.09] text-emerald-100"><Route className="h-5 w-5" /></span>
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-200/15 bg-emerald-300/[0.09] text-emerald-100"><ClipboardList className="h-5 w-5" /></span>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/80">{compact ? 'Your monthly route' : 'Your first money route'}</p>
-            {shouldShowProvisionalBadge(route) && <span className="rounded-full border border-amber-200/20 bg-amber-300/[0.08] px-2 py-0.5 text-[11px] font-semibold text-amber-50">Provisional</span>}
-          </div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/80">Your plan</p>
           <h2 className="mt-1.5 text-[20px] font-semibold leading-7 tracking-[-0.02em] text-white">
-            {route.availableMonthlyAmount > 0
-              ? `${formatMoney(route.availableMonthlyAmount)} left to assign each month`
-              : `${route.chapter} comes first`}
+            Here is where your {formatMoney(route.availableMonthlyAmount)} a month goes
           </h2>
-          {/* The reconciliation is what stops this figure from ever reading as
-              a second, unexplained number next to Home's "Left over monthly"
-              — every subtraction between the two is spelled out here. */}
+          {/* Keeps this figure from reading as a second, unexplained number
+              next to Home's "Left over monthly" — every subtraction is shown. */}
           {!compact && route.reconciliation?.length > 1 && (
             <p className="mt-1 text-xs leading-5 text-readable-muted">
               {formatMoney(route.reconciliation[0].amount)} left over
               {route.reconciliation.slice(1).map(line => ` − ${formatMoney(Math.abs(line.amount))} ${line.label.toLowerCase()}`).join('')}
             </p>
           )}
-          <p className="mt-1 text-[13px] leading-5 text-readable-secondary">
-            {route.primaryMoveConfident
-              ? <><span className="font-semibold text-emerald-100">This step is certain — </span>{route.chapter.toLowerCase()} comes first no matter what you answer below.</>
-              : <>{route.chapter} is the current chapter. Required payments and recorded allocations are kept separate so this money is not counted twice.</>}
-          </p>
         </div>
       </div>
 
       <ol className="mt-4 divide-y divide-white/[0.07] rounded-2xl border border-white/[0.09] bg-black/[0.08] px-3.5">
-        {items.slice(0, compact ? 3 : 5).map((item, index) => (
+        {items.slice(0, limit).map((item, index) => (
           <li key={item.key} className="flex gap-3 py-3">
             <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-300/10 text-[11px] font-bold text-emerald-100">{index + 1}</span>
             <div className="min-w-0 flex-1">
@@ -94,59 +88,44 @@ export default function MoneyRouteCard({
             </div>
           </li>
         ))}
+
+        {/* One priority can absorb the whole monthly surplus, so the funded
+            list is often a single line. Showing what the same ladder reaches
+            next is what makes this a plan rather than one suggestion. */}
+        {upcoming.map((item, index) => (
+          <li key={item.key} className="flex gap-3 py-3">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-white/[0.14] text-[11px] font-bold text-readable-muted">{items.slice(0, limit).length + index + 1}</span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[13px] font-semibold leading-5 text-readable-secondary">{item.label}</p>
+                <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-readable-muted">Then</span>
+              </div>
+              {!compact && <p className="mt-0.5 text-xs leading-5 text-readable-muted">{item.reason}</p>}
+            </div>
+          </li>
+        ))}
       </ol>
-      {items.length > (compact ? 3 : 5) && <p className="mt-2 text-xs text-readable-secondary">+{items.length - (compact ? 3 : 5)} later destination{items.length - (compact ? 3 : 5) === 1 ? '' : 's'}</p>}
-
-      {route.nextDestination && !compact && <p className="mt-3 text-[13px] leading-5 text-readable-secondary"><span className="font-semibold text-white">After this:</span> {route.nextDestination}</p>}
-
-      {blocker && (
-        <div className="mt-3 rounded-xl border border-amber-200/18 bg-amber-300/[0.055] px-3.5 py-3">
-          <div className="flex gap-2.5">
-            <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 text-amber-100" />
-            <div><p className="text-[13px] font-semibold text-amber-50">One fact could refine this route</p><p className="mt-0.5 text-xs leading-5 text-readable-secondary">{blocker.title}. {blocker.detail}</p></div>
-          </div>
-          {/* route.blockers can hold more than one missing fact, but only the
-              first drives the headline copy above — list the rest so a second
-              (often equally or more valuable) fact is never silently dropped. */}
-          {!compact && route.blockers.length > 1 && (
-            <ul className="mt-2.5 space-y-1.5 border-t border-amber-200/10 pt-2.5">
-              {route.blockers.slice(1).map(item => (
-                <li key={item.id}>
-                  <button type="button" onClick={() => onResolveBlocker?.(item)} disabled={busy}
-                    className="min-h-9 w-full rounded-lg px-1 text-left text-xs font-semibold text-amber-50/85 hover:text-amber-50 hover:underline disabled:opacity-50">
-                    Also: {item.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {questionOpen && question && (
-        <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-3.5">
-          <p className="text-[13px] font-semibold leading-5 text-white">{question.prompt}</p>
-          <div className="mt-2 grid gap-2">
-            {question.options.map(option => <button key={option.value} type="button" onClick={() => onAnswer?.(question.key, option.value)} disabled={busy}
-              className="min-h-11 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.055] px-3 text-left text-[13px] font-semibold text-emerald-50 hover:bg-emerald-300/[0.1] disabled:opacity-50">
-              {option.label}
-            </button>)}
-          </div>
-        </div>
-      )}
+      {items.length > limit && <p className="mt-2 text-xs text-readable-secondary">+{items.length - limit} more funded this month</p>}
 
       <div className={`mt-4 flex ${compact ? 'items-center' : 'flex-col sm:flex-row'} gap-2`}>
         {onPrimary && <button type="button" onClick={onPrimary} disabled={busy} className="btn-primary min-h-11 flex-1 disabled:opacity-50">
           {busy ? 'Saving…' : primaryLabel} <ArrowRight className="h-4 w-4" />
         </button>}
         {!compact && onAdjust && route.allocations.some(item => item.adjustable) && <button type="button" onClick={onAdjust} disabled={busy} className="btn-ghost min-h-11 flex-1"><SlidersHorizontal className="h-4 w-4" /> Adjust amounts</button>}
-        {!compact && question && <button type="button" onClick={() => setQuestionOpen(open => !open)} disabled={busy} className="btn-ghost min-h-11 flex-1"><CircleHelp className="h-4 w-4" /> Answer one question</button>}
-        {!compact && !question && blocker && onResolveBlocker && <button type="button" onClick={() => onResolveBlocker(blocker)} disabled={busy} className="btn-ghost min-h-11 flex-1"><Check className="h-4 w-4" /> Add missing detail</button>}
       </div>
+
+      {/* Optional detail that would sharpen an already-valid plan. Deliberately
+          quiet and below the actions — it is not a warning. */}
+      {!compact && refinement && onResolveBlocker && (
+        <button type="button" onClick={() => onResolveBlocker(refinement)} disabled={busy}
+          className="mt-3 min-h-9 w-full rounded-lg px-1 text-left text-xs leading-5 text-readable-muted hover:text-readable-secondary disabled:opacity-50">
+          Optional: {refinement.title.replace(/^Add /, 'add ')} to sharpen this further.
+        </button>
+      )}
 
       {!compact && (
         <p className="mt-3 text-center text-[11px] leading-4 text-readable-muted">
-          Ranked by guaranteed return: safety net, then free money, then high-interest debt, then savings and investing.
+          Ordered by guaranteed return: safety net, then free money, then high-interest debt, then savings and investing.
         </p>
       )}
     </section>

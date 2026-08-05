@@ -774,6 +774,9 @@ export function buildPlanModel({ snapshot = {}, setupState, plan, activities = [
     review,
     fingerprint,
     candidates: proposed.slice(0, Math.max(0, FOCUS_SIZE - approvedFocus.length)),
+    // The whole deduped plan. `candidates` is trimmed to what fits the
+    // three-slot focus view; approving the plan should save all of it.
+    routeCandidates: proposed,
     approvedCount: approvedFocus.length,
   }
 }

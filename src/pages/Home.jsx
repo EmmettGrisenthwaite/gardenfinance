@@ -146,7 +146,10 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
   const selectedPercent = selectedGoal
     ? Math.min(100, Math.round((Number(selectedGoal.current_amount || 0) / Math.max(1, Number(selectedGoal.target_amount || 0))) * 100))
     : 0
-  const hasMoneyRoute = snapshot.income > 0 || snapshot.expenses > 0 || accounts.length > 0 || debts.length > 0
+  // Only show the plan once every required input exists — otherwise Home
+  // falls through to the normal next-action card, which already knows how to
+  // ask for whatever is missing.
+  const hasMoneyRoute = moneyRoute.ready
   const approvedRouteStep = [...planModel.focus, ...planModel.later]
     .find(step => !step.proposed && step.source === 'money-route') || null
 
@@ -226,7 +229,7 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
             route={moneyRoute}
             variant="home"
             onPrimary={runMoneyRoute}
-            primaryLabel={approvedRouteStep ? 'Do the next move' : 'Review this route'}
+            primaryLabel={approvedRouteStep ? 'Do the next move' : 'Review my plan'}
           /> : <motion.section key={action.kind + action.title}
             initial={reducedMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}
             className="rounded-[24px] border border-emerald-200/15 bg-[linear-gradient(145deg,rgba(18,41,31,.96),rgba(8,20,15,.98))] p-4 shadow-[0_18px_45px_rgba(0,0,0,.2)] sm:p-5">

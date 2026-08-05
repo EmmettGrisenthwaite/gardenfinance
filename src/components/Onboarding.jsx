@@ -115,6 +115,9 @@ const BASE_STEPS = [
 // ─── Adaptive steps — the quiz reshapes itself around earlier answers ──────────
 // A self-employed 50-year-old shouldn't be asked about an employer 401k or see
 // "on my parents' plan" as an insurance option.
+// Setup collects everything the plan needs, in one pass. The plan is withheld
+// until all of it exists (see missingPlanInputs in moneyRoute.js), so leaving
+// a gap here just moves the same question somewhere less convenient.
 const CALM_STEPS = [
   BASE_STEPS.find(step => step.id === 'preview'),
   {
@@ -124,6 +127,17 @@ const CALM_STEPS = [
     sub: 'Age and work shape the advice you receive.',
   },
   BASE_STEPS.find(step => step.id === 'money'),
+  {
+    id: 'balances_calm',
+    type: 'calm_balances',
+    question: "What's in the bank?",
+    sub: 'Rough balances are fine. These set your safety net target.',
+  },
+  {
+    ...BASE_STEPS.find(step => step.id === 'debts'),
+    question: 'Any debts?',
+    sub: 'The rate decides what gets paid first, so add it if you know it.',
+  },
   {
     id: 'coverage_calm',
     type: 'calm_coverage',
@@ -197,7 +211,7 @@ function PreviewStep() {
     <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] p-5">
       <p className="text-base font-semibold text-white">One clear next move, grounded in your real numbers.</p>
       <p className="mt-2 text-sm leading-6 text-readable-secondary">
-        Four short setup steps establish the essentials. Then Accounts opens so you can add details when you are ready.
+        A few short questions — about two minutes. Your plan is built the moment you finish.
       </p>
     </div>
   )
@@ -345,6 +359,8 @@ export default function Onboarding({ onClose, profileOnly = false }) {
     primary_goal:     profile?.primary_goal    ?? '',
     monthly_income:   profile?.monthly_income   ? String(profile.monthly_income)   : '',
     monthly_expenses: profile?.monthly_expenses ? String(profile.monthly_expenses) : '',
+    checking_balance: '',
+    savings_balance:  '',
     debts:            [],   // [{ name, balance }]
   })
 
@@ -382,6 +398,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
     }
     if (current.type === 'calm_priority') return !!answers.primary_goal
     if (current.type === 'money')   return true   // all optional — rough or skip
+    if (current.type === 'calm_balances') return true // rough or skip
     if (current.type === 'debts')   return true   // optional
     if (current.type === 'multi')   return answers[current.field]?.length > 0
     return !!answers[current.field]
@@ -450,6 +467,36 @@ export default function Onboarding({ onClose, profileOnly = false }) {
           : await supabase.from('debts').insert({ user_id: user.id, name, type: 'other', balance: Number(debt.balance), interest_rate: debt.interest_rate ?? null, last_verified_at: new Date().toISOString().slice(0, 10) })
         if (result.error) {
           setError(result.error.message ?? 'Could not save your debts.')
+          setSaving(false)
+          return
+        }
+      }
+    }
+
+    // Seed cash accounts from the balances step so the plan has real liquidity
+    // to reason about. Only created when this user has no accounts yet, so
+    // re-running setup never duplicates them.
+    const seedAccounts = [
+      { name: 'Checking', type: 'checking', subtype: 'checking', balance: Number(answers.checking_balance) || 0, entered: answers.checking_balance !== '' },
+      { name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: Number(answers.savings_balance) || 0, entered: answers.savings_balance !== '' },
+    ].filter(account => account.entered)
+    if (seedAccounts.length) {
+      const { data: existingAccounts, error: accountReadError } = await supabase.from('accounts')
+        .select('id').eq('user_id', user.id).limit(1)
+      if (accountReadError) {
+        setError(accountReadError.message ?? 'Could not read your accounts.')
+        setSaving(false)
+        return
+      }
+      if (!existingAccounts?.length) {
+        const { error: accountSaveError } = await supabase.from('accounts').insert(
+          seedAccounts.map(account => ({
+            user_id: user.id, name: account.name, type: account.type, subtype: account.subtype,
+            balance: account.balance, last_verified_at: new Date().toISOString().slice(0, 10),
+          })),
+        )
+        if (accountSaveError) {
+          setError(accountSaveError.message ?? 'Could not save your balances.')
           setSaving(false)
           return
         }
@@ -744,13 +791,36 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                       </div>
                     </label>
                   ))}
+                </div>
+              )}
+
+              {current.type === 'calm_balances' && (
+                <div className="space-y-3">
+                  {[
+                    { field: 'checking_balance', label: 'Checking', hint: 'everyday spending', auto: true },
+                    { field: 'savings_balance',  label: 'Savings',  hint: 'leave blank if none' },
+                  ].map(({ field, label, hint, auto }) => (
+                    <label key={field} className="block">
+                      <span className="text-sm font-medium text-white/80">{label}</span>
+                      <span className="ml-1.5 text-xs text-white/40">{hint}</span>
+                      <div className="mt-1 flex items-center rounded-xl border-2 border-white/15 bg-white/[0.075] px-3 py-2.5 transition-colors focus-within:border-emerald-500">
+                        <span className="mr-1 text-lg text-white/40">$</span>
+                        <input type="number" inputMode="decimal" min="0" step="50"
+                          autoFocus={auto}
+                          value={answers[field]}
+                          onChange={e => set(field, e.target.value)}
+                          placeholder="0"
+                          className="w-full bg-transparent text-lg font-bold tabular-nums text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                      </div>
+                    </label>
+                  ))}
                   <div className="flex gap-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] p-3.5">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-300/10 text-emerald-100">
                       <Landmark className="h-5 w-5" />
                     </span>
                     <div>
-                      <p className="text-sm font-semibold text-white">Your accounts are next</p>
-                      <p className="mt-1 text-xs leading-5 text-readable-secondary">After setup, Accounts opens automatically so you can add checking, savings, retirement, and brokerage accounts with their real details. Every save updates Home and your Advisor.</p>
+                      <p className="text-sm font-semibold text-white">Retirement and brokerage come later</p>
+                      <p className="mt-1 text-xs leading-5 text-readable-secondary">These two set your safety-net target. You can add investment accounts, or connect a bank to sync balances automatically, right after setup.</p>
                     </div>
                   </div>
                 </div>
@@ -824,7 +894,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
           </div>
 
           {/* Show Next/Finish for non-auto-advance steps */}
-          {(current.type === 'preview' || current.type === 'intro' || current.type === 'age' || current.type === 'multi' || current.type === 'money' || current.type === 'debts' || current.type === 'calm_basics' || current.type === 'calm_coverage' || current.type === 'calm_priority') && (
+          {(current.type === 'preview' || current.type === 'intro' || current.type === 'age' || current.type === 'multi' || current.type === 'money' || current.type === 'debts' || current.type === 'calm_basics' || current.type === 'calm_balances' || current.type === 'calm_coverage' || current.type === 'calm_priority') && (
             isLast ? (
               <button onClick={finish} disabled={!canAdvance() || saving}
                 className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30">

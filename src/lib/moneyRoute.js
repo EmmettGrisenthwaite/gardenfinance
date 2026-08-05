@@ -117,12 +117,82 @@ function applyAdjustments(allocations, available, adjustments) {
   return adjusted
 }
 
-function routeChapter({ snapshot, profile, allocations }) {
-  if (num(snapshot.cashFlowMargin) < 0 || num(snapshot.unallocated) < 0) return 'Stabilize'
-  if (profile?.health_insurance === 'none' || allocations.some(item => item.key === 'starter_emergency')) return 'Protect'
-  if (allocations.some(item => item.destinationType === 'debt')) return 'Eliminate'
-  if (allocations.some(item => item.key === 'full_emergency')) return 'Build your cushion'
-  return 'Grow'
+// Everything the plan needs before it is worth showing at all. A plan built on
+// half the picture is worse than no plan: it confidently routes money past
+// whatever it was never told about. Onboarding now collects all of this, so a
+// finished user should never see this list — it exists for people who skipped
+// a step or cleared a record later.
+function missingPlanInputs({ snapshot, profile, accounts, debts }) {
+  const missing = []
+  if (!(num(snapshot.income) > 0)) {
+    missing.push({ id: 'income', label: 'Your monthly take-home income', sheet: 'plan' })
+  }
+  if (!(num(snapshot.expenses) > 0)) {
+    missing.push({ id: 'expenses', label: 'Your typical monthly spending', sheet: 'plan' })
+  }
+  if (!accounts.length) {
+    missing.push({ id: 'balances', label: "What's in checking and savings", sheet: 'cash' })
+  }
+  if (!profile?.health_insurance) {
+    missing.push({ id: 'coverage', label: 'Whether you have health coverage', sheet: 'plan' })
+  }
+  // onboarding_complete is the signal that the debt question was actually
+  // asked — it lets the plan tell "no debt" apart from "never entered"
+  // without inventing a column for it.
+  if (!debts.length && !profile?.onboarding_complete) {
+    missing.push({ id: 'debts', label: 'Whether you carry any debt', sheet: 'debts' })
+  }
+  if (!profile?.employer_401k) {
+    missing.push({ id: 'retirement', label: 'Whether your employer offers a retirement plan', sheet: 'investment' })
+  }
+  return missing
+}
+
+// What comes after this month's money is spoken for. When one priority
+// absorbs the whole surplus — a 24% card usually does — the allocation list is
+// a single line, which reads as one suggestion rather than a plan. These are
+// the stages the same ladder reaches next, so the user can see the sequence
+// they are actually signing up for.
+function upcomingPriorities({ snapshot, goals, allocations }) {
+  const fundedKeys = new Set(allocations.filter(item => item.amount > 0).map(item => item.key))
+  const activeDebts = (snapshot.debts || []).filter(debt => num(debt.balance) > 0
+    && known(debt.interest_rate) && num(debt.interest_rate) > THRESHOLDS.highApr)
+  const upcoming = []
+
+  // Debts that exist but are not the one being paid down this month.
+  for (const debt of activeDebts) {
+    const key = `debt.${debt.id || debt.name}`
+    if (fundedKeys.has(key)) continue
+    upcoming.push({
+      key, label: `Pay off ${debt.name}`,
+      reason: `${num(debt.interest_rate)}% APR — next once the higher-rate balance is clear.`,
+    })
+  }
+
+  const efTargetAmount = num(snapshot.efTargetAmount)
+  const reserveShort = efTargetAmount > 0 && num(snapshot.liquid) < efTargetAmount
+  if (reserveShort && !fundedKeys.has('full_emergency')) {
+    upcoming.push({
+      key: 'full_emergency',
+      label: `Grow emergency savings to ${snapshot.efTargetMonths || 3} months`,
+      reason: `Builds toward ${money(efTargetAmount)} of liquid reserves once higher-cost debt is gone.`,
+    })
+  }
+
+  const goal = activeGoals(goals)[0]
+  if (goal && !fundedKeys.has(`goal.${goal.id || goal.name}`)) {
+    upcoming.push({
+      key: `goal.${goal.id || goal.name}`, label: `Fund ${goal.name}`,
+      reason: 'Your nearest active goal, once protection and debt are handled.',
+    })
+  } else if (!goal) {
+    upcoming.push({
+      key: 'invest_long_term', label: 'Start investing the freed-up money',
+      reason: 'With protection and debt handled, this money can work long term.',
+    })
+  }
+
+  return upcoming
 }
 
 function nextDestinationFor(allocations, snapshot, goals) {
@@ -409,55 +479,31 @@ export function buildMoneyRoute({
   }
 
   const finalAllocations = applyAdjustments(allocations, availableMonthlyAmount, adjustments)
-  const chapter = routeChapter({ snapshot, profile, allocations: finalAllocations })
   const fingerprint = adjustments
     ? `${baseFingerprint}-${hashState(JSON.stringify(adjustments))}`
     : baseFingerprint
-  const provisional = blockers.length > 0 || finalAllocations.some(item => item.confidence !== 'verified')
-  // "Provisional" describes the ROUTE — whether a later priority could still
-  // shift. It should never read as "don't trust this" when the very next
-  // action is fully verified: a missing fact about, say, an employer match
-  // can only ever add a NEW higher-ranked step, never invalidate a debt
-  // payoff that's already the highest verified cost in the picture. Surfaced
-  // separately so the UI can say "do this — it's certain" even while the
-  // route as a whole stays provisional.
-  //
-  // Certainty must also account for a category we were never told about, not
-  // just for facts we know are missing. High-interest debt sits mid-ladder:
-  // anything ranked above it (repairing a deficit, coverage, the starter
-  // reserve, an employer match) stays correct no matter what debt exists, but
-  // anything ranked below it (the full reserve, goals, investing) could be
-  // outranked by a card we've never seen. With zero debt records the app
-  // cannot distinguish "no debt" from "never entered" — so it declines to
-  // claim certainty rather than confidently routing money past a possible
-  // 24% APR balance.
-  const OUTRANKS_UNKNOWN_DEBT = new Set([
-    'repair_budget', 'repair_allocations', 'choose_health_coverage',
-    'starter_emergency', 'capture_employer_match',
-  ])
-  const topAllocation = finalAllocations.find(item => item.amount > 0 && item.destinationType !== 'unassigned')
-  const debtEvidenceRecorded = debts.length > 0
-  const topOutranksUnknownDebt = Boolean(topAllocation) && (
-    OUTRANKS_UNKNOWN_DEBT.has(topAllocation.key) || topAllocation.destinationType === 'debt'
-  )
-  const primaryMoveConfident = Boolean(topAllocation)
-    && topAllocation.confidence === 'verified'
-    && (debtEvidenceRecorded || topOutranksUnknownDebt)
+  // The plan is either ready or it is not. There is no half-confident middle
+  // state to explain to the user: if something required is missing the app
+  // asks for it, and once everything is in the recommendations stand on
+  // their own without hedging language.
+  const missingInputs = missingPlanInputs({ snapshot, profile, accounts, debts })
+  const ready = missingInputs.length === 0
 
   return {
-    chapter,
     availableMonthlyAmount,
     reservedAmount,
     reconciliation,
     allocations: finalAllocations,
+    upcoming: upcomingPriorities({ snapshot, goals, allocations: finalAllocations }),
     alreadyCommitted,
-    blockers,
+    missingInputs,
+    ready,
+    // Refinements are optional details that sharpen an already-valid plan —
+    // never a reason to withhold or hedge it.
+    refinements: blockers,
     conditionalChanges,
     primaryQuestion: blockers.find(blocker => blocker.question)?.question || null,
     nextDestination: nextDestinationFor(finalAllocations, snapshot, goals),
-    provisional,
-    primaryMoveConfident,
-    complete: !provisional,
     baseFingerprint,
     fingerprint,
   }
@@ -475,66 +521,13 @@ function stepBase(route, index, values) {
     outcome: values.outcome || null,
     priorityKey: values.priorityKey || 'assign_cash',
     basis: values.basis || null,
-    chapterId: `money-route.${route.chapter.toLowerCase().replace(/\s+/g, '_')}`,
+    chapterId: 'recommended-plan',
     chapterOrder: index + 1,
     generatedForFingerprint: route.fingerprint,
     guideFingerprint: route.fingerprint,
     source: 'money-route',
     proposed: true,
   }
-}
-
-function blockerStep(route, blocker, index) {
-  if (!blocker) return null
-  const map = {
-    employer_match_unknown: {
-      text: 'Confirm whether your employer offers a retirement match',
-      doneWhen: 'Your employer-match status is saved as yes or no.',
-      intentKey: 'verify.employer_match', priorityKey: 'capture_match',
-    },
-    employer_match_details: {
-      text: 'Add your employer-match limit and current contribution',
-      doneWhen: 'Your workplace account shows the match limit and your current contribution percentage.',
-      intentKey: 'verify.employer_match_details', priorityKey: 'capture_match',
-    },
-    debt_rate: {
-      text: blocker.title,
-      doneWhen: 'The debt shows its current APR in Money.',
-      intentKey: `verify.debt_rate.${blocker.recordId || 'primary'}`, priorityKey: 'kill_debt',
-    },
-    debt_minimum: {
-      text: blocker.title,
-      doneWhen: 'The debt shows its required minimum monthly payment in Money.',
-      intentKey: `verify.debt_minimum.${blocker.recordId || 'primary'}`, priorityKey: 'kill_debt',
-    },
-    debt_payment_gap: {
-      text: blocker.title,
-      doneWhen: 'The Monthly Plan includes every required debt payment.',
-      intentKey: 'budget.record_debt_minimums', priorityKey: 'deficit',
-    },
-    balances: {
-      text: 'Add your checking and savings balances',
-      doneWhen: 'Money shows at least one current cash-account balance.',
-      intentKey: 'verify.cash_balances', priorityKey: 'starter_ef',
-    },
-    income: {
-      text: blocker.title,
-      doneWhen: 'The Monthly Plan shows typical take-home income.',
-      intentKey: 'verify.monthly_income', priorityKey: 'deficit',
-    },
-    expenses: {
-      text: blocker.title,
-      doneWhen: 'The Monthly Plan shows typical monthly spending.',
-      intentKey: 'verify.monthly_expenses', priorityKey: 'deficit',
-    },
-  }
-  const values = map[blocker.id]
-  if (!values) return null
-  return stepBase(route, index, {
-    key: blocker.id, ...values, detail: blocker.detail,
-    outcome: { kind: 'information_only' },
-    basis: { recordType: blocker.sheet || 'money', recordId: blocker.recordId || null },
-  })
 }
 
 function allocationStep(route, allocation, index) {
@@ -617,25 +610,38 @@ function allocationStep(route, allocation, index) {
   })
 }
 
-/** Convert an approved route into no more than three focused, deduplicable steps. */
+const PLAN_SIZE = 5
+
+/**
+ * Turn the calculated waterfall into a real plan: one step per funded
+ * priority, plus an automation step for the largest recurring move. Earlier
+ * versions returned a single allocation, which read as one suggestion rather
+ * than a plan.
+ */
 export function buildInitialPlan(route) {
   if (!route) return []
   const steps = []
-  const blocker = blockerStep(route, route.blockers?.[0], steps.length)
-  if (blocker) steps.push(blocker)
   const actionable = (route.allocations || []).filter(item => (
     !['unassigned', 'hold_for_coverage'].includes(item.key)
     && (item.amount > 0 || ['repair_budget', 'repair_allocations', 'choose_health_coverage', 'capture_employer_match', 'open_investment_account'].includes(item.key))
   ))
-  const primary = allocationStep(route, actionable[0], steps.length)
-  if (primary && !steps.some(step => step.intentKey === primary.intentKey)) steps.push(primary)
 
-  if (primary?.outcome?.amount > 0 && ['transfer', 'contribution', 'debt_payment'].includes(primary.outcome.kind) && steps.length < 3) {
-    const destination = actionable[0]?.label || 'the current priority'
+  for (const allocation of actionable) {
+    if (steps.length >= PLAN_SIZE) break
+    const step = allocationStep(route, allocation, steps.length)
+    if (step && !steps.some(existing => existing.intentKey === step.intentKey)) steps.push(step)
+  }
+
+  // Automating the biggest recurring transfer is what keeps the plan running
+  // without relying on memory, so it earns a place once the priorities are in.
+  const primary = steps.find(step => step.outcome?.amount > 0
+    && ['transfer', 'contribution', 'debt_payment'].includes(step.outcome.kind))
+  if (primary && steps.length < PLAN_SIZE) {
+    const target = actionable.find(item => allocationStep(route, item, 0)?.intentKey === primary.intentKey)
     steps.push(stepBase(route, steps.length, {
-      key: `automate.${actionable[0]?.key || 'primary'}`,
-      text: `Schedule ${money(primary.outcome.amount)} monthly toward ${destination.replace(/^Pay extra toward |^Fund |^Build the |^Grow /, '')}`,
-      detail: 'Automation keeps the approved route moving without relying on memory.',
+      key: `automate.${target?.key || 'primary'}`,
+      text: `Schedule ${money(primary.outcome.amount)} monthly toward ${(target?.label || 'this priority').replace(/^Pay extra toward |^Fund |^Build the |^Grow |^Increase investing in /, '')}`,
+      detail: 'Automation keeps the plan moving without relying on memory.',
       doneWhen: 'The recurring payment or transfer is scheduled and its first date is confirmed.',
       intentKey: `setup.${primary.intentKey}`,
       priorityKey: primary.priorityKey,
@@ -649,27 +655,33 @@ export function buildInitialPlan(route) {
     }))
   }
 
-  if (steps.length < 3 && actionable[1]) {
-    const next = allocationStep(route, actionable[1], steps.length)
-    if (next && !steps.some(step => step.intentKey === next.intentKey)) steps.push(next)
-  }
-  return steps.slice(0, 3).map((step, index) => ({ ...step, chapterOrder: index + 1 }))
+  return steps.slice(0, PLAN_SIZE).map((step, index) => ({ ...step, chapterOrder: index + 1 }))
 }
 
 export function formatMoneyRouteForAdvisor(route) {
   if (!route) return ''
+  if (!route.ready) {
+    return [
+      'PLAN STATUS — NOT YET GENERATED',
+      'The user has not finished setup, so no plan exists yet. Missing:',
+      ...route.missingInputs.map(item => `- ${item.label}`),
+      'Do not invent a plan or recommend allocations. Ask them to finish setup first.',
+    ].join('\n')
+  }
   const lines = route.allocations.map(item => (
     `- ${item.amount > 0 ? `${money(item.amount)}/month: ` : ''}${item.label} (${item.reason})`
   ))
-  const blockers = route.blockers.map(item => `- ${item.title}: ${item.detail}`)
+  const refinements = (route.refinements || []).map(item => `- ${item.title}: ${item.detail}`)
   return [
-    'AUTHORITATIVE MONEY ROUTE — RULES CALCULATED, NOT MODEL GENERATED',
-    `Chapter: ${route.chapter}`,
+    'AUTHORITATIVE PLAN — RULES CALCULATED, NOT MODEL GENERATED',
     `Money left to assign: ${money(route.availableMonthlyAmount)}/month`,
-    `Status: ${route.provisional ? 'provisional because a material fact is missing' : 'based on complete recorded inputs'}`,
-    'Current route:', ...lines,
-    ...(route.nextDestination ? [`After the current priority: ${route.nextDestination}`] : []),
-    ...(blockers.length ? ['Missing facts that may refine the route:', ...blockers] : []),
-    'Never contradict this route or invent a different allocation. Explain it in plain language. If structured facts change, say the route must be recalculated.',
+    'The plan:', ...lines,
+    ...(route.nextDestination ? [`After these: ${route.nextDestination}`] : []),
+    ...(refinements.length ? ['Optional details that would sharpen it:', ...refinements] : []),
+    'Never contradict this plan or invent a different allocation. Explain it in plain language.',
+    'Your job now is to REFINE it. Ask the questions a good financial planner would ask about',
+    'what these numbers cannot show — job stability, upcoming large expenses, timelines, risk',
+    'comfort, dependents, whether the emergency target fits their situation. One question at a',
+    'time. Never re-ask anything already answered in the records above.',
   ].join('\n')
 }

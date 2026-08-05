@@ -31,7 +31,7 @@ test('the monthly waterfall assigns exactly the available amount', () => {
   assert.equal(route.allocations[1].amount, 500)
 })
 
-test('an unknown employer match makes the route provisional without blocking known debt guidance', () => {
+test('an unknown employer match refines the plan rather than withholding it', () => {
   const input = state({
     profile: { monthly_income: 5000, monthly_expenses: 4100, health_insurance: 'employer', employer_401k: 'unsure' },
     accounts: [
@@ -41,8 +41,10 @@ test('an unknown employer match makes the route provisional without blocking kno
     debts: [{ id: 'card', name: 'Credit card', balance: 3400, interest_rate: 24, minimum_payment: 85 }],
   })
   const route = buildMoneyRoute(input)
-  assert.equal(route.provisional, true)
-  assert.equal(route.primaryQuestion.key, 'employer_match')
+  // "Unsure" is still an answer, so the plan stands; the match detail is an
+  // optional refinement, never a reason to hide verified debt guidance.
+  assert.equal(route.ready, true)
+  assert.equal(route.refinements.some(item => item.id === 'employer_match_unknown'), true)
   assert.equal(route.allocations.some(item => item.destinationType === 'debt' && item.amount === 900), true)
   assert.equal(route.conditionalChanges.length, 1)
 })
@@ -76,7 +78,7 @@ test('detailed workplace account evidence overrides an unsure onboarding answer'
     ],
   })
   const route = buildMoneyRoute(input)
-  assert.equal(route.blockers.some(item => item.id === 'employer_match_unknown'), false)
+  assert.equal(route.refinements.some(item => item.id === 'employer_match_unknown'), false)
   assert.equal(route.primaryQuestion, null)
 })
 
@@ -94,7 +96,7 @@ test('detailed debt minimums are reserved once when missing from the monthly pla
   })
   const route = buildMoneyRoute(input)
   assert.equal(route.availableMonthlyAmount, 900)
-  assert.equal(route.blockers[0].id, 'debt_payment_gap')
+  assert.equal(route.refinements[0].id, 'debt_payment_gap')
   assert.equal(route.allocations.reduce((sum, item) => sum + item.amount, 0), 900)
 })
 
@@ -144,58 +146,66 @@ test('the route exposes a reconciliation that sums to the same figure Home shows
   assert.equal(route.reconciliation[0].amount, 1300)
 })
 
-test('the top move is reported confident even while the route stays provisional', () => {
-  const input = state({
-    profile: { monthly_income: 5000, monthly_expenses: 4100, health_insurance: 'employer', employer_401k: 'unsure' },
-    accounts: [
-      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 1600 },
-      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 1400 },
-    ],
-    debts: [{ id: 'card', name: 'Credit card', balance: 3400, interest_rate: 24, minimum_payment: 85 }],
-  })
-  const route = buildMoneyRoute(input)
-  assert.equal(route.provisional, true)
-  assert.equal(route.primaryMoveConfident, true)
+test('the plan is withheld until every required input exists', () => {
+  // A plan built on half the picture confidently routes money past whatever
+  // it was never told about, so it is not shown at all until setup is done.
+  const noBalances = buildMoneyRoute(state({
+    profile: { monthly_income: 4500, monthly_expenses: 3200, health_insurance: 'employer', employer_401k: 'no_match', onboarding_complete: true },
+    accounts: [],
+    debts: [],
+  }))
+  assert.equal(noBalances.ready, false)
+  assert.equal(noBalances.missingInputs.some(item => item.id === 'balances'), true)
+
+  const neverAskedAboutDebt = buildMoneyRoute(state({
+    profile: { monthly_income: 4500, monthly_expenses: 3200, health_insurance: 'employer', employer_401k: 'no_match' },
+    accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 600 }],
+    debts: [],
+  }))
+  assert.equal(neverAskedAboutDebt.ready, false)
+  assert.equal(neverAskedAboutDebt.missingInputs.some(item => item.id === 'debts'), true)
+
+  const noCoverageAnswer = buildMoneyRoute(state({
+    profile: { monthly_income: 4500, monthly_expenses: 3200, employer_401k: 'no_match', onboarding_complete: true },
+    accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 600 }],
+    debts: [],
+  }))
+  assert.equal(noCoverageAnswer.ready, false)
+  assert.equal(noCoverageAnswer.missingInputs.some(item => item.id === 'coverage'), true)
 })
 
-test('certainty is withheld when a whole category was never recorded', () => {
-  // Regression: the setup sheet lets a user skip the debts section, and the
-  // app cannot tell "no debt" from "never entered". Routing the full monthly
-  // surplus into savings while an unseen 24% card compounds is exactly the
-  // advice that must not carry a certainty claim.
-  const noDebtEvidence = buildMoneyRoute(state({
-    profile: { monthly_income: 4500, monthly_expenses: 3200, health_insurance: 'employer', employer_401k: 'no_match' },
+test('finishing setup is enough to make the plan ready, with or without debt', () => {
+  // onboarding_complete is what distinguishes "no debt" from "never entered",
+  // so a genuinely debt-free user who finished setup gets a full plan.
+  const debtFree = buildMoneyRoute(state({
+    profile: { monthly_income: 4500, monthly_expenses: 3200, health_insurance: 'employer', employer_401k: 'no_match', onboarding_complete: true },
     accounts: [
       { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 600 },
       { id: 'savings', name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: 1200 },
     ],
     debts: [],
   }))
-  assert.equal(noDebtEvidence.allocations[0].key, 'full_emergency')
-  assert.equal(noDebtEvidence.primaryMoveConfident, false)
+  assert.equal(debtFree.ready, true)
+  assert.deepEqual(debtFree.missingInputs, [])
 
-  // The same route becomes certain once debt is actually known to be absent.
-  const debtsKnownPaidOff = buildMoneyRoute(state({
-    profile: { monthly_income: 4500, monthly_expenses: 3200, health_insurance: 'employer', employer_401k: 'no_match' },
-    accounts: [
-      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 600 },
-      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: 1200 },
-    ],
-    debts: [{ id: 'old', name: 'Paid card', balance: 0, interest_rate: 22, minimum_payment: 25 }],
+  const withDebt = buildMoneyRoute(state({
+    profile: { monthly_income: 4500, monthly_expenses: 3200, health_insurance: 'employer', employer_401k: 'no_match', onboarding_complete: true },
+    accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 1800 }],
+    debts: [{ id: 'card', name: 'Card', balance: 2400, interest_rate: 24, minimum_payment: 60 }],
   }))
-  assert.equal(debtsKnownPaidOff.primaryMoveConfident, true)
+  assert.equal(withDebt.ready, true)
 })
 
-test('a move that outranks debt stays certain even with no debt recorded', () => {
-  // The starter reserve sits ABOVE high-interest debt in the ladder, so an
-  // unknown card cannot displace it — withholding certainty here would be
-  // needlessly timid about a genuinely correct recommendation.
+test('a ready plan carries no hedging fields at all', () => {
   const route = buildMoneyRoute(state({
-    accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 200 }],
-    debts: [],
+    profile: { monthly_income: 4500, monthly_expenses: 3200, health_insurance: 'employer', employer_401k: 'no_match', onboarding_complete: true },
+    accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 1800 }],
+    debts: [{ id: 'card', name: 'Card', balance: 2400, interest_rate: 24, minimum_payment: 60 }],
   }))
-  assert.equal(route.allocations[0].key, 'starter_emergency')
-  assert.equal(route.primaryMoveConfident, true)
+  assert.equal(route.ready, true)
+  assert.equal('chapter' in route, false)
+  assert.equal('provisional' in route, false)
+  assert.equal('primaryMoveConfident' in route, false)
 })
 
 test('the top debt payoff acknowledges an already-covered starter reserve', () => {
@@ -228,25 +238,32 @@ test('an unconfirmed employer match outranks a debt-bookkeeping reconciliation b
     debts: [{ id: 'visa', name: 'Visa Card', balance: 2400, interest_rate: 24, minimum_payment: 60 }],
   })
   const route = buildMoneyRoute(input)
-  assert.equal(route.blockers.some(item => item.id === 'employer_match_details'), true)
-  assert.equal(route.blockers.some(item => item.id === 'debt_payment_gap'), true)
-  assert.equal(route.blockers[0].id, 'employer_match_details')
+  assert.equal(route.refinements.some(item => item.id === 'employer_match_details'), true)
+  assert.equal(route.refinements.some(item => item.id === 'debt_payment_gap'), true)
+  assert.equal(route.refinements[0].id, 'employer_match_details')
 })
 
-test('approval creates no more than three structured focused steps', () => {
+test('the plan is several real money moves, not one suggestion', () => {
   const route = buildMoneyRoute(state({
-    profile: { monthly_income: 5000, monthly_expenses: 4100, health_insurance: 'employer', employer_401k: 'unsure' },
+    profile: { monthly_income: 6000, monthly_expenses: 3500, health_insurance: 'employer', employer_401k: 'no_match', onboarding_complete: true },
     accounts: [
-      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 1600 },
-      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 1400 },
+      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 300 },
+      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 200 },
     ],
     debts: [{ id: 'card', name: 'Credit card', balance: 3400, interest_rate: 24, minimum_payment: 85 }],
+    goals: [{ id: 'trip', name: 'Japan trip', target_amount: 5000, current_amount: 0 }],
   }))
   const steps = buildInitialPlan(route)
-  assert.equal(steps.length, 3)
-  assert.equal(steps[0].intentKey, 'verify.employer_match')
+  // Every funded priority becomes its own step, so this reads as a plan.
+  assert.ok(steps.length >= 3, `expected several steps, got ${steps.length}`)
+  assert.ok(steps.length <= 5)
+  // Money moves come from the calculated waterfall, in ladder order.
+  assert.equal(steps[0].intentKey, 'fund.emergency_reserve')
   assert.equal(steps[1].intentKey, 'pay.debt.card')
-  assert.equal(steps[2].outcome.kind, 'recurring_setup')
+  // Automating the biggest recurring move earns a place in the plan.
+  assert.ok(steps.some(step => step.outcome?.kind === 'recurring_setup'))
+  // No duplicate work.
+  assert.equal(new Set(steps.map(step => step.intentKey)).size, steps.length)
   for (const step of steps) {
     assert.ok(step.doneWhen)
     assert.equal(step.generatedForFingerprint, route.fingerprint)
