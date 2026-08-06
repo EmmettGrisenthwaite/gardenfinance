@@ -1,4 +1,4 @@
-import { THRESHOLDS } from './finance.js'
+import { LIMITS, THRESHOLDS } from './finance.js'
 import { accountFamily, isWorkplaceAccount } from './moneyModel.js'
 
 const num = value => Number(value) || 0
@@ -163,9 +163,15 @@ function upcomingPriorities({ snapshot, goals, allocations }) {
   for (const debt of activeDebts) {
     const key = `debt.${debt.id || debt.name}`
     if (fundedKeys.has(key)) continue
+    // Why this debt is waiting depends on what took the money. Saying "once
+    // the higher-rate balance is clear" when there is no other debt sends the
+    // reader hunting for a balance that does not exist.
+    const anotherDebtFunded = [...fundedKeys].some(funded => funded.startsWith('debt.'))
     upcoming.push({
       key, label: `Pay off ${debt.name}`,
-      reason: `${num(debt.interest_rate)}% APR — next once the higher-rate balance is clear.`,
+      reason: anotherDebtFunded
+        ? `At ${num(debt.interest_rate)}%, next in line after the pricier balance above.`
+        : `At ${num(debt.interest_rate)}%, this is the most expensive money you owe — it is next once the cushion above is set.`,
     })
   }
 
@@ -175,20 +181,28 @@ function upcomingPriorities({ snapshot, goals, allocations }) {
     upcoming.push({
       key: 'full_emergency',
       label: `Grow emergency savings to ${snapshot.efTargetMonths || 3} months`,
-      reason: `Gets you to ${money(efTargetAmount)} in cash once the expensive debt is gone.`,
+      reason: `Builds up to ${money(efTargetAmount)} — enough to cover you if income stops.`,
     })
   }
 
   const goal = activeGoals(goals)[0]
+  const age = num(snapshot.profile?.age)
+  const alreadyInvesting = (snapshot.investmentAccounts || []).length > 0
   if (goal && !fundedKeys.has(`goal.${goal.id || goal.name}`)) {
     upcoming.push({
-      key: `goal.${goal.id || goal.name}`, label: `Fund ${goal.name}`,
-      reason: 'Your nearest active goal, once protection and debt are handled.',
+      key: `goal.${goal.id || goal.name}`, label: `Fund ${goal.name}`, destinationName: goal.name,
+      reason: 'Your closest goal, once your cushion and expensive debt are handled.',
     })
   } else if (!goal) {
+    // "Start investing" is vague, and vaguest exactly where it matters most.
+    // Someone in their twenties has the one advantage nobody can buy later —
+    // time — so name the account and say what it is worth.
     upcoming.push({
-      key: 'invest_long_term', label: 'Start investing the freed-up money',
-      reason: 'With protection and debt handled, this money can work long term.',
+      key: 'invest_long_term',
+      label: alreadyInvesting ? 'Put more into investing' : 'Open a Roth IRA and start investing',
+      reason: !alreadyInvesting && age > 0 && age < 40
+        ? `Money you invest at ${age} has decades to grow, and a Roth IRA lets it grow tax-free. You can put in up to ${money(LIMITS.rothIra)} a year.`
+        : 'Your cushion and expensive debt are handled, so this money can start growing long term.',
     })
   }
 
@@ -368,7 +382,7 @@ export function buildMoneyRoute({
     const starterGap = Math.max(0, THRESHOLDS.starterEmergency - num(snapshot.liquid))
     if (starterGap > 0 && remaining > 0) {
       remaining = addAllocation(allocations, {
-        key: 'starter_emergency', label: `Build the ${money(THRESHOLDS.starterEmergency)} starter reserve`,
+        key: 'starter_emergency', label: `Save your first ${money(THRESHOLDS.starterEmergency)}`, destinationName: 'your emergency fund',
         maxAmount: starterGap, destinationType: 'account', destinationId: emergency?.id || null,
         sourceAccountId: source?.id || null,
         reason: 'A small cash cushion keeps a surprise bill from turning into new debt.',
@@ -425,7 +439,7 @@ export function buildMoneyRoute({
       const isFirstMove = allocations.length === 0
       const reserveCovered = starterGap === 0 && num(snapshot.liquid) > 0
       remaining = addAllocation(allocations, {
-        key: `debt.${debt.id || debt.name}`, label: `Pay extra toward ${debt.name}`,
+        key: `debt.${debt.id || debt.name}`, label: `Pay extra toward ${debt.name}`, destinationName: debt.name,
         maxAmount: num(debt.balance), destinationType: 'debt', destinationId: debt.id || null,
         sourceAccountId: source?.id || null,
         reason: isFirstMove && reserveCovered
@@ -440,7 +454,7 @@ export function buildMoneyRoute({
     const fullReserveGap = Math.max(0, num(snapshot.efTargetAmount) - projectedLiquid)
     if (fullReserveGap > 0 && remaining > 0) {
       remaining = addAllocation(allocations, {
-        key: 'full_emergency', label: `Grow emergency savings to ${snapshot.efTargetMonths || 3} months`,
+        key: 'full_emergency', label: `Grow emergency savings to ${snapshot.efTargetMonths || 3} months`, destinationName: 'your emergency fund',
         maxAmount: fullReserveGap, destinationType: 'account', destinationId: emergency?.id || null,
         sourceAccountId: source?.id || null,
         reason: `Enough cash to cover ${snapshot.efTargetMonths || 3} months of your spending — ${money(snapshot.efTargetAmount)}.`,
@@ -452,14 +466,14 @@ export function buildMoneyRoute({
       const investment = accounts.find(account => accountFamily(account) === 'investment') || null
       if (goal) {
         remaining = addAllocation(allocations, {
-          key: `goal.${goal.id || goal.name}`, label: `Fund ${goal.name}`,
+          key: `goal.${goal.id || goal.name}`, label: `Fund ${goal.name}`, destinationName: goal.name,
           maxAmount: Math.max(0, num(goal.target_amount) - num(goal.current_amount)),
           destinationType: 'goal', destinationId: goal.id || null,
           reason: 'Your cushion and expensive debt are handled, so your closest goal is next.',
         }, remaining)
       } else if (investment) {
         remaining = addAllocation(allocations, {
-          key: `investment.${investment.id || investment.name}`, label: `Increase investing in ${investment.name}`,
+          key: `investment.${investment.id || investment.name}`, label: `Increase investing in ${investment.name}`, destinationName: investment.name,
           destinationType: 'account', destinationId: investment.id || null,
           reason: 'The essentials are handled, so this money can start growing long term.',
         }, remaining)
@@ -621,10 +635,17 @@ function allocationStep(route, allocation, index) {
   // two ways — the automation step exists to set up autopay FOR this one.
   return stepBase(route, index, {
     key: allocation.key,
-    text: `${isDebt ? 'Pay' : 'Move'} ${money(amount)}/mo ${isDebt ? 'to' : 'toward'} ${allocation.label.replace(/^Pay extra toward |^Build the |^Grow |^Fund |^Increase investing in /, '')}`,
+    // A step reads "Move $250/mo toward your emergency fund", so it needs a
+    // destination NOUN. Card labels are sentences ("Save your first $1,000"),
+    // which cannot be spliced in after "toward" — hence destinationName.
+    text: `${isDebt ? 'Pay' : 'Move'} ${money(amount)}/mo ${isDebt ? 'to' : 'toward'} ${allocation.destinationName || allocation.label.replace(/^Pay extra toward |^Build the |^Grow |^Fund |^Increase investing in /, '')}`,
     detail: allocation.reason,
-    doneWhen: `${money(amount)} is ${isDebt ? 'paid and the debt balance is updated' : 'transferred and the destination record reflects it'}.`,
-    impact: isDebt ? `Directs ${money(amount)}/mo to the highest verified debt cost` : `Assigns ${money(amount)}/mo to this priority`,
+    doneWhen: `${money(amount)} is ${isDebt ? 'paid and the balance here is updated' : `moved and the new balance is saved here`}.`,
+    // Says what the money DOES, in the words the user would use. "Directs
+    // $250/mo to the highest verified debt cost" describes the algorithm.
+    impact: isDebt
+      ? `Cuts the balance charging you the most interest`
+      : `Builds ${allocation.destinationName || 'this'} by ${money(amount)} every month`,
     intentKey, completionPolicy: 'repeatable',
     priorityKey: isDebt ? 'kill_debt' : isGoal ? 'goal' : isReserve ? (allocation.key === 'starter_emergency' ? 'starter_ef' : 'build_ef') : 'invest',
     outcome, basis,
@@ -632,6 +653,19 @@ function allocationStep(route, allocation, index) {
 }
 
 const PLAN_SIZE = 5
+
+/**
+ * Money moves lead the plan. Steps with no dollar amount — claim your employer
+ * match, open an account — are real work and stay in the plan, but a plan that
+ * opens with "go find something out" is less actionable than one that opens
+ * with "move $800". The allocation array keeps its ladder order for the
+ * arithmetic; this is presentation only.
+ */
+export function orderForPresentation(allocations = []) {
+  const funded = allocations.filter(item => num(item.amount) > 0)
+  const unfunded = allocations.filter(item => !(num(item.amount) > 0))
+  return [...funded, ...unfunded]
+}
 
 /**
  * Turn the calculated waterfall into a real plan: one step per funded
@@ -642,10 +676,10 @@ const PLAN_SIZE = 5
 export function buildInitialPlan(route) {
   if (!route) return []
   const steps = []
-  const actionable = (route.allocations || []).filter(item => (
+  const actionable = orderForPresentation((route.allocations || []).filter(item => (
     !['unassigned', 'hold_for_coverage'].includes(item.key)
     && (item.amount > 0 || ['repair_budget', 'repair_allocations', 'choose_health_coverage', 'capture_employer_match', 'confirm_employer_match', 'open_investment_account'].includes(item.key))
-  ))
+  )))
 
   for (const allocation of actionable) {
     if (steps.length >= PLAN_SIZE) break
@@ -661,7 +695,7 @@ export function buildInitialPlan(route) {
     const target = actionable.find(item => allocationStep(route, item, 0)?.intentKey === primary.intentKey)
     steps.push(stepBase(route, steps.length, {
       key: `automate.${target?.key || 'primary'}`,
-      text: `Schedule ${money(primary.outcome.amount)} monthly toward ${(target?.label || 'this priority').replace(/^Pay extra toward |^Fund |^Build the |^Grow |^Increase investing in /, '')}`,
+      text: `Schedule ${money(primary.outcome.amount)} monthly toward ${target?.destinationName || (target?.label || 'this priority').replace(/^Pay extra toward |^Fund |^Build the |^Grow |^Increase investing in /, '')}`,
       detail: 'Automation keeps the plan moving without relying on memory.',
       doneWhen: 'The recurring payment or transfer is scheduled and its first date is confirmed.',
       intentKey: `setup.${primary.intentKey}`,

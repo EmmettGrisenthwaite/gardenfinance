@@ -109,7 +109,7 @@ test('the shared model gives Plan and Home one prerequisite before generating ne
   assert.equal(model.candidates.length, 0)
 })
 
-test('claiming an employer match leads the plan, ahead of the debt payoff', () => {
+test('the plan opens with a money move and still includes the employer match', () => {
   const state = snapshot({
     profile: { monthly_income: 5000, monthly_expenses: 4100, health_insurance: 'employer', employer_401k: 'unsure', investment_types: ['401k'], onboarding_complete: true },
     accounts: [{ id: 'cash', name: 'Checking', type: 'checking', subtype: 'checking', balance: 2000 }],
@@ -121,9 +121,9 @@ test('claiming an employer match leads the plan, ahead of the debt payoff', () =
   })
   const model = buildPlanModel({ snapshot: state, setupState, moneyRoute, plan: { steps: [] } })
   assert.equal(model.prerequisite, null)
-  // An unconfirmed match still outranks a 24% card, so finding out is step one.
+  // The dollar move leads; confirming the match is still a real step.
   assert.deepEqual(model.routeCandidates.map(step => step.intentKey), [
-    'verify.employer_match', 'pay.debt.card', 'setup.pay.debt.card',
+    'pay.debt.card', 'verify.employer_match', 'setup.pay.debt.card',
   ])
 })
 

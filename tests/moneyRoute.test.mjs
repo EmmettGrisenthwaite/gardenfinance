@@ -41,14 +41,12 @@ test('an unknown employer match refines the plan rather than withholding it', ()
     debts: [{ id: 'card', name: 'Credit card', balance: 3400, interest_rate: 24, minimum_payment: 85 }],
   })
   const route = buildMoneyRoute(input)
-  // "Unsure" is still an answer, so the plan stands. Finding out becomes a
-  // real step ranked above the debt payoff — a match beats any interest rate,
-  // so it must not be demoted to fine print just because the % is unknown.
+  // "Unsure" is still an answer, so the plan stands. Finding out is a real
+  // step, not fine print — but the dollar move leads what the user reads.
   assert.equal(route.ready, true)
-  const keys = route.allocations.map(item => item.key)
-  assert.equal(keys[0], 'confirm_employer_match')
-  assert.ok(keys.some(key => key.startsWith('debt.')))
-  assert.ok(keys.indexOf('confirm_employer_match') < keys.findIndex(key => key.startsWith('debt.')))
+  const steps = buildInitialPlan(route)
+  assert.equal(steps[0].intentKey, 'pay.debt.card')
+  assert.ok(steps.some(step => step.intentKey === 'verify.employer_match'))
   assert.equal(route.allocations.some(item => item.destinationType === 'debt' && item.amount === 900), true)
   assert.equal(route.conditionalChanges.length, 1)
 })
@@ -221,13 +219,13 @@ test('the top debt payoff acknowledges an already-covered starter reserve', () =
   assert.match(route.allocations[0].reason, /already have \$1,000 set aside for emergencies/)
 })
 
-test('a claimed employer match leads the plan even before the percentage is known', () => {
+test('a claimed employer match is a real plan step, just behind the money moves', () => {
   // Regression: found via a live blind-test walkthrough. The user answered
   // "yes, my employer matches" in setup, but because the exact percentages
-  // were missing the plan sent every dollar to a 26% card and demoted the
-  // match to an "Optional:" footnote — while the same card's footer claimed
-  // free money outranks debt. Claiming a match is the single highest-return
-  // action available, so "go find out and claim it" is itself step one.
+  // were missing the plan demoted it to an "Optional:" footnote — while the
+  // same card's footer claimed free money outranks debt. It is a real step.
+  // It sits behind the funded moves only because a plan that opens with "go
+  // find something out" is less actionable than one that opens with "move $X".
   const cashFlowItems = [
     { kind: 'income', group_key: 'income', category_key: 'paycheck', amount: 4500, monthly_amount: 4500 },
     { kind: 'expense', group_key: 'needs', category_key: 'housing', amount: 3200, monthly_amount: 3200 },
@@ -242,13 +240,17 @@ test('a claimed employer match leads the plan even before the percentage is know
     debts: [{ id: 'visa', name: 'Visa Card', balance: 2400, interest_rate: 24, minimum_payment: 60 }],
   })
   const route = buildMoneyRoute(input)
+  // The ladder still ranks the match above debt for the arithmetic…
   const keys = route.allocations.map(item => item.key)
-  assert.equal(keys[0], 'capture_employer_match', 'the match must lead the plan')
   assert.ok(keys.indexOf('capture_employer_match') < keys.findIndex(key => key.startsWith('debt.')))
-  // It is a real step, not fine print.
+  // …but the plan a user reads opens with a dollar move, and the match is a
+  // real step right behind it — never fine print.
   const steps = buildInitialPlan(route)
-  assert.equal(steps[0].intentKey.startsWith('capture.employer_match'), true)
-  assert.match(steps[0].text, /employer match/i)
+  assert.equal(steps[0].intentKey, 'pay.debt.visa')
+  assert.ok(steps[0].outcome.amount > 0)
+  const matchStep = steps.find(step => step.intentKey.startsWith('capture.employer_match'))
+  assert.ok(matchStep, 'claiming the match must be a step in the plan')
+  assert.match(matchStep.text, /employer match/i)
 })
 
 test('the plan is several real money moves, not one suggestion', () => {
@@ -275,5 +277,23 @@ test('the plan is several real money moves, not one suggestion', () => {
   for (const step of steps) {
     assert.ok(step.doneWhen)
     assert.equal(step.generatedForFingerprint, route.fingerprint)
+  }
+})
+
+test('step text names a destination, never a whole sentence', () => {
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 1600, monthly_expenses: 1350, health_insurance: 'parent', employer_401k: 'none', onboarding_complete: true },
+    accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 300 }],
+    debts: [{ id: 'card', name: 'Credit card', balance: 600, interest_rate: 24, minimum_payment: 25 }],
+  }))
+  const steps = buildInitialPlan(route)
+  const reserve = steps.find(step => step.intentKey === 'fund.emergency_reserve')
+  assert.ok(reserve)
+  // "Move $250/mo toward Save your first $1,000" is the failure mode: the card
+  // label is a sentence and cannot be spliced in after "toward".
+  assert.match(reserve.text, /^Move \$\d+\/mo toward your emergency fund$/)
+  for (const step of steps) {
+    assert.ok(!/toward (Save|Grow|Build|Pay|Fund|Increase) /.test(step.text), `doubled verb in: ${step.text}`)
+    assert.ok(!/destination record/.test(step.doneWhen), `jargon in: ${step.doneWhen}`)
   }
 })

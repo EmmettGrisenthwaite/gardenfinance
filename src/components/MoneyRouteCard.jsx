@@ -1,4 +1,5 @@
 import { ArrowRight, ClipboardList, ListChecks, SlidersHorizontal } from 'lucide-react'
+import { orderForPresentation } from '@/lib/moneyRoute'
 
 const formatMoney = value => `$${Math.max(0, Math.round(Number(value) || 0)).toLocaleString()}`
 
@@ -8,9 +9,9 @@ const formatMoney = value => `$${Math.max(0, Math.round(Number(value) || 0)).toL
 const bareName = label => label.replace(/^Pay extra toward |^Build the |^Grow |^Fund |^Increase investing in /, '')
 
 function planItems(route) {
-  return (route?.allocations || []).filter(item => (
+  return orderForPresentation((route?.allocations || []).filter(item => (
     !['hold_for_coverage', 'unassigned'].includes(item.key) && (item.amount > 0 || !item.adjustable)
-  ))
+  )))
 }
 
 export function MoneyRouteSummary({ route }) {
@@ -54,6 +55,8 @@ export default function MoneyRouteCard({
     ? (route.upcoming || []).slice(0, Math.max(0, 3 - items.length))
     : (route.upcoming || []).slice(0, Math.max(0, 5 - items.slice(0, limit).length))
   const refinement = route.refinements?.[0]
+  const mentionsMatch = [...items, ...(route.upcoming || [])]
+    .some(item => item.key === 'capture_employer_match' || item.key === 'confirm_employer_match')
 
   return (
     <section className={`overflow-hidden rounded-[24px] border border-emerald-200/16 bg-[linear-gradient(145deg,rgba(18,41,31,.97),rgba(8,20,15,.99))] shadow-[0_18px_45px_rgba(0,0,0,.2)] ${compact ? 'p-4 sm:p-5' : 'p-5'}`}>
@@ -129,9 +132,11 @@ export default function MoneyRouteCard({
         </button>
       )}
 
+      {/* Explains the ranking, minus any rung that does not apply — a student
+          with no employer should not be told about matching contributions. */}
       {!compact && (
         <p className="mt-3 text-center text-[11px] leading-4 text-readable-muted">
-          Ordered by what earns you most: a cash cushion, free money from your employer, expensive debt, then saving and investing.
+          Ordered by what earns you most: a cash cushion,{mentionsMatch ? ' free money from your employer,' : ''} expensive debt, then saving and investing.
         </p>
       )}
     </section>
