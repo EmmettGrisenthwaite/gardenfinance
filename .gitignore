@@ -29,6 +29,9 @@ dist-ssr
 .supabase-token
 supabase/.env.deploy
 
+# Supabase CLI scratch state — rewritten on every CLI invocation, not source
+supabase/.temp/
+
 # Local agent/editor config + Office lock files
 .claude/
 ~$*

@@ -1,62 +1,96 @@
 # Garden Financial
 
-Personal finance visualized as a living garden. Track accounts, budgets, goals, debt, and net worth while an optional AI advisor turns your numbers into editable action plans.
+Personal finance as a living garden. You enter your real accounts, debts, income, and
+spending; a deterministic engine turns them into a ranked monthly plan, and an AI advisor
+refines that plan rather than inventing it.
 
 ## Stack
 
 - React 18 + Vite + Tailwind CSS
-- React Three Fiber for the garden
 - Supabase Auth, Postgres, Row Level Security, and Edge Functions
-- Anthropic Claude through the server-side `chat` Edge Function
+- Anthropic Claude, called only through the server-side `chat` Edge Function
+- Plaid Link for optional real bank-account connection
 
-There is no separate Express server or local SQLite database.
+There is no Express server and no local SQLite database.
 
 ## Quick start
 
 ```bash
 npm install
-cp .env.example .env
-npm run dev
 ```
 
-Set these values in `.env`:
+Copy `.env.example` to `.env` and fill in your Supabase project values:
 
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-public-key
 ```
 
-## Supabase setup
-
-Run [`supabase/migrations.sql`](supabase/migrations.sql) in the Supabase SQL Editor. It creates the app tables, indexes, and per-user Row Level Security policies.
-
-To enable advisor chat, set the Anthropic secret and deploy the function:
-
 ```bash
-supabase secrets set ANTHROPIC_API_KEY=your_key_here
-supabase functions deploy chat
+npm run dev
 ```
 
-The Anthropic key is never exposed to the browser.
+The app runs at `http://localhost:5173`. Sign in with a Supabase Auth user — there is no
+demo account.
+
+## Database
+
+Run [`supabase/migrations.sql`](supabase/migrations.sql) in the Supabase SQL Editor. It is
+an idempotent bootstrap that creates every table, index, and per-user RLS policy, and it is
+safe to re-run against an existing project. Apply it before creating users or entering data.
+
+`supabase/migrations/` holds the same schema as timestamped CLI migrations. Use whichever
+matches your workflow; `migrations.sql` is the superset.
+
+**Upgrading an existing database:** back it up first. Rows without a `user_id` stay hidden
+from authenticated users until you assign ownership — that is RLS working correctly, not a
+bug.
+
+## Edge Functions (optional)
+
+The advisor and bank linking each need a deployed function. Without them the rest of the app
+works and those features show an unavailable state.
+
+```bash
+npm install -g supabase
+supabase login
+supabase link --project-ref chvdpbnmpeuifymloqqb
+
+# AI advisor
+supabase secrets set ANTHROPIC_API_KEY=your_key_here
+supabase functions deploy chat
+
+# Plaid bank linking
+supabase secrets set PLAID_CLIENT_ID=... PLAID_SECRET=... PLAID_ENV=sandbox
+supabase functions deploy plaid-link-token plaid-exchange plaid-sync plaid-remove
+```
+
+Neither the Anthropic key nor the Plaid secret is ever exposed to the browser.
 
 ## Scripts
 
-- `npm run dev` - start the development server
-- `npm run build` - create the production build
-- `npm run preview` - preview the production build
-- `npm run lint` - run ESLint
-- `npm run test` - run finance regression tests
+- `npm run dev` — development server
+- `npm run build` — production build
+- `npm run preview` — preview the production build
+- `npm run lint` — ESLint
+- `npm test` — regression tests (finance engine, money route, plan, mappings)
 
 ## Project structure
 
 ```text
-src/pages/              Dashboard, Plan, Money, Advisor, Login
-src/components/         UI, onboarding, plan, and garden components
-src/lib/                Supabase client, finance, advisor, memory, and projections
-supabase/migrations.sql Postgres schema and RLS policies
-supabase/functions/chat Anthropic proxy with request validation and limits
+src/pages/          Home, Plan, StepDetail, AIAdvisor, Settings, Login
+src/components/     Onboarding, plan, money-route, garden, and advisor UI
+src/lib/            Supabase client, finance engine, money route, advisor context
+src/context/        Auth and garden providers
+supabase/functions/ chat (Anthropic proxy) and the four Plaid functions
+tests/              Node test-runner suites over the pure logic in src/lib
 ```
+
+The garden on Home is a hand-drawn SVG scene. A legacy React Three Fiber version lives in
+`src/pages/Dashboard.jsx` and is reachable only by setting `VITE_GARDEN_EXPERIENCE=3d`.
 
 ## Deploy
 
-For Vercel, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to the project environment and deploy. The included `vercel.json` provides the SPA rewrite for routes such as `/plan` and `/advisor`.
+On Vercel, add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to the project environment
+and deploy. `vercel.json` supplies the SPA rewrite that routes such as `/plan` and
+`/advisor` need.

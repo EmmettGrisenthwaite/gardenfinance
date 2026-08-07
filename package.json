@@ -23,7 +23,6 @@
     "react-dom": "^18.2.0",
     "react-plaid-link": "^5.0.0",
     "react-router-dom": "^7.2.0",
-    "recharts": "^2.15.1",
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.184.0"
   },
