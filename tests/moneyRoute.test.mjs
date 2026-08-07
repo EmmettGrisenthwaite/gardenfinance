@@ -297,3 +297,51 @@ test('step text names a destination, never a whole sentence', () => {
     assert.ok(!/destination record/.test(step.doneWhen), `jargon in: ${step.doneWhen}`)
   }
 })
+
+test('the ladder carries months, so "next" has a date attached', () => {
+  // $250/mo spare, $570 cash, a 26.99% card and a 6.5% loan — the 20-year-old
+  // walkthrough profile.
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 1450, monthly_expenses: 1200, health_insurance: 'parents', employer_401k: 'na', age: 20, onboarding_complete: true },
+    accounts: [
+      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 420 },
+      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: 150 },
+    ],
+    debts: [
+      { id: 'card', name: 'Credit card', type: 'credit_card', balance: 900, interest_rate: 26.99, minimum_payment: 25 },
+      { id: 'loan', name: 'Student loan', balance: 9500, interest_rate: 6.5, minimum_payment: 90 },
+    ],
+  }))
+
+  // $1,000 − $570 = $430 to go at $250/mo → 2 months.
+  const starter = route.allocations.find(item => item.key === 'starter_emergency')
+  assert.equal(starter.amount, 250)
+  assert.equal(starter.etaMonths, 2)
+
+  // The card waits those 2 months, then takes $900 / $250 = 4 more.
+  const card = route.upcoming.find(item => item.key.startsWith('debt.'))
+  assert.equal(card.startsInMonths, 2)
+  assert.equal(card.etaMonths, 4)
+
+  // The full emergency fund starts after both: 2 + 4 = 6.
+  const fullEf = route.upcoming.find(item => item.key === 'full_emergency')
+  assert.equal(fullEf.startsInMonths, 6)
+})
+
+test('rungs with no finish line are never given an invented date', () => {
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 4000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', age: 30, onboarding_complete: true },
+    accounts: [{ id: 'savings', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 20000 }],
+  }))
+  // Cushion is full and there is no debt, so investing leads — and investing has
+  // no target, so it must carry neither a duration nor a start month.
+  const investing = route.upcoming.find(item => item.key === 'invest_long_term')
+  if (investing) {
+    assert.equal(investing.etaMonths, undefined)
+  }
+  for (const item of route.allocations) {
+    if (item.key === 'unassigned' || item.key.startsWith('capture_') || item.key.startsWith('confirm_')) {
+      assert.equal(item.etaMonths, undefined, `${item.key} must not claim a finish date`)
+    }
+  }
+})

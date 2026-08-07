@@ -30,7 +30,7 @@ export function selectHomeAction({
       kind: 'reminder',
       eyebrow: selected.reason === 'stale-evidence' ? 'Keep your numbers current' : 'Check-in due',
       title: reminder.title,
-      detail: reminder.detail || 'A quick check-in keeps your next recommendation grounded.',
+      detail: reminder.detail || 'A quick check-in keeps your next move based on real numbers.',
       cta: reminder.metadata?.action_label || 'Open check-in',
       href: reminderActionHref(reminder),
     }
@@ -68,7 +68,7 @@ export function selectHomeAction({
       kind: 'plan-proposal',
       eyebrow: 'Proposed next move',
       title: proposal.text,
-      detail: proposal.detail || 'Review this grounded suggestion before adding it to your Plan.',
+      detail: proposal.detail || 'Have a look before you add this to your Plan.',
       doneWhen: proposal.doneWhen || null,
       cta: 'Review focused plan',
       href: '/plan',

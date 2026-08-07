@@ -457,7 +457,7 @@ function quarterlyCandidates(context) {
       }),
       cadence: 'quarterly',
       title: 'Refresh account and debt balances',
-      detail: 'A quarterly refresh keeps net worth and every recommendation grounded in real balances.',
+      detail: 'A quarterly refresh keeps your net worth and your plan based on real balances.',
       anchorDate,
       linkedRecordType: 'money_records',
       linkedRecordId: null,

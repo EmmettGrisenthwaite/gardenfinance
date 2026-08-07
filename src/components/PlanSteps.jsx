@@ -326,7 +326,7 @@ export function OutdatedStepReview({ review, replacement, onKeep, onReplace, bus
               <button type="button" onClick={() => onKeep?.(review.step)} disabled={busy} className="btn-ghost min-h-11 px-3">Keep for now</button>
             </>}
           </div>
-          {!replacement && <p className="mt-2 text-[11px] text-readable-muted">No equally grounded replacement is available yet.</p>}
+          {!replacement && <p className="mt-2 text-[11px] text-readable-muted">Nothing else in your numbers is worth swapping in yet.</p>}
         </div>
       </div>
     </section>
@@ -534,7 +534,7 @@ export function NextChapterCard({ status, draft, error, onAdd, onDismiss, onRege
           {saving ? 'Adding…' : `Add ${draft.steps.length === 1 ? 'this step' : `${draft.steps.length} steps`}`}
         </button>
         <button type="button" onClick={onRegenerate} disabled={saving} className="btn-ghost min-h-11 px-3">
-          <RefreshCw className="h-4 w-4" /> Regenerate
+          <RefreshCw className="h-4 w-4" /> Redo these
         </button>
         <button type="button" onClick={onDismiss} disabled={saving} className="btn-ghost min-h-11 px-3">Not now</button>
       </div>
@@ -573,7 +573,7 @@ export function CalmOutdatedStepReview({ review, replacement, onKeep, onReplace,
           <button type="button" onClick={() => onKeep?.(review.step)} disabled={busy} className="btn-ghost min-h-11 px-3">Keep for now</button>
         </>}
       </div>
-      {!replacement && <p className="mt-2 text-[11px] text-readable-muted">No equally grounded replacement is available yet.</p>}
+      {!replacement && <p className="mt-2 text-[11px] text-readable-muted">Nothing else in your numbers is worth swapping in yet.</p>}
     </BottomSheet>
   </>
 }
@@ -581,7 +581,7 @@ export function CalmOutdatedStepReview({ review, replacement, onKeep, onReplace,
 export function CalmNextChapterCard({ status, draft, error, onAdd, onDismiss, onRegenerate, onRetry, isEmpty = false }) {
   const [open, setOpen] = useState(false)
   if ((status === 'loading' || status === 'idle') && !draft?.steps?.length) {
-    return <div className="flex min-h-14 items-center gap-3 rounded-2xl border border-emerald-300/16 bg-emerald-300/[0.04] px-4" aria-live="polite"><Loader2 className="h-4 w-4 animate-spin text-emerald-200" /><span className="text-sm font-semibold text-white">Preparing grounded next steps</span></div>
+    return <div className="flex min-h-14 items-center gap-3 rounded-2xl border border-emerald-300/16 bg-emerald-300/[0.04] px-4" aria-live="polite"><Loader2 className="h-4 w-4 animate-spin text-emerald-200" /><span className="text-sm font-semibold text-white">Working out your next moves</span></div>
   }
   if (status === 'error' && !draft?.steps?.length) {
     return <button type="button" onClick={onRetry} className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-amber-300/18 bg-amber-300/[0.04] px-4 text-left"><RefreshCw className="h-4 w-4 text-amber-100"/><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">Your current Plan is safe</span><span className="block truncate text-xs text-readable-secondary">{error || 'Try preparing the next chapter again.'}</span></span></button>
@@ -595,10 +595,10 @@ export function CalmNextChapterCard({ status, draft, error, onAdd, onDismiss, on
     <button type="button" onClick={() => setOpen(true)}
       className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-emerald-300/18 bg-emerald-300/[0.045] px-4 text-left hover:bg-emerald-300/[0.075]">
       <Sparkles className="h-4 w-4 shrink-0 text-emerald-200"/>
-      <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">{draft.steps.length} grounded next {draft.steps.length === 1 ? 'step' : 'steps'} ready</span><span className="mt-0.5 block text-xs text-readable-secondary">Review before adding anything.</span></span>
+      <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">{draft.steps.length} next {draft.steps.length === 1 ? 'move' : 'moves'} ready</span><span className="mt-0.5 block text-xs text-readable-secondary">Have a look before you add them.</span></span>
       <ChevronRight className="h-4 w-4 text-readable-muted"/>
     </button>
-    <BottomSheet open={open} title={draft.title || 'Your next chapter'} subtitle="Rules chose the priorities. You approve every change." onClose={() => setOpen(false)} size="sm">
+    <BottomSheet open={open} title={draft.title || 'Your next chapter'} subtitle="Ranked by what saves you the most. Nothing changes until you say so." onClose={() => setOpen(false)} size="sm">
       <div className="divide-y divide-white/[0.07]">
         {draft.steps.map((step, index) => <div key={step.id || `${step.text}-${index}`} className="flex gap-3 py-3">
           <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-[11px] font-bold text-emerald-100">{index + 1}</span>
@@ -608,7 +608,7 @@ export function CalmNextChapterCard({ status, draft, error, onAdd, onDismiss, on
       {status === 'error' && error && <p className="mt-3 rounded-xl border border-rose-300/25 bg-rose-300/[0.08] px-3 py-2 text-xs font-medium text-rose-100" role="alert">{error}</p>}
       <div className="mt-5 flex flex-wrap gap-2">
         <button type="button" onClick={onAdd} disabled={saving} className="btn-primary min-h-11 flex-1">{saving ? <Loader2 className="h-4 w-4 animate-spin"/> : <Check className="h-4 w-4"/>}{saving ? 'Adding…' : `Add ${draft.steps.length === 1 ? 'this step' : `${draft.steps.length} steps`}`}</button>
-        <button type="button" onClick={onRegenerate} disabled={saving} className="btn-ghost min-h-11 px-3"><RefreshCw className="h-4 w-4"/> Regenerate</button>
+        <button type="button" onClick={onRegenerate} disabled={saving} className="btn-ghost min-h-11 px-3"><RefreshCw className="h-4 w-4"/> Redo these</button>
         <button type="button" onClick={onDismiss} disabled={saving} className="btn-ghost min-h-11 px-3">Not now</button>
       </div>
     </BottomSheet>

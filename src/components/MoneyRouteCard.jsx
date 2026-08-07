@@ -8,6 +8,12 @@ const formatMoney = value => `$${Math.max(0, Math.round(Number(value) || 0)).toL
 // what the sentence needs.
 const bareName = label => label.replace(/^Pay extra toward |^Build the |^Grow |^Fund |^Increase investing in /, '')
 
+// An ordered list says what comes first; a date says whether it is worth
+// starting. "About" is load-bearing — see scheduleRungs for what these ignore.
+const months = n => (n === 1 ? 'about a month' : `about ${n} months`)
+const takesLabel = item => (item.etaMonths ? months(item.etaMonths) : null)
+const startsLabel = item => (item.startsInMonths ? `starts in ${months(item.startsInMonths)}` : null)
+
 function planItems(route) {
   return orderForPresentation((route?.allocations || []).filter(item => (
     !['hold_for_coverage', 'unassigned'].includes(item.key) && (item.amount > 0 || !item.adjustable)
@@ -87,6 +93,9 @@ export default function MoneyRouteCard({
                 <p className="text-[13px] font-semibold leading-5 text-white">{item.label}</p>
                 {item.amount > 0 && <span className="shrink-0 text-[13px] font-semibold tabular-nums text-emerald-100">{formatMoney(item.amount)}</span>}
               </div>
+              {takesLabel(item) && (
+                <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-200/70">{takesLabel(item)} at this rate</p>
+              )}
               {!compact && <p className="mt-0.5 text-xs leading-5 text-readable-secondary">{item.reason}</p>}
             </div>
           </li>
@@ -103,6 +112,9 @@ export default function MoneyRouteCard({
                 <p className="text-[13px] font-semibold leading-5 text-readable-secondary">{item.label}</p>
                 <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-readable-muted">Then</span>
               </div>
+              {startsLabel(item) && (
+                <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-readable-muted">{startsLabel(item)}</p>
+              )}
               {!compact && <p className="mt-0.5 text-xs leading-5 text-readable-muted">{item.reason}</p>}
             </div>
           </li>

@@ -209,7 +209,7 @@ function buildSteps(answers, profileOnly) {
 function PreviewStep() {
   return (
     <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] p-5">
-      <p className="text-base font-semibold text-white">One clear next move, grounded in your real numbers.</p>
+      <p className="text-base font-semibold text-white">One clear next move, built from your real numbers.</p>
       <p className="mt-2 text-sm leading-6 text-readable-secondary">
         A few short questions — about two minutes. Your plan is built the moment you finish.
       </p>

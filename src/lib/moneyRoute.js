@@ -153,6 +153,46 @@ function missingPlanInputs({ snapshot, profile, accounts, debts }) {
 // a single line, which reads as one suggestion rather than a plan. These are
 // the stages the same ladder reaches next, so the user can see the sequence
 // they are actually signing up for.
+// Only rungs that fill a fixed amount can be dated. Raising a contribution
+// percentage or "start investing" has no finish line, and guessing one would be
+// worse than staying quiet.
+const FINITE_FILL = key => key === 'starter_emergency' || key === 'full_emergency'
+  || key.startsWith('debt.') || key.startsWith('goal.')
+
+/**
+ * Puts months on the ladder. An ordered list answers "what first"; a 20-year-old
+ * also needs "and when" — "pay off the card" only becomes a plan once it reads
+ * "about 2 months from now".
+ *
+ * Deliberately simple: gap ÷ monthly contribution, no interest accrual and no
+ * compounding. That makes debt payoff a slight underestimate, which is why every
+ * figure is rendered as "about". A rung whose length cannot be known stops the
+ * chain rather than letting a guess propagate into later start dates.
+ */
+function scheduleRungs({ allocations, upcoming, availableMonthlyAmount }) {
+  let offset = 0
+  let chainIntact = true
+
+  for (const item of allocations) {
+    if (!(num(item.amount) > 0) || !FINITE_FILL(item.key)) continue
+    const gap = num(item.maxAmount)
+    if (!(gap > 0)) continue
+    item.etaMonths = Math.max(1, Math.ceil(gap / num(item.amount)))
+    offset += item.etaMonths
+  }
+
+  for (const item of upcoming) {
+    item.startsInMonths = chainIntact && offset > 0 ? offset : null
+    const target = num(item.target)
+    if (chainIntact && FINITE_FILL(item.key) && target > 0 && availableMonthlyAmount > 0) {
+      item.etaMonths = Math.max(1, Math.ceil(target / availableMonthlyAmount))
+      offset += item.etaMonths
+    } else {
+      chainIntact = false
+    }
+  }
+}
+
 function upcomingPriorities({ snapshot, goals, allocations }) {
   const fundedKeys = new Set(allocations.filter(item => item.amount > 0).map(item => item.key))
   const activeDebts = (snapshot.debts || []).filter(debt => num(debt.balance) > 0
@@ -169,6 +209,7 @@ function upcomingPriorities({ snapshot, goals, allocations }) {
     const anotherDebtFunded = [...fundedKeys].some(funded => funded.startsWith('debt.'))
     upcoming.push({
       key, label: `Pay off ${debt.name}`,
+      target: num(debt.balance),
       reason: anotherDebtFunded
         ? `At ${num(debt.interest_rate)}%, next in line after the pricier balance above.`
         : `At ${num(debt.interest_rate)}%, this is the most expensive money you owe — it is next once the cushion above is set.`,
@@ -181,6 +222,7 @@ function upcomingPriorities({ snapshot, goals, allocations }) {
     upcoming.push({
       key: 'full_emergency',
       label: `Grow emergency savings to ${snapshot.efTargetMonths || 3} months`,
+      target: Math.max(0, efTargetAmount - num(snapshot.liquid)),
       reason: `Builds up to ${money(efTargetAmount)} — enough to cover you if income stops.`,
     })
   }
@@ -191,6 +233,7 @@ function upcomingPriorities({ snapshot, goals, allocations }) {
   if (goal && !fundedKeys.has(`goal.${goal.id || goal.name}`)) {
     upcoming.push({
       key: `goal.${goal.id || goal.name}`, label: `Fund ${goal.name}`, destinationName: goal.name,
+      target: Math.max(0, num(goal.target_amount) - num(goal.current_amount)),
       reason: 'Your closest goal, once your cushion and expensive debt are handled.',
     })
   } else if (!goal) {
@@ -512,12 +555,15 @@ export function buildMoneyRoute({
     ? [`${lowRateDebts.map(debt => debt.name).join(' and ')} ${lowRateDebts.length === 1 ? 'is' : 'are'} not in this plan on purpose — at ${lowRateDebts.map(debt => `${num(debt.interest_rate)}%`).join(' and ')}, paying ${lowRateDebts.length === 1 ? 'it' : 'them'} down early earns you less than the moves above. Keep paying the minimum.`]
     : []
 
+  const upcoming = upcomingPriorities({ snapshot, goals, allocations: finalAllocations })
+  scheduleRungs({ allocations: finalAllocations, upcoming, availableMonthlyAmount })
+
   return {
     availableMonthlyAmount,
     reservedAmount,
     reconciliation,
     allocations: finalAllocations,
-    upcoming: upcomingPriorities({ snapshot, goals, allocations: finalAllocations }),
+    upcoming,
     notes,
     alreadyCommitted,
     missingInputs,

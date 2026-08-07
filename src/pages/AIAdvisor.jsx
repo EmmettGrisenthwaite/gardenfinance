@@ -18,6 +18,7 @@ import {
 import { listFinancialActivities } from '@/lib/financialActivities'
 import { listReminderEvents, listReminders } from '@/lib/reminders'
 import { selectAdvisorResponseAction, selectPendingAdvisorAttachment } from '@/lib/advisorResponseAction'
+import { splitInlineMarkdown } from '@/lib/inlineMarkdown'
 import MoneyRouteCard from '@/components/MoneyRouteCard'
 import BottomSheet from '@/components/ui/BottomSheet'
 import ResourceLinks from '@/components/ResourceLinks'
@@ -120,12 +121,19 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
   const isUser = msg.role === 'user'
   const [sourcesOpen, setSourcesOpen] = useState(false)
 
+  // Bold and italic both render; see splitInlineMarkdown for why italic needed
+  // handling at all (Claude's *emphasis* used to reach the screen as asterisks).
+  function renderInline(text) {
+    return splitInlineMarkdown(text).map((token, j) => {
+      if (token.type === 'bold') return <strong key={j}>{token.value}</strong>
+      if (token.type === 'italic') return <em key={j}>{token.value}</em>
+      return token.value
+    })
+  }
+
   function renderContent(text) {
     return text.split('\n').map((line, i) => {
-      const parts = line.split(/(\*\*[^*]+\*\*)/)
-      const rendered = parts.map((p, j) =>
-        p.startsWith('**') ? <strong key={j}>{p.slice(2, -2)}</strong> : p
-      )
+      const rendered = renderInline(line)
 
       if (/^(Your move:|Next step:)/i.test(line.trim())) {
         return (
@@ -137,8 +145,7 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
 
       if (line.trim().startsWith('• ') || line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
         const body = line.trim().replace(/^[•\-*]\s+/, '')
-        const bparts = body.split(/(\*\*[^*]+\*\*)/).map((p, j) =>
-          p.startsWith('**') ? <strong key={j}>{p.slice(2, -2)}</strong> : p)
+        const bparts = renderInline(body)
         return (
           <div key={i} className="flex gap-2 my-0.5">
             <span className="text-emerald-400 mt-0.5 flex-shrink-0">•</span>
