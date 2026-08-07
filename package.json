@@ -13,9 +13,6 @@
   "dependencies": {
     "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/inter": "^5.2.8",
-    "@react-three/drei": "^9.122.0",
-    "@react-three/fiber": "^8.18.0",
-    "@react-three/postprocessing": "^2.19.1",
     "@supabase/supabase-js": "^2.49.1",
     "framer-motion": "^12.4.7",
     "lucide-react": "^0.475.0",
@@ -23,8 +20,7 @@
     "react-dom": "^18.2.0",
     "react-plaid-link": "^5.0.0",
     "react-router-dom": "^7.2.0",
-    "tailwindcss-animate": "^1.0.7",
-    "three": "^0.184.0"
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",

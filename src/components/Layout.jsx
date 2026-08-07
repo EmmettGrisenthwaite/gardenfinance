@@ -17,9 +17,9 @@ export default function Layout({ children }) {
   const { pathname } = useLocation()
   const needsOnboarding = profile === null && !loading && !profileError
   // Immersive, full-height pages manage their own scroll and run edge-to-edge
-  // (no main padding): the garden dashboard and the advisor chat.
-  const isGarden    = pathname === '/' && import.meta.env.VITE_GARDEN_EXPERIENCE === '3d'
-  const isImmersive = isGarden || pathname === '/advisor'
+  // (no main padding). Only the advisor chat qualifies; Home scrolls normally
+  // now that its garden is an inline illustration rather than a full canvas.
+  const isImmersive = pathname === '/advisor'
   // Secondary pages reached from the gear / links — back-button navigation, so
   // the floating tab bar is hidden (it would imply they're top-level tabs).
   // A step's detail page is one of these: its back button returns to the Plan.
@@ -147,32 +147,9 @@ export default function Layout({ children }) {
         {/* ── Content column ── */}
         <div className="flex flex-col flex-1 min-h-0 min-w-0">
 
-          {/* Mobile top bar */}
-          {/* The advisor and back-button sub-pages carry their own headers; skip
-              the global bar there to avoid a redundant double header on mobile. */}
-          {isGarden && (
-          <header className="md:hidden flex-shrink-0 px-4 h-14 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 bg-green-500/90 rounded-lg flex items-center justify-center shadow">
-                <Sprout className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-brand font-semibold text-white text-[15px] tracking-tight drop-shadow">Garden Financial</span>
-            </div>
-            <NavLink
-              to="/settings"
-              aria-label="Settings"
-              className={({ isActive }) =>
-                `p-2 rounded-xl transition-all backdrop-blur-sm ${
-                  isActive ? 'text-white bg-white/15' : 'text-white/55 hover:bg-white/20 hover:text-white'}`
-              }
-            >
-              <Settings className="w-5 h-5" />
-            </NavLink>
-          </header>
-          )}
-
-          {/* Page content — immersive pages (garden, advisor) are full-bleed and
-              own their scroll; other pages keep clearance for the floating nav */}
+          {/* Page content — the advisor is full-bleed and owns its scroll; every
+              other page keeps clearance for the floating nav. Each page renders
+              its own header, so there is no global mobile top bar. */}
           <main className={`flex-1 min-h-0 ${isImmersive ? 'overflow-hidden' : `overflow-auto ${isSubPage ? 'pb-6' : 'pb-[var(--mobile-dock-clearance)] md:pb-6'}`}`}>
             {profileError && (
               <div role="alert" className="mx-auto mt-3 max-w-xl px-4">

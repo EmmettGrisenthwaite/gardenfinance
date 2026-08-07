@@ -86,8 +86,8 @@ supabase/functions/ chat (Anthropic proxy) and the four Plaid functions
 tests/              Node test-runner suites over the pure logic in src/lib
 ```
 
-The garden on Home is a hand-drawn SVG scene. A legacy React Three Fiber version lives in
-`src/pages/Dashboard.jsx` and is reachable only by setting `VITE_GARDEN_EXPERIENCE=3d`.
+The garden on Home is a hand-drawn SVG scene. A React Three Fiber version preceded it and
+was removed once nothing shipped it; recover it from git history if you ever want it back.
 
 ## Deploy
 

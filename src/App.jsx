@@ -1,4 +1,3 @@
-import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { GardenProvider } from '@/context/GardenContext'
@@ -12,9 +11,6 @@ import StepDetail from '@/pages/StepDetail'
 import Settings from '@/pages/Settings'
 import { Sprout, Compass } from 'lucide-react'
 import { HOME_MONEY_REDIRECTS } from '@/lib/routes'
-
-const gardenExperience = import.meta.env.VITE_GARDEN_EXPERIENCE === '3d' ? '3d' : 'illustrated'
-const LegacyDashboard = lazy(() => import('@/pages/Dashboard'))
 
 function AppLoader() {
   return (
@@ -87,9 +83,7 @@ export default function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-              <Route path="/" element={<ProtectedRoute>{gardenExperience === '3d'
-                ? <Suspense fallback={<AppLoader />}><LegacyDashboard /></Suspense>
-                : <Home />}</ProtectedRoute>} />
+              <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
               <Route path="/advisor" element={<ProtectedRoute><AIAdvisor /></ProtectedRoute>} />
               <Route path="/plan" element={<ProtectedRoute><Plan /></ProtectedRoute>} />
               <Route path="/plan/step/:stepId" element={<ProtectedRoute><StepDetail /></ProtectedRoute>} />
