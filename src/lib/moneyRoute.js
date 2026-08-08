@@ -1,6 +1,10 @@
 import { LIMITS, THRESHOLDS } from './finance.js'
 import { accountFamily, isWorkplaceAccount } from './moneyModel.js'
 
+// Accounts with a shared annual contribution ceiling. A taxable brokerage has
+// none, which is what makes it the right home for anything above the cap.
+const IRA_SUBTYPES = ['roth_ira', 'traditional_ira']
+
 const num = value => Number(value) || 0
 const known = value => value !== null && value !== undefined && value !== ''
 const roundMoney = value => Math.max(0, Math.round(num(value)))
@@ -230,13 +234,17 @@ function upcomingPriorities({ snapshot, goals, allocations }) {
   const goal = activeGoals(goals)[0]
   const age = num(snapshot.profile?.age)
   const alreadyInvesting = (snapshot.investmentAccounts || []).length > 0
+  // Investing already has this month's money, so listing it as what comes
+  // "then" would repeat a rung the user can see funded directly above.
+  const investingFunded = [...fundedKeys].some(key => key === 'open_investment_account'
+    || key === 'open_taxable_brokerage' || key.startsWith('investment.'))
   if (goal && !fundedKeys.has(`goal.${goal.id || goal.name}`)) {
     upcoming.push({
       key: `goal.${goal.id || goal.name}`, label: `Fund ${goal.name}`, destinationName: goal.name,
       target: Math.max(0, num(goal.target_amount) - num(goal.current_amount)),
       reason: 'Your closest goal, once your cushion and expensive debt are handled.',
     })
-  } else if (!goal) {
+  } else if (!goal && !investingFunded) {
     // "Start investing" is vague, and vaguest exactly where it matters most.
     // Someone in their twenties has the one advantage nobody can buy later —
     // time — so name the account and say what it is worth.
@@ -506,7 +514,9 @@ export function buildMoneyRoute({
 
     if (remaining > 0) {
       const goal = activeGoals(goals)[0]
-      const investment = accounts.find(account => accountFamily(account) === 'investment') || null
+      const investmentAccounts = accounts.filter(account => accountFamily(account) === 'investment')
+      const investment = investmentAccounts.find(account => IRA_SUBTYPES.includes(account.subtype))
+        || investmentAccounts[0] || null
       if (goal) {
         remaining = addAllocation(allocations, {
           key: `goal.${goal.id || goal.name}`, label: `Fund ${goal.name}`, destinationName: goal.name,
@@ -515,16 +525,71 @@ export function buildMoneyRoute({
           reason: 'Your cushion and expensive debt are handled, so your closest goal is next.',
         }, remaining)
       } else if (investment) {
+        // An IRA has an annual ceiling. Routing the whole surplus into one
+        // would have told a $2,000/mo saver to contribute $24,000 a year to an
+        // account that legally takes $7,500 — so cap it and let the rest
+        // overflow to a taxable account, which has no limit.
+        const iraCap = IRA_SUBTYPES.includes(investment.subtype) ? Math.floor(LIMITS.rothIra / 12) : null
         remaining = addAllocation(allocations, {
           key: `investment.${investment.id || investment.name}`, label: `Increase investing in ${investment.name}`, destinationName: investment.name,
+          ...(iraCap == null ? {} : { maxAmount: iraCap }),
           destinationType: 'account', destinationId: investment.id || null,
-          reason: 'The essentials are handled, so this money can start growing long term.',
+          reason: iraCap == null
+            ? 'The essentials are handled, so this money can start growing long term.'
+            : `The essentials are handled. ${money(LIMITS.rothIra)} a year is the most an IRA can take, which is ${money(iraCap)} a month.`,
         }, remaining)
+
+        if (remaining > 0) {
+          const taxable = accounts.find(account => accountFamily(account) === 'investment'
+            && !IRA_SUBTYPES.includes(account.subtype) && account.id !== investment.id)
+          remaining = taxable
+            ? addAllocation(allocations, {
+              key: `investment.${taxable.id || taxable.name}`, label: `Increase investing in ${taxable.name}`, destinationName: taxable.name,
+              destinationType: 'account', destinationId: taxable.id || null,
+              reason: 'This is above the IRA limit, so it goes to your account with no cap.',
+            }, remaining)
+            : addAllocation(allocations, {
+              key: 'open_taxable_brokerage', label: 'Open a brokerage account for the rest',
+              openLabel: 'Open a brokerage account', destinationName: 'your brokerage account',
+              destinationType: 'account_opening', destinationId: null,
+              reason: 'This is more than an IRA can take in a year. A regular brokerage account has no limit.',
+            }, remaining)
+        }
       } else {
-        allocations.push({
-          key: 'open_investment_account', label: 'Open a long-term investment account', amount: 0,
+        // No investment account on file. This used to push a $0 note and let
+        // every spare dollar fall through to "unassigned", so someone with a
+        // real surplus got a one-line plan that never said where the money
+        // goes. Not having opened the account yet does not make the
+        // destination unknown — it is the first rung, and it has an amount.
+        const rothMonthly = Math.floor(LIMITS.rothIra / 12)
+        remaining = addAllocation(allocations, {
+          key: 'open_investment_account', label: 'Open a Roth IRA and start investing',
+          openLabel: 'Open a Roth IRA', destinationName: 'your Roth IRA', maxAmount: rothMonthly,
           destinationType: 'account_opening', destinationId: null,
-          reason: 'Choose and record the account before assigning a contribution.', confidence: 'provisional', adjustable: false,
+          reason: `A Roth IRA grows tax-free, and ${money(LIMITS.rothIra)} a year is the most you can put in — ${money(rothMonthly)} a month fills it.`,
+        }, remaining)
+
+        // Above the IRA ceiling the money still needs somewhere to be, and a
+        // taxable brokerage has no cap.
+        if (remaining > 0) {
+          remaining = addAllocation(allocations, {
+            key: 'open_taxable_brokerage', label: 'Open a brokerage account for the rest',
+            openLabel: 'Open a brokerage account', destinationName: 'your brokerage account',
+            destinationType: 'account_opening', destinationId: null,
+            reason: `This is more than a Roth IRA can take in a year. A regular brokerage account has no limit.`,
+          }, remaining)
+        }
+      }
+
+      // Someone with money left over and nothing named to save for gets a plan
+      // about accounts, not about their life. Naming one thing is what makes
+      // the rest of the ladder feel like it is going somewhere.
+      if (!goal) {
+        allocations.push({
+          key: 'name_a_goal', label: 'Name something you are saving for',
+          amount: 0, destinationType: 'goal_opening', destinationId: null,
+          reason: 'A trip, a car, a deposit, a course. Once it has a name and a number, it earns a place in this list and the plan can pace it.',
+          adjustable: false,
         })
       }
     }
@@ -646,11 +711,24 @@ function allocationStep(route, allocation, index) {
       basis,
     })
   }
-  if (allocation.key === 'open_investment_account') {
+  if (allocation.key === 'open_investment_account' || allocation.key === 'open_taxable_brokerage') {
+    // The amount belongs in the step text: "open an account" is a chore,
+    // "open one and put $625 a month in" is the actual move.
+    const monthly = amount > 0 ? ` and set up ${money(amount)}/mo` : ''
     return stepBase(route, index, {
-      key: allocation.key, text: allocation.label, detail: allocation.reason,
-      doneWhen: 'The investment account appears in Money with its institution and current balance.',
-      intentKey: 'open.investment_account', priorityKey: 'roth', outcome: { kind: 'account_opening' }, basis,
+      key: allocation.key, text: `${allocation.openLabel || allocation.label}${monthly}`, detail: allocation.reason,
+      doneWhen: `The account appears in Money with its institution and current balance${amount > 0 ? `, and ${money(amount)}/mo is scheduled` : ''}.`,
+      intentKey: allocation.key === 'open_investment_account' ? 'open.investment_account' : 'open.taxable_brokerage',
+      priorityKey: 'roth',
+      outcome: { kind: 'account_opening', amount: amount || null },
+      basis,
+    })
+  }
+  if (allocation.key === 'name_a_goal') {
+    return stepBase(route, index, {
+      key: allocation.key, text: 'Name one thing you are saving for', detail: allocation.reason,
+      doneWhen: 'The goal has a name, an amount, and a date in your Plan.',
+      intentKey: 'name.first_goal', priorityKey: 'goal', outcome: { kind: 'goal_opening' }, basis,
     })
   }
   if (amount <= 0 || ['unassigned', 'hold_for_coverage'].includes(allocation.key)) return null
@@ -698,6 +776,15 @@ function allocationStep(route, allocation, index) {
   })
 }
 
+// Rungs that move no money this month but are still the work: opening the
+// account, naming the goal, finding out whether there is a match. Without
+// these the plan for someone with a surplus and no accounts is a blank page.
+const ZERO_DOLLAR_STEPS = [
+  'repair_budget', 'repair_allocations', 'choose_health_coverage',
+  'capture_employer_match', 'confirm_employer_match',
+  'open_investment_account', 'open_taxable_brokerage', 'name_a_goal',
+]
+
 const PLAN_SIZE = 5
 
 /**
@@ -724,7 +811,7 @@ export function buildInitialPlan(route) {
   const steps = []
   const actionable = orderForPresentation((route.allocations || []).filter(item => (
     !['unassigned', 'hold_for_coverage'].includes(item.key)
-    && (item.amount > 0 || ['repair_budget', 'repair_allocations', 'choose_health_coverage', 'capture_employer_match', 'confirm_employer_match', 'open_investment_account'].includes(item.key))
+    && (item.amount > 0 || ZERO_DOLLAR_STEPS.includes(item.key))
   )))
 
   for (const allocation of actionable) {

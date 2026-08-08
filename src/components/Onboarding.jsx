@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { Sprout, ArrowRight, ArrowLeft, Check, Landmark, X } from 'lucide-react'
 import { ONBOARDING_ACCOUNTS_ROUTE } from '@/lib/routes'
+import { ACCOUNT_SHAPE_FOR_INVESTMENT_TYPE } from '@/lib/moneyModel'
 
 // ─── Step definitions ──────────────────────────────────────────────────────────
 const BASE_STEPS = [
@@ -361,6 +362,11 @@ export default function Onboarding({ onClose, profileOnly = false }) {
     monthly_expenses: profile?.monthly_expenses ? String(profile.monthly_expenses) : '',
     checking_balance: '',
     savings_balance:  '',
+    // Balance per selected investment type, keyed by the profile vocabulary
+    // ("roth_ira"). Asking here is the only chance to catch it in context —
+    // otherwise setup ends knowing the account exists but not what is in it,
+    // and the user gets asked all over again on the Money page.
+    investment_balances: {},
     debts:            [],   // [{ name, balance }]
   })
 
@@ -379,9 +385,19 @@ export default function Onboarding({ onClose, profileOnly = false }) {
   function toggleMulti(field, value) {
     setAnswers(prev => {
       const arr = prev[field] ?? []
-      if (value === 'none') return { ...prev, [field]: arr.includes('none') ? [] : ['none'] }
-      const without = arr.filter(v => v !== 'none')
-      return { ...prev, [field]: without.includes(value) ? without.filter(v => v !== value) : [...without, value] }
+      const next = value === 'none'
+        ? (arr.includes('none') ? [] : ['none'])
+        : (() => {
+          const without = arr.filter(v => v !== 'none')
+          return without.includes(value) ? without.filter(v => v !== value) : [...without, value]
+        })()
+      if (field !== 'investment_types') return { ...prev, [field]: next }
+      // A balance for a type you just deselected would otherwise be seeded as
+      // an account you said you do not have.
+      const balances = Object.fromEntries(
+        Object.entries(prev.investment_balances || {}).filter(([key]) => next.includes(key)),
+      )
+      return { ...prev, [field]: next, investment_balances: balances }
     })
   }
 
@@ -476,9 +492,22 @@ export default function Onboarding({ onClose, profileOnly = false }) {
     // Seed cash accounts from the balances step so the plan has real liquidity
     // to reason about. Only created when this user has no accounts yet, so
     // re-running setup never duplicates them.
+    // Investment balances entered beside their account type on the investing
+    // step. Seeded the same way as cash so the plan can see them from day one.
+    const seedInvestments = (answers.investment_types || [])
+      .filter(value => value !== 'none')
+      .map(value => {
+        const shape = ACCOUNT_SHAPE_FOR_INVESTMENT_TYPE[value]
+        const raw = answers.investment_balances?.[value]
+        if (!shape || raw === undefined || raw === '') return null
+        return { ...shape, balance: Number(raw) || 0, entered: true }
+      })
+      .filter(Boolean)
+
     const seedAccounts = [
       { name: 'Checking', type: 'checking', subtype: 'checking', balance: Number(answers.checking_balance) || 0, entered: answers.checking_balance !== '' },
       { name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: Number(answers.savings_balance) || 0, entered: answers.savings_balance !== '' },
+      ...seedInvestments,
     ].filter(account => account.entered)
     if (seedAccounts.length) {
       const { data: existingAccounts, error: accountReadError } = await supabase.from('accounts')
@@ -767,6 +796,34 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                         )
                       })}
                     </div>
+
+                    {/* Ask the amount right where the account was named. Tapping
+                        "Roth IRA" and then being asked for its balance on a
+                        later screen is the redundancy this removes. */}
+                    {answers.investment_types.filter(value => value !== 'none').length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        <p className="text-xs text-readable-muted">Roughly how much is in each? Leave blank if you are not sure.</p>
+                        {answers.investment_types.filter(value => value !== 'none').map(value => {
+                          const option = BASE_STEPS.find(item => item.id === 'investing').options.find(o => o.value === value)
+                          return (
+                            <label key={value} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                              <span className="min-w-0 flex-1 truncate text-sm font-medium text-readable-secondary">{option?.label || value}</span>
+                              <span className="text-sm text-readable-muted">$</span>
+                              <input
+                                type="number" inputMode="decimal" min="0" placeholder="0"
+                                aria-label={`${option?.label || value} balance`}
+                                value={answers.investment_balances?.[value] ?? ''}
+                                onChange={event => setAnswers(prev => ({
+                                  ...prev,
+                                  investment_balances: { ...prev.investment_balances, [value]: event.target.value },
+                                }))}
+                                className="w-24 bg-transparent text-right text-base font-semibold tabular-nums text-white outline-none md:text-sm"
+                              />
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )}
                   </fieldset>
                 </div>
               )}

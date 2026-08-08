@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { computeSnapshot } from '../src/lib/finance.js'
+import { computeSnapshot, LIMITS } from '../src/lib/finance.js'
 import { buildInitialPlan, buildMoneyRoute } from '../src/lib/moneyRoute.js'
 
 function state({
@@ -344,4 +344,97 @@ test('rungs with no finish line are never given an invented date', () => {
       assert.equal(item.etaMonths, undefined, `${item.key} must not claim a finish date`)
     }
   }
+})
+
+test('a surplus with no accounts and no goals still gets a real, multi-step plan', () => {
+  // The reported case: the plan was one line ("Open a long-term investment
+  // account") while every spare dollar sat in "unassigned".
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 5000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', age: 28, onboarding_complete: true },
+    accounts: [
+      { id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3000 },
+      { id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 15000 },
+    ],
+  }))
+
+  // Every dollar is assigned — nothing falls through to "unassigned".
+  assert.equal(route.allocations.some(item => item.key === 'unassigned'), false)
+  assert.equal(route.allocations.reduce((sum, item) => sum + item.amount, 0), 2000)
+
+  // The IRA takes its annual limit spread monthly; the rest has somewhere to go.
+  const roth = route.allocations.find(item => item.key === 'open_investment_account')
+  const brokerage = route.allocations.find(item => item.key === 'open_taxable_brokerage')
+  assert.equal(roth.amount, Math.floor(LIMITS.rothIra / 12))
+  assert.equal(brokerage.amount, 2000 - roth.amount)
+
+  // Nothing named to save for is itself a rung — a plan about accounts only is
+  // not a plan about the user's life.
+  assert.ok(route.allocations.some(item => item.key === 'name_a_goal'))
+
+  // Three steps, and the money moves are stated with their amounts.
+  const steps = buildInitialPlan(route)
+  assert.ok(steps.length >= 3, `expected a multi-step plan, got ${steps.length}`)
+  assert.match(steps[0].text, /Open a Roth IRA and set up \$\d+\/mo/)
+  assert.ok(steps.some(step => step.intentKey === 'name.first_goal'))
+  // "Open a Roth IRA and start investing and set up $625/mo" — no doubled verb.
+  for (const step of steps) assert.ok(!/ and .* and /.test(step.text), `clumsy text: ${step.text}`)
+})
+
+test('investing is not listed as upcoming when it is already funded', () => {
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 5000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', age: 28, onboarding_complete: true },
+    accounts: [
+      { id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3000 },
+      { id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 15000 },
+    ],
+  }))
+  assert.equal(route.upcoming.some(item => item.key === 'invest_long_term'), false)
+})
+
+test('investing still appears as upcoming while the cushion is being built', () => {
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 5000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', age: 28, onboarding_complete: true },
+    accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 800 }],
+  }))
+  assert.ok(route.upcoming.some(item => item.key === 'invest_long_term'))
+  assert.equal(route.allocations.some(item => item.key === 'name_a_goal'), false)
+})
+
+test('an IRA never receives more than its annual limit allows', () => {
+  // Before this cap the plan told a $2,000/mo saver to put all of it into a
+  // Roth IRA — $24,000 a year into an account that takes $7,500.
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 5000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', age: 28, onboarding_complete: true },
+    accounts: [
+      { id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3000 },
+      { id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 15000 },
+      { id: 'b', name: 'Brokerage', type: 'brokerage', subtype: 'taxable_brokerage', balance: 9100 },
+      { id: 'r', name: 'Roth IRA', type: 'brokerage', subtype: 'roth_ira', balance: 4200 },
+    ],
+  }))
+  const monthlyCap = Math.floor(LIMITS.rothIra / 12)
+  const ira = route.allocations.find(item => item.key === 'investment.r')
+  const taxable = route.allocations.find(item => item.key === 'investment.b')
+
+  // Tax-advantaged first, but only up to the ceiling.
+  assert.equal(route.allocations.findIndex(i => i.key === 'investment.r') <
+               route.allocations.findIndex(i => i.key === 'investment.b'), true)
+  assert.equal(ira.amount, monthlyCap)
+  assert.ok(ira.amount * 12 <= LIMITS.rothIra)
+  // The overflow still has a home; nothing is stranded.
+  assert.equal(taxable.amount, 2000 - monthlyCap)
+  assert.equal(route.allocations.some(item => item.key === 'unassigned'), false)
+})
+
+test('a taxable-only investor keeps taking the whole surplus', () => {
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 5000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', age: 28, onboarding_complete: true },
+    accounts: [
+      { id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3000 },
+      { id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 15000 },
+      { id: 'b', name: 'Brokerage', type: 'brokerage', subtype: 'taxable_brokerage', balance: 9100 },
+    ],
+  }))
+  // No cap applies, so the uncapped account takes it all in one rung.
+  assert.equal(route.allocations.find(item => item.key === 'investment.b').amount, 2000)
 })

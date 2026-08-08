@@ -135,6 +135,18 @@ const PROFILE_INVESTMENT_TYPE = {
   other_investment: 'other',
 }
 
+// The inverse of PROFILE_INVESTMENT_TYPE. Onboarding asks in the profile's
+// vocabulary ("roth_ira"), but seeding a real account needs our type/subtype
+// pair — otherwise the balance the user just typed lands in no family and the
+// plan cannot see it.
+export const ACCOUNT_SHAPE_FOR_INVESTMENT_TYPE = Object.freeze({
+  roth_ira: { name: 'Roth IRA', type: 'brokerage', subtype: 'roth_ira' },
+  trad_ira: { name: 'Traditional IRA', type: 'brokerage', subtype: 'traditional_ira' },
+  '401k': { name: '401(k)', type: 'brokerage', subtype: '401k' },
+  brokerage: { name: 'Brokerage', type: 'brokerage', subtype: 'taxable_brokerage' },
+  hsa: { name: 'HSA', type: 'brokerage', subtype: 'hsa' },
+})
+
 export function investmentTypesFromAccounts(accounts = []) {
   const types = accounts
     .filter(account => accountFamily(account) === 'investment')
