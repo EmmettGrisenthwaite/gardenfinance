@@ -19,6 +19,7 @@ import { listFinancialActivities } from '@/lib/financialActivities'
 import { listReminderEvents, listReminders } from '@/lib/reminders'
 import { selectAdvisorResponseAction, selectPendingAdvisorAttachment } from '@/lib/advisorResponseAction'
 import { splitInlineMarkdown } from '@/lib/inlineMarkdown'
+import { planFollowUps, topFollowUps } from '@/lib/planFollowUps'
 import MoneyRouteCard from '@/components/MoneyRouteCard'
 import BottomSheet from '@/components/ui/BottomSheet'
 import ResourceLinks from '@/components/ResourceLinks'
@@ -290,7 +291,7 @@ function SetupNeeded({ missing, onResolve }) {
 // ─── Welcome / empty state ─────────────────────────────────────────────────────
 function WelcomeScreen({
   onSuggest, progressDelta, suggestions, moneyRoute,
-  onUseRoute, onAdjustRoute, onResolveBlocker, routeBusy,
+  onUseRoute, onAdjustRoute, onResolveBlocker, routeBusy, followUps,
 }) {
   return (
     <motion.div className="py-5 text-center"
@@ -317,6 +318,7 @@ function WelcomeScreen({
       <div className="mb-7">
         {moneyRoute?.ready ? (
           <MoneyRouteCard route={moneyRoute} onPrimary={onUseRoute} onAdjust={onAdjustRoute}
+            followUps={followUps} onAskFollowUp={item => onSuggest(item.prompt)}
             onResolveBlocker={onResolveBlocker} busy={routeBusy} />
         ) : (
           <SetupNeeded missing={moneyRoute?.missingInputs || []} onResolve={onResolveBlocker} />
@@ -542,11 +544,25 @@ export default function AIAdvisor() {
 
   const noKey  = !chatConfigured
   const hasData = goals.length > 0 || debts.length > 0 || plans.length > 0 || money.income > 0 || money.expenses > 0 || money.netWorth !== 0
+  // What a planner would ask about THIS plan, once it is settled.
+  const followUps = useMemo(
+    () => topFollowUps({ route: moneyRoute, profile, debts, goals }, 3),
+    [moneyRoute, profile, debts, goals],
+  )
+
   const quickSuggestions = useMemo(() => {
     // Once a plan exists the advisor's job is to REFINE it, so the prompts
     // become the questions a planner would actually ask — the judgement calls
     // the recorded numbers can never answer on their own.
     if (moneyRoute.ready) {
+      // The card already shows the top follow-ups in full; the chip row offers
+      // the next ones down so the two surfaces do not repeat each other.
+      const shown = new Set(followUps.map(item => item.id))
+      const rest = planFollowUps({ route: moneyRoute, profile, debts, goals })
+        .filter(item => !shown.has(item.id))
+        .slice(0, 3)
+        .map(item => ({ label: item.label, q: item.prompt, icon: Brain }))
+      if (rest.length) return rest
       return [
         { label: 'Is this the right order?', q: 'Walk me through why my plan is in this order, and tell me if anything about my situation should change it.', icon: Target },
         { label: 'What am I missing?', q: 'What would a financial planner ask me that my numbers alone cannot answer? Ask me one question at a time.', icon: Brain },
@@ -563,7 +579,7 @@ export default function AIAdvisor() {
         : SUGGESTIONS[1],
       SUGGESTIONS[2],
     ]
-  }, [accounts, moneyRoute.ready])
+  }, [accounts, moneyRoute, profile, debts, goals, followUps])
 
   // ── Send message ────────────────────────────────────────────────────────────
   async function send(text, opts = {}) {
@@ -956,6 +972,7 @@ export default function AIAdvisor() {
               onSuggest={send}
               progressDelta={progressDelta}
               suggestions={quickSuggestions}
+              followUps={followUps}
               moneyRoute={moneyRoute}
               onUseRoute={handleUseMoneyRoute}
               onAdjustRoute={openRouteAdjustments}
@@ -967,6 +984,7 @@ export default function AIAdvisor() {
           {showFirstRouteReview && (
             <div className="mb-6">
               <MoneyRouteCard route={moneyRoute} onPrimary={handleUseMoneyRoute} onAdjust={openRouteAdjustments}
+                followUps={followUps} onAskFollowUp={item => send(item.prompt)}
                 onResolveBlocker={resolveRouteBlocker} busy={routeBusy} />
             </div>
           )}

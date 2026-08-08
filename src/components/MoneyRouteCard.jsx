@@ -50,6 +50,8 @@ export default function MoneyRouteCard({
   primaryLabel = 'Add this to my Plan',
   onAdjust,
   onResolveBlocker,
+  followUps = [],
+  onAskFollowUp,
   busy = false,
 }) {
   if (!route?.ready) return null
@@ -127,6 +129,29 @@ export default function MoneyRouteCard({
       {!compact && (route.notes || []).map(note => (
         <p key={note} className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-xs leading-5 text-readable-secondary">{note}</p>
       ))}
+
+      {/* The plan is settled; these are the things it cannot know. A planner
+          would not hand over a ladder and go quiet, so the questions worth
+          asking about THIS plan sit right under it rather than waiting for the
+          user to guess that the advisor has more to say. */}
+      {!compact && followUps.length > 0 && onAskFollowUp && (
+        <div className="mt-4 rounded-2xl border border-white/[0.09] bg-white/[0.025] p-3.5">
+          <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-readable-muted">Before you start, I&rsquo;d ask</p>
+          <ul className="mt-2 space-y-1.5">
+            {followUps.map(item => (
+              <li key={item.id}>
+                <button
+                  type="button" disabled={busy} onClick={() => onAskFollowUp(item)}
+                  className="w-full rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-white/[0.05] disabled:opacity-50"
+                >
+                  <span className="block text-[13px] font-semibold leading-5 text-white">{item.question}</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-readable-muted">{item.why}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className={`mt-4 flex ${compact ? 'items-center' : 'flex-col sm:flex-row'} gap-2`}>
         {onPrimary && <button type="button" onClick={onPrimary} disabled={busy} className="btn-primary min-h-11 flex-1 disabled:opacity-50">
