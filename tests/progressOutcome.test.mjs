@@ -73,3 +73,39 @@ test('debt previews cap payments and reject stale-looking invalid moves locally'
   assert.equal(preview.updates[0].after, 500)
   assert.equal(preview.updates[1].after, 0)
 })
+
+test('the advisor\'s natural phrasing for paying debt is still read as a payment', () => {
+  // The advisor does not say "make a debt payment"; it says "attack the card".
+  // Missing these made a real money move infer as 'information', so the app
+  // offered no record update when the step was completed.
+  for (const text of [
+    'Attack the credit card balance next',
+    'Start attacking your card once the cushion is set',
+    'Knock out the store card before the promo ends',
+    'Wipe out the remaining loan balance',
+    'Crush the highest-rate card first',
+  ]) {
+    assert.equal(inferStepOutcome({ text }).kind, 'debt_payment', `not read as a payment: ${text}`)
+  }
+})
+
+test('money described as flowing somewhere is still read as a contribution', () => {
+  for (const text of [
+    'Keep $250 flowing into your emergency fund',
+    'Put $200 into your Roth IRA each month',
+    'Send the surplus to your brokerage account',
+    'Keep funding the goal every payday',
+  ]) {
+    assert.equal(inferStepOutcome({ text }).kind, 'contribution', `not read as a contribution: ${text}`)
+  }
+})
+
+test('broadened wording did not turn ordinary sentences into money moves', () => {
+  for (const text of [
+    'Read about how index funds work',
+    'Check whether your employer offers a match',
+    'Review your spending from last month',
+  ]) {
+    assert.equal(inferStepOutcome({ text }).kind, 'information', `wrongly treated as a money move: ${text}`)
+  }
+})

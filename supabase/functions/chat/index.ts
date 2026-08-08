@@ -282,8 +282,10 @@ Deno.serve(async (req) => {
 
   const CREATE_GUIDE_TOOL = {
     name: 'create_guide',
-    description: 'Use when the user wants to TAKE A CONCRETE SETUP ACTION — e.g. open a Roth IRA, open a high-yield savings account, start investing in index funds, roll over an old 401(k), open an HSA, get term life insurance, freeze their credit, set up automatic transfers. Produce a short do-it-today walkthrough: 3–6 ordered steps. Include links only when the user must leave the app to complete an action, placing no more than 3 links total on the relevant step. Use reputable official sites you are confident about (e.g. fidelity.com, vanguard.com, schwab.com, ally.com, marcus.com, sofi.com, wealthfront.com, irs.gov). Never add links to explanatory steps and never invent URLs. Ground the recommendations in the user’s real situation (age, income, existing accounts). If the latest message is NOT a request to actually set something up, set should_guide=false and leave the rest blank.',
-    strict: true,
+    description: 'Use when the user wants to TAKE A CONCRETE SETUP ACTION — e.g. open a Roth IRA, open a high-yield savings account, start investing in index funds, roll over an old 401(k), open an HSA, get term life insurance, freeze their credit, set up automatic transfers. Produce a short do-it-today walkthrough: 3–6 ordered steps. Include links only when the user must leave the app to complete an action, placing no more than 3 links total on the relevant step. Use reputable official sites you are confident about (e.g. fidelity.com, vanguard.com, schwab.com, ally.com, marcus.com, sofi.com, wealthfront.com, irs.gov). Never add links to explanatory steps and never invent URLs. Ground the recommendations in the user’s real situation (age, income, existing accounts). Give each step a stable intentKey. When completing a step would move money, pay debt, set up a recurring transfer, or open an account, include a structured outcome so the app can offer a reviewable record update without guessing. If the latest message is NOT a request to actually set something up, set should_guide=false and leave the rest blank.',
+    // Not `strict: true` — the nested optional outcome object (like
+    // ACTION_PLAN_TOOL's) can exceed Anthropic's strict-mode structured-output
+    // complexity ceiling and return a request-level 400.
     input_schema: {
       type: 'object',
       additionalProperties: false,
@@ -300,6 +302,24 @@ Deno.serve(async (req) => {
             properties: {
               text:   { type: 'string', description: 'The action, imperative and specific' },
               detail: { type: 'string', description: 'One short sentence of how/why' },
+              intentKey: { type: 'string', description: 'Stable dotted purpose, e.g. open.roth_ira, setup.recurring_emergency_savings, pay.visa, or fund.emergency_goal.' },
+              completionPolicy: { type: 'string', enum: ['once', 'repeatable'], description: 'once for setup/opening/coverage work; repeatable for contributions, transfers, and debt payments.' },
+              outcome: {
+                type: 'object',
+                description: 'Optional real-world result to review after completion. Omit for explanatory or link-only steps.',
+                additionalProperties: false,
+                properties: {
+                  kind: { type: 'string', enum: ['transfer', 'contribution', 'debt_payment', 'recurring_setup', 'account_opening'] },
+                  amount: { type: 'number', description: 'Suggested positive dollar amount only when grounded in the user context.' },
+                  sourceAccountHint: { type: 'string', description: 'Existing account name or type money comes from.' },
+                  destinationAccountHint: { type: 'string', description: 'Existing account name or type money goes to.' },
+                  debtHint: { type: 'string', description: 'Existing debt name for a payment.' },
+                  goalHint: { type: 'string', description: 'Existing goal name when progress should increase too.' },
+                  accountSubtypeHint: { type: 'string', description: 'Detailed subtype for account-opening or destination matching.' },
+                  recurrence: { type: 'string', description: 'payday, weekly, biweekly, twice_monthly, monthly, quarterly, or annual.' },
+                },
+                required: ['kind'],
+              },
               resources: {
                 type: 'array',
                 description: 'Optional official action links for this step. Across the entire guide, include at most 3 and only when needed to complete the action.',
@@ -315,7 +335,7 @@ Deno.serve(async (req) => {
                 },
               },
             },
-            required: ['text'],
+            required: ['text', 'intentKey', 'completionPolicy'],
           },
         },
       },

@@ -50,11 +50,11 @@ export function inferStepOutcome(step = {}) {
     kind = 'account_opening'
   } else if (/\b(set up|setup|automate|automatic|recurring|schedule)\b.{0,70}\b(transfer|contribution|payment|deposit)\b/.test(text)) {
     kind = 'recurring_setup'
-  } else if (/\b(pay|payment|paydown|pay down|payoff|pay off)\b.{0,60}\b(debt|card|loan|mortgage)\b|\b(debt|card|loan|mortgage)\b.{0,60}\b(pay|payment)\b|\b(pay|payment)\b.{0,35}\b\d+(?:\.\d+)?\b/.test(text)) {
+  } else if (/\b(pay|payment|paydown|pay down|payoff|pay off|attack|attacking|knock out|knocking out|wipe out|wiping out|crush|crushing)\b.{0,60}\b(debt|card|loan|mortgage)\b|\b(debt|card|loan|mortgage)\b.{0,60}\b(pay|payment)\b|\b(pay|payment)\b.{0,35}\b\d+(?:\.\d+)?\b/.test(text)) {
     kind = 'debt_payment'
   } else if (/\b(move|transfer|roll over|rollover|consolidate)\b.{0,90}\b(saving|account|fund|ira|401k|403b|brokerage|hysa|checking|invest)/.test(text)) {
     kind = 'transfer'
-  } else if (/\b(contribute|deposit|fund|invest|add)\b.{0,70}\b(goal|saving|fund|ira|401k|403b|hsa|brokerage|account)\b/.test(text)) {
+  } else if (/\b(contribute|deposit|fund|invest|add|flowing|flow|put|send|keep)\b.{0,70}\b(goal|saving|fund|ira|401k|403b|hsa|brokerage|account)\b/.test(text)) {
     kind = 'contribution'
   }
 

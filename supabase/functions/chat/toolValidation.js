@@ -34,7 +34,10 @@ function validGuide(input) {
     && Array.isArray(input.steps)
     && input.steps.length >= 3
     && input.steps.length <= 6
-    && input.steps.every(step => isRecord(step) && isText(step.text))
+    && input.steps.every(step => isRecord(step)
+      && isText(step.text)
+      && isText(step.intentKey)
+      && ['once', 'repeatable'].includes(step.completionPolicy))
 }
 
 function validGoal(input) {
@@ -82,7 +85,7 @@ export function retryInstruction(tool) {
     return 'Return 1 to 3 complete focus steps. Use only the supplied candidateKey values and include text, detail, and an observable doneWhen for every step.'
   }
   if (tool === 'guide') {
-    return 'Return the complete guide. If should_guide is true, include a title, summary, and 3 to 6 actionable steps.'
+    return 'Return the complete guide. If should_guide is true, include a title, summary, and 3 to 6 actionable steps. Every step must include text, intentKey, and completionPolicy.'
   }
   if (tool === 'suggest_goal') {
     return 'Return the complete goal suggestion. If should_suggest is true, include a specific name, goal_type, and positive target_amount.'

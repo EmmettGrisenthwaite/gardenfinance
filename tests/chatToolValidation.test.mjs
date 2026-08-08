@@ -31,13 +31,23 @@ test('focused plans require one to three complete wording-only steps', () => {
   assert.match(retryInstruction('focus_plan'), /candidateKey/)
 })
 
+// Guide steps are saved straight into the Plan (AIAdvisor's savePlan with
+// source: 'guide'), where steps are deduped by intentKey and tracked by
+// completionPolicy. A step without them is a step the Plan cannot follow, so
+// the tool schema requires both and validation refuses the result.
+const guideStep = (text, intentKey) => ({ text, intentKey, completionPolicy: 'once' })
+
 test('conditional tool results require their useful fields', () => {
   assert.equal(isCompleteToolResult('guide', { should_guide: false }), true)
   assert.equal(isCompleteToolResult('guide', {
     should_guide: true,
     title: 'Open an IRA',
     summary: 'Do it today.',
-    steps: [{ text: 'Choose a provider' }, { text: 'Open the account' }, { text: 'Fund it' }],
+    steps: [
+      guideStep('Choose a provider', 'open.roth_ira.choose_provider'),
+      guideStep('Open the account', 'open.roth_ira'),
+      guideStep('Fund it', 'fund.roth_ira'),
+    ],
   }), true)
   assert.equal(isCompleteToolResult('suggest_goal', {
     should_suggest: true,
@@ -45,6 +55,39 @@ test('conditional tool results require their useful fields', () => {
     target_amount: 5000,
   }), false)
   assert.match(retryInstruction('action_plan'), /3 to 5/)
+})
+
+test('a guide step without a trackable identity is rejected', () => {
+  const complete = {
+    should_guide: true,
+    title: 'Open an IRA',
+    summary: 'Do it today.',
+    steps: [
+      guideStep('Choose a provider', 'open.roth_ira.choose_provider'),
+      guideStep('Open the account', 'open.roth_ira'),
+      guideStep('Fund it', 'fund.roth_ira'),
+    ],
+  }
+  assert.equal(isCompleteToolResult('guide', complete), true)
+
+  // Bare text was the old contract. It produced Plan steps that could not be
+  // deduped or marked done, so it is no longer a complete result.
+  const bareText = { ...complete, steps: complete.steps.map(({ text }) => ({ text })) }
+  assert.equal(isCompleteToolResult('guide', bareText), false)
+
+  const noIntentKey = { ...complete, steps: [{ text: 'Fund it', completionPolicy: 'once' }, ...complete.steps.slice(1)] }
+  assert.equal(isCompleteToolResult('guide', noIntentKey), false)
+
+  const noPolicy = { ...complete, steps: [{ text: 'Fund it', intentKey: 'fund.roth_ira' }, ...complete.steps.slice(1)] }
+  assert.equal(isCompleteToolResult('guide', noPolicy), false)
+
+  const badPolicy = { ...complete, steps: [guideStep('Fund it', 'fund.roth_ira'), ...complete.steps.slice(1)] }
+  badPolicy.steps[0] = { ...badPolicy.steps[0], completionPolicy: 'sometimes' }
+  assert.equal(isCompleteToolResult('guide', badPolicy), false)
+
+  // The model has to be told what was missing, or it retries the same shape.
+  assert.match(retryInstruction('guide'), /intentKey/)
+  assert.match(retryInstruction('guide'), /completionPolicy/)
 })
 
 test('memory and fast-guide outputs reject truncated payloads', () => {
