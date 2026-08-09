@@ -31,6 +31,35 @@ export function efTargetMonths(profile) {
   return type === 'freelance' || type === 'other' ? 6 : 3
 }
 
+/**
+ * Months to clear one balance at a fixed monthly payment, with interest.
+ *
+ * Dividing the balance by the payment is wrong in the direction that flatters
+ * the plan, and the error grows exactly where it hurts most: $5,000 at 22% paid
+ * at $150/mo is 52 months, not the 34 that division promises. At $110/mo it is
+ * 122 months, not 46. These are the balances this app exists to help with, so
+ * the arithmetic has to be real.
+ *
+ * Returns null when the payment cannot outrun the interest — that balance never
+ * clears, and inventing a number for it would be the worst answer available.
+ */
+export function payoffMonths(balance, apr, monthlyPayment) {
+  let remaining = num(balance)
+  const payment = num(monthlyPayment)
+  const monthlyRate = num(apr) / 100 / 12
+  if (remaining <= 0) return 0
+  if (payment <= 0) return null
+  if (monthlyRate > 0 && payment <= remaining * monthlyRate) return null
+
+  let months = 0
+  while (remaining > 0) {
+    remaining = remaining * (1 + monthlyRate) - payment
+    months++
+    if (months > 600) return null
+  }
+  return months
+}
+
 // Compatibility forecast retained for existing callers and comparisons.
 export function debtFreedom(debts, monthlyPayment) {
   const live = debts

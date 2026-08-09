@@ -490,3 +490,77 @@ test('durations stay human at both ends of the scale', () => {
   assert.equal(formatDuration(1920), 'over 10 years')
   assert.equal(HORIZON_MONTHS, 120)
 })
+
+test('debt timelines charge interest and count the minimum payment', () => {
+  // $5,000 at 24% with no recorded minimum: division says 34 months, but the
+  // interest makes it 56. Being optimistic here is how people mis-plan years.
+  const noMinimum = buildMoneyRoute(state({
+    profile: { monthly_income: 3150, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+    accounts: [{ id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 8000 }],
+    debts: [{ id: 'a', name: 'Card', type: 'credit_card', balance: 5000, interest_rate: 24, minimum_payment: 0 }],
+  }))
+  const slow = noMinimum.allocations.find(item => item.key.startsWith('debt.'))
+  assert.equal(slow.amount, 150)
+  assert.ok(slow.etaMonths > 34, `interest ignored: ${slow.etaMonths}`)
+
+  // The same balance with a $100 minimum clears sooner, because that money
+  // lands on it too — dividing the surplus alone misses this entirely.
+  const withMinimum = buildMoneyRoute(state({
+    profile: { monthly_income: 3150, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+    accounts: [{ id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 8000 }],
+    debts: [{ id: 'a', name: 'Card', type: 'credit_card', balance: 5000, interest_rate: 22, minimum_payment: 100 }],
+  }))
+  const faster = withMinimum.allocations.find(item => item.key.startsWith('debt.'))
+  assert.ok(faster.etaMonths < 34, `minimum payment ignored: ${faster.etaMonths}`)
+})
+
+test('the starter cushion says how far along you already are', () => {
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 1450, monthly_expenses: 1200, health_insurance: 'parents', employer_401k: 'na', onboarding_complete: true },
+    accounts: [
+      { id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 420 },
+      { id: 's', name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: 150 },
+    ],
+  }))
+  const starter = route.allocations.find(item => item.key === 'starter_emergency')
+  assert.match(starter.reason, /\$570 of \$1,000/)
+  assert.match(starter.reason, /\$430 to go/)
+
+  // Starting from nothing, there is no progress worth claiming.
+  const empty = buildMoneyRoute(state({
+    profile: { monthly_income: 1450, monthly_expenses: 1200, health_insurance: 'parents', employer_401k: 'na', onboarding_complete: true },
+    accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 0 }],
+  }))
+  assert.ok(!/of \$1,000/.test(empty.allocations.find(item => item.key === 'starter_emergency').reason))
+})
+
+test('automation schedules the largest recurring move, not the first', () => {
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 5000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+    accounts: [
+      { id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3000 },
+      { id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 15000 },
+      { id: 'r', name: 'Roth IRA', type: 'brokerage', subtype: 'roth_ira', balance: 4200 },
+      { id: 'b', name: 'Brokerage', type: 'brokerage', subtype: 'taxable_brokerage', balance: 9100 },
+    ],
+  }))
+  const automation = buildInitialPlan(route).find(step => step.outcome?.kind === 'recurring_setup')
+  assert.ok(automation)
+  // $1,375 to the brokerage beats the $625 IRA rung that comes first.
+  assert.equal(automation.outcome.amount, 1375)
+  assert.match(automation.text, /1,375/)
+})
+
+test('a fully funded goal still shows what the money does next', () => {
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 4000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+    accounts: [
+      { id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3000 },
+      { id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 12000 },
+    ],
+    goals: [{ id: 'g', name: 'Japan trip', target_amount: 5000, current_amount: 500, deadline: '2027-06-01' }],
+  }))
+  assert.ok(route.allocations.some(item => item.key.startsWith('goal.')))
+  assert.ok(route.upcoming.length > 0, 'the plan must not end at the goal')
+  assert.ok(route.upcoming.some(item => item.key === 'invest_long_term'))
+})

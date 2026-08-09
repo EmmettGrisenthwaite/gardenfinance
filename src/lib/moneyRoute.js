@@ -1,4 +1,4 @@
-import { LIMITS, THRESHOLDS } from './finance.js'
+import { LIMITS, THRESHOLDS, payoffMonths } from './finance.js'
 import { accountFamily, isWorkplaceAccount } from './moneyModel.js'
 
 // Accounts with a shared annual contribution ceiling. A taxable brokerage has
@@ -168,31 +168,44 @@ const FINITE_FILL = key => key === 'starter_emergency' || key === 'full_emergenc
  * also needs "and when" — "pay off the card" only becomes a plan once it reads
  * "about 2 months from now".
  *
- * Deliberately simple: gap ÷ monthly contribution, no interest accrual and no
- * compounding. That makes debt payoff a slight underestimate, which is why every
- * figure is rendered as "about". A rung whose length cannot be known stops the
- * chain rather than letting a guess propagate into later start dates.
+ * Savings rungs divide: money in is money there. Debt does not — interest eats
+ * part of every payment, so those amortize instead (see payoffMonths). The
+ * payment used is the money this plan sends plus the recorded minimum, because
+ * that is what actually lands on the balance each month.
+ *
+ * A rung whose length cannot be known — including a balance whose interest
+ * outruns the payment — stops the chain rather than letting a guess propagate
+ * into every later start date.
  */
+function rungMonths(item, monthlyAmount, target) {
+  if (!(monthlyAmount > 0) || !(target > 0)) return null
+  if (!item.key.startsWith('debt.')) return Math.max(1, Math.ceil(target / monthlyAmount))
+  const months = payoffMonths(target, num(item.apr), monthlyAmount + num(item.minimumPayment))
+  return months == null ? null : Math.max(1, months)
+}
+
 function scheduleRungs({ allocations, upcoming, availableMonthlyAmount }) {
   let offset = 0
   let chainIntact = true
 
   for (const item of allocations) {
     if (!(num(item.amount) > 0) || !FINITE_FILL(item.key)) continue
-    const gap = num(item.maxAmount)
-    if (!(gap > 0)) continue
-    item.etaMonths = Math.max(1, Math.ceil(gap / num(item.amount)))
-    offset += item.etaMonths
+    const months = rungMonths(item, num(item.amount), num(item.maxAmount))
+    if (months == null) continue
+    item.etaMonths = months
+    offset += months
   }
 
   for (const item of upcoming) {
     item.startsInMonths = chainIntact && offset > 0 ? offset : null
-    const target = num(item.target)
-    if (chainIntact && FINITE_FILL(item.key) && target > 0 && availableMonthlyAmount > 0) {
-      item.etaMonths = Math.max(1, Math.ceil(target / availableMonthlyAmount))
-      offset += item.etaMonths
-    } else {
+    const months = chainIntact && FINITE_FILL(item.key)
+      ? rungMonths(item, availableMonthlyAmount, num(item.target))
+      : null
+    if (months == null) {
       chainIntact = false
+    } else {
+      item.etaMonths = months
+      offset += months
     }
   }
 }
@@ -214,6 +227,7 @@ function upcomingPriorities({ snapshot, goals, allocations }) {
     upcoming.push({
       key, label: `Pay off ${debt.name}`,
       target: num(debt.balance),
+      apr: num(debt.interest_rate), minimumPayment: num(debt.minimum_payment),
       reason: anotherDebtFunded
         ? `At ${num(debt.interest_rate)}%, next in line after the pricier balance above.`
         : `At ${num(debt.interest_rate)}%, this is the most expensive money you owe — it is next once the cushion above is set.`,
@@ -244,7 +258,10 @@ function upcomingPriorities({ snapshot, goals, allocations }) {
       target: Math.max(0, num(goal.target_amount) - num(goal.current_amount)),
       reason: 'Your closest goal, once your cushion and expensive debt are handled.',
     })
-  } else if (!goal && !investingFunded) {
+    // A goal that is fully funded this month used to end the list there, so the
+    // plan simply stopped — no sense of what the money does once the trip is
+    // paid for. Investing is what the same ladder reaches next.
+  } else if (!investingFunded) {
     // "Start investing" is vague, and vaguest exactly where it matters most.
     // Someone in their twenties has the one advantage nobody can buy later —
     // time — so name the account and say what it is worth.
@@ -447,7 +464,13 @@ export function buildMoneyRoute({
         key: 'starter_emergency', label: `Save your first ${money(THRESHOLDS.starterEmergency)}`, destinationName: 'your emergency fund',
         maxAmount: starterGap, destinationType: 'account', destinationId: emergency?.id || null,
         sourceAccountId: source?.id || null,
-        reason: 'A small cash cushion keeps a surprise bill from turning into new debt.',
+        // Someone with $570 banked is 57% of the way up this rung and the card
+        // never said so — it read as a $1,000 hill starting from zero, which is
+        // both discouraging and the reason the figure never reconciled with
+        // Home's emergency-fund meter.
+        reason: num(snapshot.liquid) > 0
+          ? `You have ${money(snapshot.liquid)} of ${money(THRESHOLDS.starterEmergency)} — ${money(starterGap)} to go. A small cash cushion keeps a surprise bill from turning into new debt.`
+          : 'A small cash cushion keeps a surprise bill from turning into new debt.',
       }, remaining)
     }
 
@@ -503,6 +526,8 @@ export function buildMoneyRoute({
       remaining = addAllocation(allocations, {
         key: `debt.${debt.id || debt.name}`, label: `Pay extra toward ${debt.name}`, destinationName: debt.name,
         maxAmount: num(debt.balance), destinationType: 'debt', destinationId: debt.id || null,
+        // Carried so the schedule can amortize rather than divide (see scheduleRungs).
+        apr: num(debt.interest_rate), minimumPayment: num(debt.minimum_payment),
         sourceAccountId: source?.id || null,
         reason: isFirstMove && reserveCovered
           ? `You already have ${money(THRESHOLDS.starterEmergency)} set aside for emergencies, so at ${num(debt.interest_rate)}% this is the most expensive money you owe.`
@@ -871,8 +896,12 @@ export function buildInitialPlan(route) {
 
   // Automating the biggest recurring transfer is what keeps the plan running
   // without relying on memory, so it earns a place once the priorities are in.
-  const primary = steps.find(step => step.outcome?.amount > 0
-    && ['transfer', 'contribution', 'debt_payment'].includes(step.outcome.kind))
+  // `find` took whichever came first, which meant a $2,000 plan automated its
+  // $625 rung and left $1,375 to be remembered by hand every month.
+  const primary = steps
+    .filter(step => step.outcome?.amount > 0
+      && ['transfer', 'contribution', 'debt_payment'].includes(step.outcome.kind))
+    .sort((left, right) => right.outcome.amount - left.outcome.amount)[0]
   if (primary && steps.length < PLAN_SIZE) {
     const target = actionable.find(item => allocationStep(route, item, 0)?.intentKey === primary.intentKey)
     steps.push(stepBase(route, steps.length, {
