@@ -12,6 +12,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useGarden } from '@/context/GardenContext'
 import { getPlan } from '@/lib/advisorPlans'
 import { milestoneEventsFromState, groupGardenGoals, stageProgress, STAGE_NAMES } from '@/lib/gardenModel'
+import { netWorthExplanation } from '@/lib/finance'
 import { reconcileGardenMilestones } from '@/lib/gardenProgress'
 import { getMoneySetupState } from '@/lib/moneySetup'
 import { selectHomeAction } from '@/lib/homeModel'
@@ -46,6 +47,11 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
   const [plan, setPlan] = useState(null)
   const [planLoading, setPlanLoading] = useState(true)
   const [gardenError, setGardenError] = useState(null)
+  // Explains a negative net worth when one balance drives it (see finance.js).
+  const netWorthNote = useMemo(
+    () => netWorthExplanation({ netWorth: snapshot.netWorth, debts }),
+    [snapshot.netWorth, debts],
+  )
   const [sheet, setSheet] = useState(null)
   const [selectedGoal, setSelectedGoal] = useState(null)
   const [activities, setActivities] = useState([])
@@ -266,10 +272,17 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
                 </p>
               </div>
               <button type="button" onClick={() => navigate('/?section=money')}
-                className="flex min-h-11 items-center gap-1.5 rounded-xl px-2 text-[13px] font-semibold text-emerald-100 hover:bg-emerald-300/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
+                className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl px-2 text-[13px] font-semibold text-emerald-100 hover:bg-emerald-300/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
                 Open Money <ArrowRight className="h-4 w-4" />
               </button>
             </div>
+            {/* A negative number in 28px type, alone, reads as a verdict. When
+                one balance drives it, say which — the figure is not softened,
+                it is explained. Full width: squeezed beside the button it wrapped
+                to five lines on a phone. */}
+            {netWorthNote && (
+              <p className="mt-2 text-xs leading-5 text-readable-muted">{netWorthNote}</p>
+            )}
             {/* Same two numbers Money shows, named by the shared vocabulary so
                 a metric never has one name here and another there. */}
             <div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/[0.07] pt-3">

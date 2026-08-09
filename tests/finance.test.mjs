@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { computeSnapshot, debtFreedom, payoffMonths } from '../src/lib/finance.js'
+import { computeSnapshot, debtFreedom, netWorthExplanation, payoffMonths } from '../src/lib/finance.js'
 import {
   debtFreedomWithExtra,
   getProjection,
@@ -71,4 +71,44 @@ test('a payment that cannot outrun the interest returns no estimate', () => {
   assert.equal(payoffMonths(5000, 24, 99), null)
   assert.equal(payoffMonths(5000, 24, 0), null)
   assert.equal(payoffMonths(5000, 24, -50), null)
+})
+
+test('a negative net worth is explained only when one balance really drives it', () => {
+  const loan = { name: 'Student loan', balance: 9500, interest_rate: 5.5 }
+  const card = { name: 'Credit card', balance: 900, interest_rate: 26.99 }
+
+  // The 20-year-old from the walkthrough: -$9,830, 91% of it one loan.
+  const note = netWorthExplanation({ netWorth: -9830, debts: [loan, card] })
+  assert.match(note, /Most of this is Student loan at 5\.5%/)
+  assert.match(note, /minimum payments on purpose/)
+
+  // High-APR instead: the plan is already pointed at it, and should say so.
+  const aimed = netWorthExplanation({ netWorth: -3000, debts: [{ name: 'Visa', balance: 3000, interest_rate: 24 }] })
+  assert.match(aimed, /exactly what your plan is aimed at/)
+
+  // No rate on file — ask for the one fact that would place it.
+  const unrated = netWorthExplanation({ netWorth: -4000, debts: [{ name: 'Old loan', balance: 4000, interest_rate: null }] })
+  assert.match(unrated, /Add its interest rate/)
+})
+
+test('the net-worth note stays silent rather than claiming something untrue', () => {
+  // Positive net worth needs no explaining.
+  assert.equal(netWorthExplanation({ netWorth: 5000, debts: [{ name: 'Visa', balance: 900, interest_rate: 24 }] }), null)
+  assert.equal(netWorthExplanation({ netWorth: 0, debts: [] }), null)
+  assert.equal(netWorthExplanation({ netWorth: -100, debts: [] }), null)
+  assert.equal(netWorthExplanation(), null)
+
+  // Three even balances: "most of this is X" would simply be false.
+  const even = netWorthExplanation({
+    netWorth: -3000,
+    debts: [{ name: 'A', balance: 1000, interest_rate: 20 }, { name: 'B', balance: 1000, interest_rate: 20 }, { name: 'C', balance: 1000, interest_rate: 20 }],
+  })
+  assert.equal(even, null)
+
+  // Settled balances do not count toward the share.
+  const settled = netWorthExplanation({
+    netWorth: -1000,
+    debts: [{ name: 'Paid off', balance: 0, interest_rate: 24 }, { name: 'Live', balance: 1000, interest_rate: 5 }],
+  })
+  assert.match(settled, /Most of this is Live/)
 })

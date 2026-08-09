@@ -32,6 +32,39 @@ export function efTargetMonths(profile) {
 }
 
 /**
+ * One sentence explaining a negative net worth, or null.
+ *
+ * A 20-year-old with $570 saved and a normal student loan opens the app to
+ * "−$9,830" in the largest type on the screen. The number is correct and it is
+ * the wrong thing to lead with silently: it is not actionable, it is dominated
+ * by one balance, and for a low-rate loan it reflects a decision the plan made
+ * on purpose. Naming the cause turns a verdict into a fact.
+ *
+ * Deliberately does not hide or soften the figure — it explains it.
+ */
+export function netWorthExplanation({ netWorth, debts = [] } = {}) {
+  if (!(num(netWorth) < 0)) return null
+  const live = debts.filter(debt => num(debt.balance) > 0)
+  if (!live.length) return null
+
+  const total = live.reduce((sum, debt) => sum + num(debt.balance), 0)
+  const largest = live.reduce((top, debt) => (num(debt.balance) > num(top.balance) ? debt : top))
+  // Only speak up when one balance genuinely drives the number; "most of this"
+  // has to be true or the sentence is worse than silence.
+  if (!(num(largest.balance) / total >= 0.5)) return null
+
+  const name = largest.name || 'your largest balance'
+  const rate = known(largest.interest_rate) ? num(largest.interest_rate) : null
+  if (rate !== null && rate <= THRESHOLDS.highApr) {
+    return `Most of this is ${name} at ${rate}%. Your plan leaves it on minimum payments on purpose — your money earns more everywhere above it.`
+  }
+  if (rate !== null) {
+    return `Most of this is ${name} at ${rate}%, which is exactly what your plan is aimed at.`
+  }
+  return `Most of this is ${name}. Add its interest rate and the plan can place it.`
+}
+
+/**
  * Months to clear one balance at a fixed monthly payment, with interest.
  *
  * Dividing the balance by the payment is wrong in the direction that flatters
