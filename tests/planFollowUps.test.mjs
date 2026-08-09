@@ -114,3 +114,16 @@ test('topFollowUps trims to what fits under the plan', () => {
   assert.equal(top.length, 3)
   assert.deepEqual(top, planFollowUps({ route, ...STUDENT }).slice(0, 3))
 })
+
+test('breaking even is asked why, not asked whether $0 swings', () => {
+  const evenProfile = {
+    profile: { monthly_income: 3000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', employment_type: 'salaried', age: 26, onboarding_complete: true },
+    accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 500 }],
+  }
+  const items = planFollowUps({ route: routeFor(evenProfile), ...evenProfile })
+  const ids = items.map(i => i.id)
+  assert.ok(ids.includes('break_even'))
+  assert.equal(ids.includes('income_stability'), false)
+  // No question may quote a $0 monthly figure.
+  for (const item of items) assert.ok(!/\$0\b/.test(item.question), `quotes $0: ${item.question}`)
+})

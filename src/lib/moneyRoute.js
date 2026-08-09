@@ -415,6 +415,17 @@ export function buildMoneyRoute({
       amount: 0, targetAmount: allocationGap, destinationType: 'monthly_plan', destinationId: null,
       reason: 'The spending plan works, but future allocations exceed the money available.', confidence: 'verified', adjustable: false,
     })
+  } else if (availableMonthlyAmount <= 0) {
+    // Income and spending land exactly level. There is no deficit to repair, so
+    // no rung above fires and the plan used to come out completely empty — a
+    // blank screen for someone who is arguably in the most need of a first
+    // move. Breaking even is a real position, and it has a real next step.
+    allocations.push({
+      key: 'find_margin', label: 'Free up your first $50 a month',
+      amount: 0, targetAmount: 50, destinationType: 'monthly_plan', destinationId: null,
+      reason: 'Everything you earn is already spoken for, so there is nothing to route yet. One recurring cost is usually enough — a subscription, a plan tier, one delivery a week — and $50 starts the cushion that keeps a surprise off a credit card.',
+      confidence: 'verified', adjustable: false,
+    })
   } else if (profile?.health_insurance === 'none') {
     allocations.push({
       key: 'choose_health_coverage', label: 'Choose health coverage before committing new monthly money',
@@ -620,6 +631,17 @@ export function buildMoneyRoute({
     ? [`${lowRateDebts.map(debt => debt.name).join(' and ')} ${lowRateDebts.length === 1 ? 'is' : 'are'} not in this plan on purpose — at ${lowRateDebts.map(debt => `${num(debt.interest_rate)}%`).join(' and ')}, paying ${lowRateDebts.length === 1 ? 'it' : 'them'} down early earns you less than the moves above. Keep paying the minimum.`]
     : []
 
+  // A debt with no rate on file is ranked by nothing, so it lands in neither
+  // the ladder nor the low-rate note above — it simply disappears. Silence
+  // about a balance the user typed in is the worst of both: it looks like the
+  // plan lost it, and they never learn the one fact that would place it.
+  const unratedDebts = activeDebts.filter(debt => !known(debt.interest_rate))
+  if (unratedDebts.length) {
+    const names = unratedDebts.map(debt => debt.name).join(' and ')
+    const one = unratedDebts.length === 1
+    notes.push(`${names} ${one ? 'has' : 'have'} no interest rate on file, so ${one ? 'it is' : 'they are'} not ranked here yet. Keep paying the minimum, and add the rate — it decides whether ${one ? 'it belongs' : 'they belong'} above or below everything on this list.`)
+  }
+
   const upcoming = upcomingPriorities({ snapshot, goals, allocations: finalAllocations })
   scheduleRungs({ allocations: finalAllocations, upcoming, availableMonthlyAmount })
 
@@ -681,6 +703,14 @@ function allocationStep(route, allocation, index) {
       intentKey: allocation.key === 'repair_budget' ? 'budget.close_deficit.total' : 'budget.fix_allocations.total',
       priorityKey: allocation.key === 'repair_budget' ? 'deficit' : 'overcommitted',
       impact: `Repairs a ${money(target)}/mo gap`, basis,
+    })
+  }
+  if (allocation.key === 'find_margin') {
+    return stepBase(route, index, {
+      key: allocation.key, text: allocation.label, detail: allocation.reason,
+      doneWhen: `Your recorded spending is at least ${money(allocation.targetAmount)} below your income.`,
+      intentKey: 'budget.find_first_margin', priorityKey: 'deficit',
+      impact: `Turns a break-even month into ${money(allocation.targetAmount)} you can direct`, basis,
     })
   }
   if (allocation.key === 'choose_health_coverage') {
@@ -780,10 +810,29 @@ function allocationStep(route, allocation, index) {
 // account, naming the goal, finding out whether there is a match. Without
 // these the plan for someone with a surplus and no accounts is a blank page.
 const ZERO_DOLLAR_STEPS = [
-  'repair_budget', 'repair_allocations', 'choose_health_coverage',
+  'repair_budget', 'repair_allocations', 'find_margin', 'choose_health_coverage',
   'capture_employer_match', 'confirm_employer_match',
   'open_investment_account', 'open_taxable_brokerage', 'name_a_goal',
 ]
+
+/**
+ * How long a rung takes, in words a person pictures.
+ *
+ * Past two years "about 37 months" stops meaning anything, and a thin surplus
+ * pushes late rungs into the hundreds — a $5/mo saver reaches investing in
+ * 1,920 months, which is true, useless, and faintly insulting.
+ */
+export function formatDuration(months) {
+  const value = Math.round(num(months))
+  if (!(value > 0)) return null
+  if (value === 1) return 'about a month'
+  if (value < 24) return `about ${value} months`
+  if (value > HORIZON_MONTHS) return 'over 10 years'
+  return `about ${Math.round(value / 12)} years`
+}
+
+/** Beyond this, a *start* date stops being information and becomes discouragement. */
+export const HORIZON_MONTHS = 120
 
 const PLAN_SIZE = 5
 

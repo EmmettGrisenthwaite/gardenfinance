@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { computeSnapshot, LIMITS } from '../src/lib/finance.js'
-import { buildInitialPlan, buildMoneyRoute } from '../src/lib/moneyRoute.js'
+import { HORIZON_MONTHS, buildInitialPlan, buildMoneyRoute, formatDuration } from '../src/lib/moneyRoute.js'
 
 function state({
   profile = { monthly_income: 5000, monthly_expenses: 4100, health_insurance: 'employer', employer_401k: 'none' },
@@ -437,4 +437,56 @@ test('a taxable-only investor keeps taking the whole surplus', () => {
   }))
   // No cap applies, so the uncapped account takes it all in one rung.
   assert.equal(route.allocations.find(item => item.key === 'investment.b').amount, 2000)
+})
+
+test('breaking even still gets a first move, not a blank plan', () => {
+  // Income exactly equals spending: no deficit to repair, so no rung fired and
+  // the plan came out completely empty for the person who needed one most.
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 3000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+    accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 500 }],
+  }))
+  assert.equal(route.availableMonthlyAmount, 0)
+  const margin = route.allocations.find(item => item.key === 'find_margin')
+  assert.ok(margin, 'breaking even must still produce a rung')
+
+  const steps = buildInitialPlan(route)
+  assert.ok(steps.length > 0, 'the plan must never be empty')
+  assert.equal(steps[0].intentKey, 'budget.find_first_margin')
+  assert.ok(steps[0].doneWhen)
+})
+
+test('a real deficit still asks to close the gap, not to find margin', () => {
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 2500, monthly_expenses: 3200, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+    accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 500 }],
+  }))
+  assert.ok(route.allocations.some(item => item.key === 'repair_budget'))
+  assert.equal(route.allocations.some(item => item.key === 'find_margin'), false)
+})
+
+test('a debt with no rate is named rather than silently dropped', () => {
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 4000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+    accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3000 }],
+    debts: [{ id: 'x', name: 'Old loan', type: 'other', balance: 4000, interest_rate: null, minimum_payment: 50 }],
+  }))
+  // It cannot be ranked, so it is in no rung — but it must not vanish.
+  assert.equal(route.allocations.some(item => item.key.startsWith('debt.')), false)
+  assert.ok(route.notes.some(note => note.includes('Old loan') && /no interest rate/.test(note)),
+    `unrated debt missing from notes: ${JSON.stringify(route.notes)}`)
+})
+
+test('durations stay human at both ends of the scale', () => {
+  assert.equal(formatDuration(0), null)
+  assert.equal(formatDuration(null), null)
+  assert.equal(formatDuration(1), 'about a month')
+  assert.equal(formatDuration(2), 'about 2 months')
+  assert.equal(formatDuration(23), 'about 23 months')
+  assert.equal(formatDuration(24), 'about 2 years')
+  assert.equal(formatDuration(30), 'about 3 years')
+  assert.equal(formatDuration(120), 'about 10 years')
+  // A $5/mo saver reaches investing in 1,920 months. True, and useless.
+  assert.equal(formatDuration(1920), 'over 10 years')
+  assert.equal(HORIZON_MONTHS, 120)
 })

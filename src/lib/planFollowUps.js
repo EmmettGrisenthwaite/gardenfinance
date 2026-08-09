@@ -63,14 +63,26 @@ export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
   // Everything downstream assumes the surplus repeats. For irregular earners
   // that assumption is the plan's weakest joint.
   const irregular = ['freelance', 'student', 'other'].includes(profile?.employment_type)
-  list.push(followUp('income_stability', {
-    label: 'My income moves around',
-    question: `This plan moves ${money(route.availableMonthlyAmount)} a month. Is that the same every month, or does it swing?`,
-    why: irregular
-      ? 'Your work type usually means uneven months, and that changes how big the cushion should be first.'
-      : 'If it swings, the cushion should be bigger before anything else starts.',
-    ask: `My plan assumes ${money(route.availableMonthlyAmount)} spare every month. My income is not perfectly steady — how should the plan change to survive a lean month?`,
-  }))
+  const spare = num(route.availableMonthlyAmount)
+  if (spare > 0) {
+    list.push(followUp('income_stability', {
+      label: 'My income moves around',
+      question: `This plan moves ${money(spare)} a month. Is that the same every month, or does it swing?`,
+      why: irregular
+        ? 'Your work type usually means uneven months, and that changes how big the cushion should be first.'
+        : 'If it swings, the cushion should be bigger before anything else starts.',
+      ask: `My plan assumes ${money(spare)} spare every month. My income is not perfectly steady — how should the plan change to survive a lean month?`,
+    }))
+  } else {
+    // "This plan moves $0 a month. Does it swing?" is a question about nothing.
+    // Breaking even needs a different one — whether this month is the pattern.
+    list.push(followUp('break_even', {
+      label: 'Why nothing is left over',
+      question: 'Your income and spending are level right now. Is that every month, or was this one unusual?',
+      why: 'A one-off month and a permanent squeeze need completely different plans.',
+      ask: 'My spending currently matches my income exactly, so I have nothing left to save. Help me work out where the most realistic cut is, one category at a time.',
+    }))
+  }
 
   // A cushion sized by a formula, not by what is actually likely to go wrong.
   if (reserveFunded) {

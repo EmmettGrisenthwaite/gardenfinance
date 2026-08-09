@@ -1,5 +1,5 @@
 import { ArrowRight, ClipboardList, ListChecks, SlidersHorizontal } from 'lucide-react'
-import { orderForPresentation } from '@/lib/moneyRoute'
+import { HORIZON_MONTHS, formatDuration, orderForPresentation } from '@/lib/moneyRoute'
 
 const formatMoney = value => `$${Math.max(0, Math.round(Number(value) || 0)).toLocaleString()}`
 
@@ -10,9 +10,14 @@ const bareName = label => label.replace(/^Pay extra toward |^Build the |^Grow |^
 
 // An ordered list says what comes first; a date says whether it is worth
 // starting. "About" is load-bearing — see scheduleRungs for what these ignore.
-const months = n => (n === 1 ? 'about a month' : `about ${n} months`)
-const takesLabel = item => (item.etaMonths ? months(item.etaMonths) : null)
-const startsLabel = item => (item.startsInMonths ? `starts in ${months(item.startsInMonths)}` : null)
+// A duration on the funded rung is worth showing even when it is grim — it is
+// how the user learns their surplus is too small. A start date that far out is
+// not: it only says the plan begins somewhere past the horizon.
+const takesLabel = item => formatDuration(item.etaMonths)
+const startsLabel = item => {
+  if (!item.startsInMonths || item.startsInMonths > HORIZON_MONTHS) return null
+  return `starts in ${formatDuration(item.startsInMonths)}`
+}
 
 function planItems(route) {
   return orderForPresentation((route?.allocations || []).filter(item => (
@@ -73,7 +78,12 @@ export default function MoneyRouteCard({
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/80">Your plan</p>
           <h2 className="mt-1.5 text-[20px] font-semibold leading-7 tracking-[-0.02em] text-white">
-            Here is where your {formatMoney(route.availableMonthlyAmount)} a month goes
+            {/* "Here is where your $0 a month goes" answers a question nobody
+                asked. When there is nothing to route, say so and point at the
+                rung that changes it. */}
+            {route.availableMonthlyAmount > 0
+              ? `Here is where your ${formatMoney(route.availableMonthlyAmount)} a month goes`
+              : 'Nothing is left over yet — this is where to start'}
           </h2>
           {/* Keeps this figure from reading as a second, unexplained number
               next to Home's "Left over monthly" — every subtraction is shown. */}
