@@ -51,21 +51,42 @@ bug.
 The advisor and bank linking each need a deployed function. Without them the rest of the app
 works and those features show an unavailable state.
 
+`npx` runs the CLI without installing anything. Log in once (this opens a browser), then
+link the project:
+
 ```bash
-npm install -g supabase
-supabase login
-supabase link --project-ref chvdpbnmpeuifymloqqb
+npx supabase login
+```
 
-# AI advisor
-supabase secrets set ANTHROPIC_API_KEY=your_key_here
-supabase functions deploy chat
+```bash
+npx supabase link --project-ref chvdpbnmpeuifymloqqb
+```
 
-# Plaid bank linking
-supabase secrets set PLAID_CLIENT_ID=... PLAID_SECRET=... PLAID_ENV=sandbox
-supabase functions deploy plaid-link-token plaid-exchange plaid-sync plaid-remove
+Deploy the advisor:
+
+```bash
+npx supabase secrets set ANTHROPIC_API_KEY=your_key_here
+```
+
+```bash
+npx supabase functions deploy chat
+```
+
+Deploy Plaid bank linking:
+
+```bash
+npx supabase secrets set PLAID_CLIENT_ID=... PLAID_SECRET=... PLAID_ENV=sandbox
+```
+
+```bash
+npx supabase functions deploy plaid-link-token plaid-exchange plaid-sync plaid-remove
 ```
 
 Neither the Anthropic key nor the Plaid secret is ever exposed to the browser.
+
+**Edge Functions deploy separately from the site.** Pushing to `main` ships the frontend via
+Vercel; anything under `supabase/functions/` only reaches production when you run the deploy
+command above.
 
 ## Scripts
 
