@@ -4,6 +4,8 @@ import { accountFamily, isWorkplaceAccount } from './moneyModel.js'
 // Accounts with a shared annual contribution ceiling. A taxable brokerage has
 // none, which is what makes it the right home for anything above the cap.
 const IRA_SUBTYPES = ['roth_ira', 'traditional_ira']
+// Cash that is meant to sit still, as opposed to the account you spend from.
+const SAVINGS_SUBTYPES = ['standard_savings', 'savings', 'hysa', 'money_market', 'emergency']
 
 const num = value => Number(value) || 0
 const known = value => value !== null && value !== undefined && value !== ''
@@ -629,12 +631,59 @@ export function buildMoneyRoute({
         })
       }
     }
+    // ── Setup that makes the moves above actually happen ────────────────────
+    //
+    // One priority usually absorbs the whole surplus, which left the plan at a
+    // single move plus its automation — two lines, for a month of someone's
+    // money. These are the rest of the job: not padding, and not future rungs,
+    // but the work that decides whether the transfer above survives contact
+    // with real life. Each is gated on something true of this user's accounts,
+    // so nobody is told to open a savings account they already have.
+    const cashAccounts = accounts.filter(account => accountFamily(account) === 'cash')
+    const savingsAccounts = cashAccounts.filter(account => account.id !== source?.id
+      && SAVINGS_SUBTYPES.includes(String(account.subtype || '').toLowerCase()))
+
+    // A cushion living in the account you spend from is a cushion you will
+    // spend. This is the most common reason a starter fund never gets built.
+    if (cashAccounts.length && !savingsAccounts.length) {
+      allocations.push({
+        key: 'separate_cushion_account', label: 'Open a savings account to keep your cushion in',
+        amount: 0, destinationType: 'account_opening', destinationId: null,
+        reason: 'Right now the money above would land in the account you spend from, where it quietly disappears. A separate account is the difference between saving and meaning to.',
+        adjustable: false,
+      })
+    } else {
+      // Held somewhere that pays nothing, on purpose, for years.
+      const idle = savingsAccounts.find(account => String(account.subtype).toLowerCase() === 'standard_savings')
+      if (idle && num(idle.balance) + availableMonthlyAmount >= THRESHOLDS.starterEmergency) {
+        allocations.push({
+          key: 'upgrade_savings_rate', label: `Move ${idle.name} to a high-yield savings account`,
+          amount: 0, destinationType: 'account', destinationId: idle.id || null,
+          reason: 'A standard savings account pays close to nothing while a high-yield one pays real interest on the same balance, with the same access and the same protection. It is the only step here that costs you nothing at all.',
+          adjustable: false,
+        })
+      }
+    }
+
     if (remaining > 0) {
       remaining = addAllocation(allocations, {
         key: 'unassigned', label: 'Left unassigned for now', destinationType: 'unassigned', destinationId: null,
         reason: 'Not assigned yet — it stays available until you choose where it goes.', adjustable: false,
       }, remaining)
     }
+  }
+
+  // Outside the branch chain on purpose. A missed minimum costs more in one
+  // late fee and credit-score damage than this plan earns in months, and the
+  // people most at risk of missing one are exactly those on the paths above —
+  // spending more than they earn, or breaking even with nothing spare.
+  if (activeDebts.length) {
+    allocations.push({
+      key: 'autopay_minimums', label: 'Put every minimum payment on autopay',
+      amount: 0, destinationType: 'debt', destinationId: null,
+      reason: `One missed payment on ${activeDebts.length === 1 ? activeDebts[0].name : 'any of these'} costs more in fees and credit damage than this plan earns in months. Autopay the minimums, then let the plan handle everything on top.`,
+      adjustable: false,
+    })
   }
 
   const finalAllocations = applyAdjustments(allocations, availableMonthlyAmount, adjustments)
@@ -779,6 +828,33 @@ function allocationStep(route, allocation, index) {
       basis,
     })
   }
+  if (allocation.key === 'separate_cushion_account') {
+    return stepBase(route, index, {
+      key: allocation.key, text: 'Open a savings account for your cushion', detail: allocation.reason,
+      doneWhen: 'A savings account appears in Money, separate from the one you spend from.',
+      intentKey: 'open.cushion_savings', priorityKey: 'starter_ef',
+      impact: 'Keeps the money above out of your spending account',
+      outcome: { kind: 'account_opening', accountSubtypeHint: 'hysa' }, basis,
+    })
+  }
+  if (allocation.key === 'upgrade_savings_rate') {
+    return stepBase(route, index, {
+      key: allocation.key, text: allocation.label, detail: allocation.reason,
+      doneWhen: 'The balance sits in a high-yield account and the rate is recorded in Money.',
+      intentKey: `move.savings_to_hysa.${allocation.destinationId || 'primary'}`, priorityKey: 'build_ef',
+      impact: 'Earns real interest on money you were already saving',
+      outcome: { kind: 'account_opening', accountSubtypeHint: 'hysa' }, basis,
+    })
+  }
+  if (allocation.key === 'autopay_minimums') {
+    return stepBase(route, index, {
+      key: allocation.key, text: 'Put every debt minimum on autopay', detail: allocation.reason,
+      doneWhen: 'Every debt has autopay set to at least the minimum.',
+      intentKey: 'setup.autopay_minimums', priorityKey: 'kill_debt',
+      impact: 'Protects the plan from a single missed payment',
+      outcome: { kind: 'recurring_setup', recurrence: 'monthly' }, basis,
+    })
+  }
   if (allocation.key === 'name_a_goal') {
     return stepBase(route, index, {
       key: allocation.key, text: 'Name one thing you are saving for', detail: allocation.reason,
@@ -838,6 +914,7 @@ const ZERO_DOLLAR_STEPS = [
   'repair_budget', 'repair_allocations', 'find_margin', 'choose_health_coverage',
   'capture_employer_match', 'confirm_employer_match',
   'open_investment_account', 'open_taxable_brokerage', 'name_a_goal',
+  'separate_cushion_account', 'upgrade_savings_rate', 'autopay_minimums',
 ]
 
 /**
@@ -904,7 +981,11 @@ export function buildInitialPlan(route) {
     .sort((left, right) => right.outcome.amount - left.outcome.amount)[0]
   if (primary && steps.length < PLAN_SIZE) {
     const target = actionable.find(item => allocationStep(route, item, 0)?.intentKey === primary.intentKey)
-    steps.push(stepBase(route, steps.length, {
+    // Appended, this landed after the setup chores — "move $250", "autopay your
+    // minimums", "schedule $250" — separating the transfer from its own
+    // automation. It belongs immediately after the move it automates.
+    const afterPrimary = steps.findIndex(step => step.intentKey === primary.intentKey) + 1
+    steps.splice(afterPrimary, 0, stepBase(route, afterPrimary, {
       key: `automate.${target?.key || 'primary'}`,
       text: `Schedule ${money(primary.outcome.amount)} monthly toward ${target?.destinationName || (target?.label || 'this priority').replace(/^Pay extra toward |^Fund |^Build the |^Grow |^Increase investing in /, '')}`,
       detail: 'Automation keeps the plan moving without relying on memory.',

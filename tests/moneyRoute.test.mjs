@@ -564,3 +564,70 @@ test('a fully funded goal still shows what the money does next', () => {
   assert.ok(route.upcoming.length > 0, 'the plan must not end at the goal')
   assert.ok(route.upcoming.some(item => item.key === 'invest_long_term'))
 })
+
+test('one priority absorbing the surplus still yields a plan, not a single move', () => {
+  // The reported shape: one rung takes everything, so the plan was the money
+  // move plus its automation and nothing else.
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 2600, monthly_expenses: 1500, health_insurance: 'parents', employer_401k: 'na', age: 20, employment_type: 'student', onboarding_complete: true },
+    accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 1500 }],
+    debts: [{ id: 'card', name: 'Credit card', type: 'credit_card', balance: 900, interest_rate: 24, minimum_payment: 25 }],
+  }))
+  const steps = buildInitialPlan(route)
+  assert.ok(steps.length >= 3, `expected 3+ steps, got ${steps.length}: ${steps.map(s => s.text).join(' | ')}`)
+  assert.ok(steps.length <= 5)
+
+  // The additions are real setup work, each earned by this user's records.
+  const intents = steps.map(step => step.intentKey)
+  assert.ok(intents.includes('open.cushion_savings'), 'cash only in checking should prompt a savings account')
+  assert.ok(intents.includes('setup.autopay_minimums'), 'having debt should prompt autopay')
+})
+
+test('the automation step sits with the move it automates', () => {
+  const route = buildMoneyRoute(state({
+    profile: { monthly_income: 2600, monthly_expenses: 1500, health_insurance: 'parents', employer_401k: 'na', onboarding_complete: true },
+    accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 1500 }],
+    debts: [{ id: 'card', name: 'Credit card', type: 'credit_card', balance: 900, interest_rate: 24, minimum_payment: 25 }],
+  }))
+  const steps = buildInitialPlan(route)
+  const automation = steps.findIndex(step => step.outcome?.kind === 'recurring_setup' && /^Schedule /.test(step.text))
+  assert.ok(automation > 0, 'the plan should automate its biggest recurring move')
+  // Appended, it landed after the chores and read as unrelated to the transfer.
+  assert.match(steps[automation - 1].text, /^Move |^Pay /)
+})
+
+test('setup steps are earned, never handed out to pad the list', () => {
+  // Cushion already separate and high-yield, no debt: none of the three fire.
+  const tidy = buildMoneyRoute(state({
+    profile: { monthly_income: 5000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+    accounts: [
+      { id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3000 },
+      { id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 15000 },
+    ],
+  }))
+  const intents = buildInitialPlan(tidy).map(step => step.intentKey)
+  assert.equal(intents.includes('open.cushion_savings'), false)
+  assert.equal(intents.includes('setup.autopay_minimums'), false)
+  assert.equal(intents.some(key => key.startsWith('move.savings_to_hysa')), false)
+
+  // A plain savings account worth upgrading does fire — but only once the
+  // balance is big enough for the rate to be worth the paperwork.
+  const idle = buildMoneyRoute(state({
+    profile: { monthly_income: 5000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+    accounts: [
+      { id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3000 },
+      { id: 's', name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: 15000 },
+    ],
+  }))
+  assert.ok(buildInitialPlan(idle).some(step => step.intentKey.startsWith('move.savings_to_hysa')))
+
+  const broke = buildMoneyRoute(state({
+    profile: { monthly_income: 2000, monthly_expenses: 1500, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+    accounts: [
+      { id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 0 },
+      { id: 's', name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: 0 },
+    ],
+  }))
+  assert.equal(buildInitialPlan(broke).some(step => step.intentKey.startsWith('move.savings_to_hysa')), false,
+    'chasing a rate on $0 is busywork')
+})

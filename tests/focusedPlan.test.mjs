@@ -121,10 +121,19 @@ test('the plan opens with a money move and still includes the employer match', (
   })
   const model = buildPlanModel({ snapshot: state, setupState, moneyRoute, plan: { steps: [] } })
   assert.equal(model.prerequisite, null)
-  // The dollar move leads; confirming the match is still a real step.
-  assert.deepEqual(model.routeCandidates.map(step => step.intentKey), [
-    'pay.debt.card', 'verify.employer_match', 'setup.pay.debt.card',
-  ])
+  const intents = model.routeCandidates.map(step => step.intentKey)
+
+  // The dollar move leads, and its automation sits with it rather than being
+  // appended after the setup work.
+  assert.equal(intents[0], 'pay.debt.card')
+  assert.equal(intents[1], 'setup.pay.debt.card')
+  // Confirming the match is still a real step.
+  assert.ok(intents.includes('verify.employer_match'))
+  // Cash only in checking, and a debt on file: both earn a step, so one funded
+  // priority no longer means a two-line plan.
+  assert.ok(intents.includes('open.cushion_savings'))
+  assert.ok(intents.includes('setup.autopay_minimums'))
+  assert.ok(intents.length >= 3 && intents.length <= 5, `expected 3-5 steps, got ${intents.length}`)
 })
 
 test('existing work fills focus first and every extra step is preserved in Later', () => {
