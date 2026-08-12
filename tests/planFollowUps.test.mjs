@@ -127,3 +127,58 @@ test('breaking even is asked why, not asked whether $0 swings', () => {
   // No question may quote a $0 monthly figure.
   for (const item of items) assert.ok(!/\$0\b/.test(item.question), `quotes $0: ${item.question}`)
 })
+
+const NOW = new Date('2026-08-09').getTime()
+const RENTER = {
+  profile: { monthly_income: 2600, monthly_expenses: 1500, health_insurance: 'parents', employer_401k: 'na', age: 20, employment_type: 'student', onboarding_complete: true },
+  accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 1500 }],
+}
+
+test('follow-ups never cover the same ground twice', () => {
+  // Five questions fired for a renter, three of them variations of "what might
+  // you have to pay for?" — which read as one question asked three ways.
+  const input = { ...RENTER, goals: [{ id: 'g', name: 'Semester Rent Payment', target_amount: 4400, current_amount: 0 }] }
+  const items = planFollowUps({ route: routeFor(input), ...input, now: NOW })
+  const topics = items.map(i => i.topic)
+  assert.equal(new Set(topics).size, topics.length, `repeated topics: ${topics.join(', ')}`)
+  for (const item of items) assert.ok(item.topic, `${item.id} has no topic`)
+})
+
+test('a named goal stops the app asking whether anything big is coming', () => {
+  const withGoal = { ...RENTER, goals: [{ id: 'g', name: 'Semester Rent Payment', target_amount: 4400, current_amount: 0 }] }
+  assert.equal(ids({ route: routeFor(withGoal), ...withGoal, now: NOW }).includes('upcoming_cost'), false)
+
+  // Nobody has named anything, so the question is worth asking.
+  const noGoal = { ...RENTER }
+  assert.ok(ids({ route: routeFor(noGoal), ...noGoal, now: NOW }).includes('upcoming_cost'))
+})
+
+test('a deadline the plan will miss is raised, with both real dates', () => {
+  // Rent due in 4 months; the ladder funds the cushion first and arrives in 7.
+  const input = {
+    ...RENTER,
+    goals: [{ id: 'g', name: 'Semester Rent Payment', target_amount: 4400, current_amount: 0, deadline: '2026-12-01' }],
+  }
+  const item = planFollowUps({ route: routeFor(input), ...input, now: NOW }).find(i => i.id === 'goal_at_risk')
+  assert.ok(item, 'a missed deadline must be surfaced')
+  assert.match(item.question, /due in about 4 months/)
+  assert.match(item.question, /reaches it in about 7 months/)
+  // It asks rather than silently reordering — the tradeoff is the user's.
+  assert.match(item.question, /jump the queue/)
+})
+
+test('a deadline the plan comfortably meets is left alone', () => {
+  const input = {
+    ...RENTER,
+    goals: [{ id: 'g', name: 'Semester Rent Payment', target_amount: 4400, current_amount: 0, deadline: '2029-01-01' }],
+  }
+  const list = ids({ route: routeFor(input), ...input, now: NOW })
+  assert.equal(list.includes('goal_at_risk'), false)
+})
+
+test('a goal with no deadline never invents a deadline problem', () => {
+  const input = { ...RENTER, goals: [{ id: 'g', name: 'Semester Rent Payment', target_amount: 4400, current_amount: 0 }] }
+  const list = ids({ route: routeFor(input), ...input, now: NOW })
+  assert.equal(list.includes('goal_at_risk'), false)
+  assert.ok(list.includes('goal_deadline'), 'it should ask for the date instead')
+})

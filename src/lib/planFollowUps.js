@@ -7,10 +7,38 @@ const money = value => `$${Math.max(0, Math.round(num(value))).toLocaleString()}
 // the next. Without it the model answers and then dumps five more questions.
 const ADVISOR_MODE = 'Answer as my planner: tell me what my answer changes about the plan, then ask me the next most useful question — one at a time.'
 
-const followUp = (id, { label, question, why, ask }) => ({
-  id, label, question, why,
+const followUp = (id, { topic, label, question, why, ask }) => ({
+  id, topic, label, question, why,
   prompt: `${ask || question}\n\n${ADVISOR_MODE}`,
 })
+
+const plural = n => (n === 1 ? 'a month' : `${n} months`)
+
+const MS_PER_MONTH = 1000 * 60 * 60 * 24 * 30.44
+
+/**
+ * When a goal is due, and when this plan actually reaches it.
+ *
+ * `readyInMonths` reuses the schedule the route already computed: a goal funded
+ * now finishes in its own etaMonths, one still queued finishes after everything
+ * ahead of it. Returns nulls rather than guesses when either side is unknown,
+ * so a missing deadline can never invent a deadline problem.
+ */
+function goalTiming(goal, route, now) {
+  const key = `goal.${goal.id || goal.name}`
+  const entry = (route.allocations || []).find(item => item.key === key && num(item.amount) > 0)
+    || (route.upcoming || []).find(item => item.key === key)
+  if (!entry) return { dueInMonths: null, readyInMonths: null }
+
+  const due = goal.deadline ? new Date(goal.deadline) : null
+  const dueInMonths = due && !Number.isNaN(due.getTime())
+    ? Math.max(0, Math.round((due.getTime() - now) / MS_PER_MONTH))
+    : null
+
+  const eta = num(entry.etaMonths)
+  const readyInMonths = eta > 0 ? num(entry.startsInMonths) + eta : null
+  return { dueInMonths, readyInMonths }
+}
 
 /**
  * The questions a planner asks *after* seeing this particular plan.
@@ -26,10 +54,11 @@ const followUp = (id, { label, question, why, ask }) => ({
  * about an employer match they do not have. Order is by how much the answer
  * would move the plan.
  */
-export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
+export function planFollowUps({ route, profile, debts = [], goals = [], now = Date.now() } = {}) {
   if (!route?.ready) return []
 
   const list = []
+  const activeGoals = goals.filter(goal => num(goal.target_amount) > num(goal.current_amount))
   const funded = (route.allocations || []).filter(item => num(item.amount) > 0)
   const fundedKey = predicate => funded.some(item => predicate(item.key))
   const reserveFunded = fundedKey(key => key === 'starter_emergency' || key === 'full_emergency')
@@ -43,6 +72,7 @@ export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
   const promo = liveDebts.find(debt => known(debt.interest_rate) && num(debt.interest_rate) === 0)
   if (promo) {
     list.push(followUp('debt_promo', {
+      topic: 'debt',
       label: `Is ${promo.name} on a 0% deal?`,
       question: `${promo.name} shows 0% — is that an intro rate, and when does it end?`,
       why: 'If it ends soon, it jumps ahead of everything else on this list.',
@@ -53,6 +83,7 @@ export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
   // The only guaranteed return in the whole ladder.
   if (profile?.employer_401k === 'match') {
     list.push(followUp('match_details', {
+      topic: 'retirement',
       label: 'My employer match',
       question: 'What percent does your employer match, and what are you putting in right now?',
       why: 'A match is the one guaranteed return in this plan — it beats paying down debt.',
@@ -66,6 +97,7 @@ export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
   const spare = num(route.availableMonthlyAmount)
   if (spare > 0) {
     list.push(followUp('income_stability', {
+      topic: 'income',
       label: 'My income moves around',
       question: `This plan moves ${money(spare)} a month. Is that the same every month, or does it swing?`,
       why: irregular
@@ -77,6 +109,7 @@ export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
     // "This plan moves $0 a month. Does it swing?" is a question about nothing.
     // Breaking even needs a different one — whether this month is the pattern.
     list.push(followUp('break_even', {
+      topic: 'income',
       label: 'Why nothing is left over',
       question: 'Your income and spending are level right now. Is that every month, or was this one unusual?',
       why: 'A one-off month and a permanent squeeze need completely different plans.',
@@ -87,6 +120,7 @@ export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
   // A cushion sized by a formula, not by what is actually likely to go wrong.
   if (reserveFunded) {
     list.push(followUp('likely_shock', {
+      topic: 'risk',
       label: 'What might go wrong',
       question: 'What is the most likely surprise cost in your life right now — car, health, pet, a flight home?',
       why: 'The cushion should be sized to the thing most likely to happen to you, not to an average.',
@@ -96,6 +130,7 @@ export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
 
   if (profile?.health_insurance && profile.health_insurance !== 'none' && reserveFunded) {
     list.push(followUp('deductible', {
+      topic: 'risk',
       label: 'My insurance deductible',
       question: 'If you used your health insurance tomorrow, what would you pay before it covers anything?',
       why: 'Your first cushion should at least cover that number.',
@@ -106,6 +141,7 @@ export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
   // Investing money you need soon is the mistake this plan could quietly cause.
   if (investingFunded) {
     list.push(followUp('investing_horizon', {
+      topic: 'investing',
       label: 'When I need this money',
       question: 'Is this money for decades away, or might you need some of it in the next five years?',
       why: 'Anything you need within five years should not be invested at all.',
@@ -119,6 +155,7 @@ export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
     .sort((left, right) => num(right.interest_rate) - num(left.interest_rate))[0]
   if (expensive && debtFunded) {
     list.push(followUp('rate_reduction', {
+      topic: 'debt',
       label: 'Can I cut this rate?',
       question: `Have you asked about a lower rate on ${expensive.name}, or looked at moving the balance?`,
       why: `Dropping ${num(expensive.interest_rate)}% does the same work as paying extra, without finding extra money.`,
@@ -126,9 +163,33 @@ export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
     }))
   }
 
-  const undatedGoal = goals.find(goal => num(goal.target_amount) > num(goal.current_amount) && !goal.deadline)
+  // A dated goal the ladder will not reach in time is the most useful thing the
+  // app can notice, and the one it stayed silent about: rent due in four months,
+  // queued behind the emergency fund, arriving in seven. The ordering is right
+  // in general and wrong when a real deadline is attached, which is a judgement
+  // call the user has to make — so it is asked, not silently overridden.
+  const late = activeGoals
+    .map(goal => ({ goal, ...goalTiming(goal, route, now) }))
+    .filter(item => item.dueInMonths !== null && item.readyInMonths !== null
+      && item.readyInMonths > item.dueInMonths)
+    .sort((left, right) => left.dueInMonths - right.dueInMonths)[0]
+
+  if (late) {
+    const { goal, dueInMonths, readyInMonths } = late
+    const short = money(num(goal.target_amount) - num(goal.current_amount))
+    list.push(followUp('goal_at_risk', {
+      topic: 'goal',
+      label: `${goal.name} may be late`,
+      question: `${goal.name} is due in about ${plural(dueInMonths)}, but this plan reaches it in about ${plural(readyInMonths)}. Should it jump the queue?`,
+      why: 'The order above is right when nothing has a deadline. A real due date can outrank a cushion — you know which one hurts more to miss.',
+      ask: `I need ${short} for ${goal.name} in about ${plural(dueInMonths)}, but my plan funds other things first and gets there in about ${plural(readyInMonths)}. Walk me through whether to move it up the order, and what that costs me.`,
+    }))
+  }
+
+  const undatedGoal = activeGoals.find(goal => !goal.deadline)
   if (undatedGoal) {
     list.push(followUp('goal_deadline', {
+      topic: 'goal',
       label: `When do I need ${undatedGoal.name}?`,
       question: `When do you want ${undatedGoal.name} done by?`,
       why: 'A date turns it into a monthly number instead of a someday.',
@@ -138,6 +199,7 @@ export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
 
   if (liveDebts.length) {
     list.push(followUp('minimums_safe', {
+      topic: 'debt',
       label: 'Am I safe on minimums?',
       question: 'Are you comfortably making every minimum payment right now?',
       why: 'One missed minimum costs more in fees and credit damage than this plan earns in months.',
@@ -145,14 +207,33 @@ export function planFollowUps({ route, profile, debts = [], goals = [] } = {}) {
     }))
   }
 
-  list.push(followUp('upcoming_cost', {
-    label: 'Something big is coming',
-    question: 'Is anything big landing in the next six months — tuition, a move, a car repair, travel?',
-    why: 'A cost you already know about changes what the cushion has to absorb first.',
-    ask: 'I have a known expense coming in the next few months. Help me work out whether to save for it separately or let it come out of my emergency fund.',
-  }))
+  // Only worth asking of someone who has named nothing. Asking "is anything big
+  // coming?" of a user whose plan is built around "Semester Rent Payment" is
+  // asking for a fact already on the screen.
+  if (!activeGoals.length) {
+    list.push(followUp('upcoming_cost', {
+      // Not 'risk': sizing a cushion for the unknown and planning around a cost
+      // you already know about are different conversations with different
+      // answers. Only the first two share ground.
+      topic: 'known_cost',
+      label: 'Something big is coming',
+      question: 'Is anything big landing in the next six months — tuition, a move, a car repair, travel?',
+      why: 'A cost you already know about changes what the cushion has to absorb first.',
+      ask: 'I have a known expense coming in the next few months. Help me work out whether to save for it separately or let it come out of my emergency fund.',
+    }))
+  }
 
-  return list
+  // Each rule below is tagged with the ground it covers. Three questions that
+  // are all "what might you have to pay for?" read as one question asked three
+  // ways — which is exactly what a plan built around a named upcoming cost used
+  // to produce. One per topic guarantees the list attacks different things.
+  const seen = new Set()
+  return list.filter(item => {
+    if (!item.topic) return true
+    if (seen.has(item.topic)) return false
+    seen.add(item.topic)
+    return true
+  })
 }
 
 /** The few worth showing under the plan itself, before the user has to ask. */
