@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
-  AlertCircle, ArrowRight, CalendarClock, History, Loader2, MoreHorizontal,
-  RefreshCw, Settings, Sprout, Target, WalletCards,
+  AlertCircle, ArrowRight, CalendarClock, Eye, EyeOff, History, Loader2, MoreHorizontal,
+  RefreshCw, Settings, SlidersHorizontal, Sprout, Target, WalletCards,
 } from 'lucide-react'
 import Money from '@/pages/Money'
-import IllustratedGarden from '@/components/garden/IllustratedGarden'
 import BottomSheet from '@/components/ui/BottomSheet'
+import PageHeader from '@/components/ui/PageHeader'
+import DashboardGrid from '@/components/dashboard/DashboardGrid'
+import CustomizeHomeSheet from '@/components/dashboard/CustomizeHomeSheet'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden } from '@/context/GardenContext'
 import { getPlan } from '@/lib/advisorPlans'
@@ -16,9 +18,11 @@ import { netWorthExplanation } from '@/lib/finance'
 import { reconcileGardenMilestones } from '@/lib/gardenProgress'
 import { getMoneySetupState } from '@/lib/moneySetup'
 import { selectHomeAction } from '@/lib/homeModel'
-import { headlineMetrics } from '@/lib/moneyLanguage'
 import { buildPlanModel } from '@/lib/focusedPlan'
 import { useMoneyRoute } from '@/hooks/useMoneyRoute'
+import { useDashboardPreferences } from '@/hooks/useDashboardPreferences'
+import { buildDefaultDashboard } from '@/lib/dashboardModel'
+import { maskMoneyText } from '@/lib/privacy'
 import MoneyRouteCard from '@/components/MoneyRouteCard'
 import ProgressActivitySheet from '@/components/ProgressActivitySheet'
 import { listFinancialActivities } from '@/lib/financialActivities'
@@ -47,6 +51,8 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
   const [plan, setPlan] = useState(null)
   const [planLoading, setPlanLoading] = useState(true)
   const [gardenError, setGardenError] = useState(null)
+  const [subsystemErrors, setSubsystemErrors] = useState({})
+  const [homeRefreshKey, setHomeRefreshKey] = useState(0)
   // Explains a negative net worth when one balance drives it (see finance.js).
   const netWorthNote = useMemo(
     () => netWorthExplanation({ netWorth: snapshot.netWorth, debts }),
@@ -59,6 +65,7 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
   const [reminderEvents, setReminderEvents] = useState([])
   const [activitySheetOpen, setActivitySheetOpen] = useState(false)
   const [promptActivity, setPromptActivity] = useState(null)
+  const [customizing, setCustomizing] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -71,6 +78,7 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
     async function loadGarden() {
       setPlanLoading(true)
       setGardenError(null)
+      setSubsystemErrors({})
       let loadedPlan = null
       try {
         loadedPlan = await getPlan(user.id)
@@ -81,23 +89,26 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
         setGardenError(error.message ?? 'Your Plan could not load yet. Your money details are still available.')
       }
 
-      try {
-        const [activityRows, reminderRows, eventRows] = await Promise.all([
-          listFinancialActivities(user.id),
-          listReminders(user.id),
-          listReminderEvents(user.id),
-        ])
-        if (!live) return
-        setActivities(activityRows)
-        setReminders(reminderRows)
-        setReminderEvents(eventRows)
-        const unseen = activityRows.find(activity => isPromptableActivity(activity) && !activity.prompt_seen_at)
-        if (unseen) {
-          setPromptActivity(unseen)
-          setActivitySheetOpen(true)
-        }
-      } catch {
-        if (live) setGardenError('Recent progress could not load yet. Your financial records are still available.')
+      const [activityResult, reminderResult, eventResult] = await Promise.allSettled([
+        listFinancialActivities(user.id),
+        listReminders(user.id),
+        listReminderEvents(user.id),
+      ])
+      if (!live) return
+      const activityRows = activityResult.status === 'fulfilled' ? activityResult.value : []
+      const reminderRows = reminderResult.status === 'fulfilled' ? reminderResult.value : []
+      const eventRows = eventResult.status === 'fulfilled' ? eventResult.value : []
+      setActivities(activityRows)
+      setReminders(reminderRows)
+      setReminderEvents(eventRows)
+      setSubsystemErrors({
+        ...(activityResult.status === 'rejected' ? { activities: 'Recent progress could not load.' } : {}),
+        ...(reminderResult.status === 'rejected' || eventResult.status === 'rejected' ? { reminders: 'Routines could not load.' } : {}),
+      })
+      const unseen = activityRows.find(activity => isPromptableActivity(activity) && !activity.prompt_seen_at)
+      if (unseen) {
+        setPromptActivity(unseen)
+        setActivitySheetOpen(true)
       }
 
       let gardenProgress
@@ -123,7 +134,7 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
     }
     loadGarden()
     return () => { live = false }
-  }, [goals, snapshot.expenses, snapshot.income, updateGarden, user.id])
+  }, [goals, homeRefreshKey, snapshot.expenses, snapshot.income, updateGarden, user.id])
 
   const setupState = useMemo(() => getMoneySetupState({
     profile, accounts, debts, goals, cashFlowItems,
@@ -158,6 +169,12 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
   const hasMoneyRoute = moneyRoute.ready
   const approvedRouteStep = [...planModel.focus, ...planModel.later]
     .find(step => !step.proposed && step.source === 'money-route') || null
+  const dashboardContext = useMemo(() => ({
+    snapshot, profile, accounts, debts, goals, cashFlowItems, budgetLimits,
+    activities, reminders, reminderEvents, reminderModel, primaryAction: action,
+  }), [snapshot, profile, accounts, debts, goals, cashFlowItems, budgetLimits, activities, reminders, reminderEvents, reminderModel, action])
+  const dashboardPreferences = useDashboardPreferences(user.id, dashboardContext)
+  const defaultDashboard = useMemo(() => buildDefaultDashboard(dashboardContext), [dashboardContext])
 
   function runAction() {
     if (action.kind === 'setup') openSheet(action.sheet)
@@ -170,6 +187,10 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
   }
 
   function openGoal(goal) {
+    if (!goal) {
+      navigate('/plan#goals')
+      return
+    }
     setSelectedGoal(goal)
     setSheet('goal')
   }
@@ -213,30 +234,45 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
     setPromptActivity(null)
   }
 
+  const dashboardData = {
+    ...dashboardContext,
+    trend, stage, milestones, milestoneTotal, momentum, sceneTone,
+    reducedMotion: Boolean(reducedMotion), netWorthNote, errors: subsystemErrors,
+  }
+  const dashboardActions = {
+    openGarden: () => setSheet('story'),
+    openGoal,
+    openProgress: () => setActivitySheetOpen(true),
+    openSheet,
+    openMoney: () => navigate('/?section=money'),
+    openAccount: accountId => navigate(`/?section=money&sheet=accounts&accountId=${encodeURIComponent(accountId)}`),
+    openRoutines: reminderId => navigate(reminderId ? `/plan?reminder=${encodeURIComponent(reminderId)}#goals` : '/plan#goals'),
+    retryHomeData: () => setHomeRefreshKey(value => value + 1),
+  }
+  const customizeContext = { ...dashboardContext, defaultLayout: defaultDashboard }
+
   return (
     <>
-      <section className="grid items-start gap-3 md:grid-cols-[minmax(0,1.05fr)_minmax(300px,.95fr)]">
-        <IllustratedGarden
-          stage={stage}
-          milestones={milestones}
-          milestoneTotal={milestoneTotal}
-          goals={goals}
-          momentum={momentum}
-          sceneTone={sceneTone}
-          reducedMotion={Boolean(reducedMotion)}
-          compact
-          onOpenStory={() => setSheet('story')}
-          onSelectGoal={openGoal}
-          onSelectOverflow={() => setSheet('overflow')}
-        />
+      <PageHeader title="Home" subtitle="What matters now, with your priorities close by."
+        actions={<div className="flex items-center gap-2">
+          <button type="button" onClick={() => dashboardPreferences.setHideAmounts(!dashboardPreferences.hideAmounts)}
+            disabled={dashboardPreferences.loading || dashboardPreferences.privacySaving}
+            aria-label={dashboardPreferences.hideAmounts ? 'Show financial amounts' : 'Hide financial amounts'}
+            aria-pressed={dashboardPreferences.hideAmounts}
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.1] text-readable-secondary hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 disabled:opacity-50">
+            {dashboardPreferences.privacySaving ? <Loader2 className="h-4 w-4 animate-spin" /> : dashboardPreferences.hideAmounts ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+          </button>
+          <HomeHeaderMenu navigate={navigate} onCustomize={() => setCustomizing(true)} />
+        </div>} />
 
-        <div className="grid gap-3">
-          {hasMoneyRoute ? <MoneyRouteCard
-            route={moneyRoute}
-            variant="home"
-            onPrimary={runMoneyRoute}
-            primaryLabel={approvedRouteStep ? 'Do the next move' : 'Review my plan'}
-          /> : <motion.section key={action.kind + action.title}
+      <section aria-label="Today" className="mb-3">
+        {hasMoneyRoute ? <MoneyRouteCard
+          route={moneyRoute}
+          variant="home"
+          hideAmounts={dashboardPreferences.hideAmounts}
+          onPrimary={runMoneyRoute}
+          primaryLabel={approvedRouteStep ? 'Do the next move' : 'Review my plan'}
+        /> : <motion.section key={action.kind + action.title}
             initial={reducedMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}
             className="rounded-[24px] border border-emerald-200/15 bg-[linear-gradient(145deg,rgba(18,41,31,.96),rgba(8,20,15,.98))] p-4 shadow-[0_18px_45px_rgba(0,0,0,.2)] sm:p-5">
             <div className="flex items-start gap-3">
@@ -250,62 +286,29 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
                       : <Sprout className="h-5 w-5" />}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/80">{action.eyebrow}</p>
-                <h2 className="mt-1.5 text-[18px] font-semibold leading-6 tracking-[-0.015em] text-white">{action.title}</h2>
-                <p className="mt-1.5 text-[13px] leading-5 text-readable-secondary">{action.detail}</p>
-                {action.doneWhen && <p className="mt-2 text-[12px] leading-5 text-white/[0.78]"><span className="font-semibold text-readable-secondary">Done when:</span> {action.doneWhen}</p>}
+                <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/80">Today · {action.eyebrow}</p>
+                <h2 className="mt-1.5 text-[18px] font-semibold leading-6 tracking-[-0.015em] text-white">{maskMoneyText(action.title, dashboardPreferences.hideAmounts)}</h2>
+                <p className="mt-1.5 text-[13px] leading-5 text-readable-secondary">{maskMoneyText(action.detail, dashboardPreferences.hideAmounts)}</p>
+                {action.doneWhen && <p className="mt-2 text-[12px] leading-5 text-white/[0.78]"><span className="font-semibold text-readable-secondary">Done when:</span> {maskMoneyText(action.doneWhen, dashboardPreferences.hideAmounts)}</p>}
                 {action.cta && <button type="button" onClick={runAction} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl text-[13px] font-semibold text-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
                   {action.cta}<ArrowRight className="h-4 w-4" />
                 </button>}
               </div>
             </div>
-          </motion.section>}
-          <section aria-label="Money snapshot" className="rounded-[22px] border border-white/[0.09] bg-white/[0.04] p-4 sm:p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[13px] font-semibold text-readable-secondary">Net worth</p>
-                <p className="mt-1 text-[28px] font-semibold leading-none tracking-[-0.035em] text-white">{formatMoney(snapshot.netWorth)}</p>
-                <p className={`mt-2 text-xs ${trend?.has && trend?.delta < 0 ? 'text-rose-100' : 'text-readable-secondary'}`}>
-                  {trend?.has
-                    ? `${trend.delta >= 0 ? '+' : ''}${formatMoney(trend.delta)} over ${trend.days} days`
-                    : '30-day change starts after your next snapshot'}
-                </p>
-              </div>
-              <button type="button" onClick={() => navigate('/?section=money')}
-                className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl px-2 text-[13px] font-semibold text-emerald-100 hover:bg-emerald-300/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
-                Open Money <ArrowRight className="h-4 w-4" />
-              </button>
-            </div>
-            {/* A negative number in 28px type, alone, reads as a verdict. When
-                one balance drives it, say which — the figure is not softened,
-                it is explained. Full width: squeezed beside the button it wrapped
-                to five lines on a phone. */}
-            {netWorthNote && (
-              <p className="mt-2 text-xs leading-5 text-readable-muted">{netWorthNote}</p>
-            )}
-            {/* Same two numbers Money shows, named by the shared vocabulary so
-                a metric never has one name here and another there. */}
-            <div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/[0.07] pt-3">
-              {headlineMetrics(snapshot).filter(metric => ['margin', 'emergency'].includes(metric.id)).map(metric => (
-                <div key={metric.id}>
-                  <p className="text-xs text-readable-secondary">{metric.label}</p>
-                  <p className={`mt-0.5 text-[15px] font-semibold tabular-nums ${metric.negative ? 'text-rose-100' : 'text-white'}`}>{metric.value}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
+        </motion.section>}
       </section>
 
-      {gardenError && <div role="status" className="mt-3 flex gap-2 rounded-xl border border-amber-200/18 bg-amber-300/[0.05] px-3.5 py-3 text-[13px] leading-5 text-amber-50"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{gardenError}</div>}
+      <DashboardGrid layout={dashboardPreferences.layout} data={dashboardData} actions={dashboardActions} hideAmounts={dashboardPreferences.hideAmounts} />
+
+      {(gardenError || dashboardPreferences.error) && <div role="status" className="mt-3 flex gap-2 rounded-xl border border-amber-200/18 bg-amber-300/[0.05] px-3.5 py-3 text-[13px] leading-5 text-amber-50"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{gardenError || dashboardPreferences.error}</div>}
 
       <BottomSheet open={sheet === 'goal'} title={selectedGoal?.name || 'Goal progress'} onClose={closeSheet} size="sm">
         {selectedGoal && <div>
-          <div className="flex items-end justify-between gap-4"><div><p className="text-[13px] font-medium text-readable-secondary">Saved so far</p><p className="mt-1 text-2xl font-semibold tabular-nums text-white">{formatMoney(selectedGoal.current_amount)}</p></div><p className="text-[15px] font-semibold tabular-nums text-emerald-200">{selectedPercent}%</p></div>
+          <div className="flex items-end justify-between gap-4"><div><p className="text-[13px] font-medium text-readable-secondary">Saved so far</p><p className="mt-1 text-2xl font-semibold tabular-nums text-white">{dashboardPreferences.hideAmounts ? 'Amount hidden' : formatMoney(selectedGoal.current_amount)}</p></div><p className="text-[15px] font-semibold tabular-nums text-emerald-200">{selectedPercent}%</p></div>
           <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${selectedPercent}%` }} /></div>
           <dl className="mt-5 divide-y divide-white/[0.07] rounded-2xl border border-white/[0.09] px-4">
-            <div className="flex justify-between gap-4 py-3 text-[13px]"><dt className="text-readable-secondary">Target</dt><dd className="font-semibold tabular-nums text-white">{formatMoney(selectedGoal.target_amount)}</dd></div>
-            <div className="flex justify-between gap-4 py-3 text-[13px]"><dt className="text-readable-secondary">Monthly contribution</dt><dd className="font-semibold tabular-nums text-white">{formatMoney(selectedGoal.monthly_contribution)}</dd></div>
+            <div className="flex justify-between gap-4 py-3 text-[13px]"><dt className="text-readable-secondary">Target</dt><dd className="font-semibold tabular-nums text-white">{dashboardPreferences.hideAmounts ? 'Amount hidden' : formatMoney(selectedGoal.target_amount)}</dd></div>
+            <div className="flex justify-between gap-4 py-3 text-[13px]"><dt className="text-readable-secondary">Monthly contribution</dt><dd className="font-semibold tabular-nums text-white">{dashboardPreferences.hideAmounts ? 'Amount hidden' : formatMoney(selectedGoal.monthly_contribution)}</dd></div>
             <div className="flex justify-between gap-4 py-3 text-[13px]"><dt className="text-readable-secondary">Target date</dt><dd className="font-semibold text-white">{selectedGoal.deadline ? formatDate(`${selectedGoal.deadline}T00:00:00`) : 'Not set'}</dd></div>
           </dl>
           <button type="button" onClick={() => navigate('/plan#goals')} className="btn-primary mt-5 w-full">Update in Plan</button>
@@ -353,13 +356,15 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
         onCorrect={() => openSheet('balances')}
       />
 
+      <CustomizeHomeSheet open={customizing} layout={dashboardPreferences.layout} context={customizeContext}
+        onClose={() => setCustomizing(false)} onSave={dashboardPreferences.saveLayout} onReload={dashboardPreferences.refetch} />
+
     </>
   )
 }
 
 export default function Home() {
   const location = useLocation()
-  const navigate = useNavigate()
   const params = new URLSearchParams(location.search)
   const moneySheets = new Set(['plan', 'accounts', 'cash', 'investment', 'asset', 'debts', 'balances'])
   const workspaceMode = params.get('section') === 'money' || moneySheets.has(params.get('sheet'))
@@ -367,11 +372,10 @@ export default function Home() {
     homeMode
     workspaceMode={workspaceMode}
     renderHomeHero={props => <HomeHero {...props} />}
-    renderHomeActions={() => <HomeHeaderMenu navigate={navigate} />}
   />
 }
 
-function HomeHeaderMenu({ navigate }) {
+function HomeHeaderMenu({ navigate, onCustomize }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="relative">
@@ -382,11 +386,12 @@ function HomeHeaderMenu({ navigate }) {
       </button>
       {open && <div className="absolute right-0 top-12 z-30 w-56 rounded-2xl border border-white/[0.12] bg-[#101a14] p-2 shadow-2xl shadow-black/40">
         {[
+          { label: 'Customize Home', icon: SlidersHorizontal, action: onCustomize },
           { label: 'Update balances', icon: RefreshCw, to: '/?section=money&sheet=balances' },
           { label: 'Recent progress', icon: History, to: '/?progress=1' },
           { label: 'Garden Story', icon: Sprout, to: '/?garden=1' },
           { label: 'Settings', icon: Settings, to: '/settings' },
-        ].map(item => <button key={item.label} type="button" onClick={() => { setOpen(false); navigate(item.to) }} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold text-readable-secondary hover:bg-white/[0.06] hover:text-white"><item.icon className="h-4 w-4 text-emerald-200"/>{item.label}</button>)}
+        ].map(item => <button key={item.label} type="button" onClick={() => { setOpen(false); if (item.action) item.action(); else navigate(item.to) }} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold text-readable-secondary hover:bg-white/[0.06] hover:text-white"><item.icon className="h-4 w-4 text-emerald-200"/>{item.label}</button>)}
       </div>}
     </div>
   )

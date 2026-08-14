@@ -1169,7 +1169,7 @@ export default function Money({
 
   return (
     <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className={`mx-auto w-full px-4 pb-10 md:px-6 ${homeMode ? 'max-w-6xl' : 'max-w-3xl'}`}>
-      <PageHeader
+      {(!homeMode || workspaceMode) && <PageHeader
         title={homeMode && !workspaceMode ? 'Home' : 'Money'}
         subtitle={homeMode && !workspaceMode ? 'What matters now, with detail when you ask for it.' : 'Your complete financial picture.'}
         onBack={homeMode && workspaceMode ? () => navigate('/') : undefined}
@@ -1177,7 +1177,7 @@ export default function Money({
         actions={homeMode && !workspaceMode
           ? renderHomeActions?.()
           : <button type="button" onClick={() => openSheet('balances')} className="btn-ghost min-h-11 px-3" aria-label="Update balances"><RefreshCw className="h-4 w-4" /><span className="hidden sm:inline">Update</span></button>}
-      />
+      />}
 
       {error && <div role="alert" className="mb-4 flex gap-3 rounded-2xl border border-rose-300/20 bg-rose-400/[0.08] p-4 text-[13px] leading-5 text-rose-100"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span>{error}</span></div>}
       {!activeSheet && workspaceMode && renderReminderCompletion()}

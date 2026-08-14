@@ -1,7 +1,8 @@
 import { ArrowRight, ClipboardList, ListChecks, SlidersHorizontal } from 'lucide-react'
 import { HORIZON_MONTHS, formatDuration, orderForPresentation } from '@/lib/moneyRoute'
+import { maskMoneyText } from '@/lib/privacy'
 
-const formatMoney = value => `$${Math.max(0, Math.round(Number(value) || 0)).toLocaleString()}`
+const formatMoney = (value, hidden = false) => hidden ? 'Amount hidden' : `$${Math.max(0, Math.round(Number(value) || 0)).toLocaleString()}`
 
 // Labels are written as destinations ("Pay extra toward Visa Card") so they
 // read cleanly in the plan list; strip the verb prefix when a bare name is
@@ -58,6 +59,7 @@ export default function MoneyRouteCard({
   followUps = [],
   onAskFollowUp,
   busy = false,
+  hideAmounts = false,
 }) {
   if (!route?.ready) return null
   const items = planItems(route)
@@ -82,7 +84,7 @@ export default function MoneyRouteCard({
                 asked. When there is nothing to route, say so and point at the
                 rung that changes it. */}
             {route.availableMonthlyAmount > 0
-              ? `Here is where your ${formatMoney(route.availableMonthlyAmount)} a month goes`
+              ? `Here is where your ${formatMoney(route.availableMonthlyAmount, hideAmounts)} a month goes`
               : 'Nothing is left over yet — this is where to start'}
           </h2>
           {/* Keeps this figure from reading as a second, unexplained number
@@ -102,8 +104,8 @@ export default function MoneyRouteCard({
             <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-300/10 text-[11px] font-bold text-emerald-100">{index + 1}</span>
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-[13px] font-semibold leading-5 text-white">{item.label}</p>
-                {item.amount > 0 && <span className="shrink-0 text-[13px] font-semibold tabular-nums text-emerald-100">{formatMoney(item.amount)}</span>}
+                <p className="text-[13px] font-semibold leading-5 text-white">{maskMoneyText(item.label, hideAmounts)}</p>
+                {item.amount > 0 && <span className="shrink-0 text-[13px] font-semibold tabular-nums text-emerald-100">{formatMoney(item.amount, hideAmounts)}</span>}
               </div>
               {takesLabel(item) && (
                 <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-200/70">{takesLabel(item)} at this rate</p>
@@ -121,7 +123,7 @@ export default function MoneyRouteCard({
             <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-white/[0.14] text-[11px] font-bold text-readable-muted">{items.slice(0, limit).length + index + 1}</span>
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-[13px] font-semibold leading-5 text-readable-secondary">{item.label}</p>
+                <p className="text-[13px] font-semibold leading-5 text-readable-secondary">{maskMoneyText(item.label, hideAmounts)}</p>
                 <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-readable-muted">Then</span>
               </div>
               {startsLabel(item) && (

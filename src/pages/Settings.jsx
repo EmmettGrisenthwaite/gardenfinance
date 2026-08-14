@@ -156,7 +156,7 @@ export default function Settings() {
     setOperationError(null)
     try {
       const uid = user.id
-      const [g, d, a, p, c, s, m, bl, cf, r, re] = await Promise.all([
+      const [g, d, a, p, c, s, m, bl, cf, r, re, dp] = await Promise.all([
         supabase.from('goals').select('*').eq('user_id', uid),
         supabase.from('debts').select('*').eq('user_id', uid),
         supabase.from('accounts').select('*').eq('user_id', uid),
@@ -168,8 +168,9 @@ export default function Settings() {
         supabase.from('cash_flow_items').select('*').eq('user_id', uid),
         supabase.from('reminders').select('*').eq('user_id', uid),
         supabase.from('reminder_events').select('*').eq('user_id', uid),
+        supabase.from('dashboard_preferences').select('*').eq('user_id', uid),
       ])
-      const failed = [g, d, a, p, c, s, m, bl, cf, r, re].find(result => result.error)
+      const failed = [g, d, a, p, c, s, m, bl, cf, r, re, dp].find(result => result.error)
       if (failed) throw failed.error
       // Institution name and status only — list_plaid_connections() is a
       // SECURITY DEFINER RPC that never returns the access_token itself.
@@ -181,6 +182,7 @@ export default function Settings() {
         plans: p.data ?? [], conversations: c.data ?? [], net_worth_snapshots: s.data ?? [],
         memories: m.data ?? [], budget_limits: bl.data ?? [], cash_flow_items: cf.data ?? [],
         reminders: r.data ?? [], reminder_events: re.data ?? [],
+        dashboard_preferences: dp.data ?? [],
         connected_banks: plaidConnections,
       }
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
@@ -234,6 +236,7 @@ export default function Settings() {
         supabase.from('cash_flow_items').delete().eq('user_id', uid),
         // Reminder events are removed by the reminder table's ON DELETE CASCADE.
         supabase.from('reminders').delete().eq('user_id', uid),
+        supabase.from('dashboard_preferences').delete().eq('user_id', uid),
         supabase.from('profiles').delete().eq('id', uid),
       ])
       const failed = results.find(result => result.error)
