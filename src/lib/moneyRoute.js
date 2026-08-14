@@ -1,5 +1,6 @@
 import { LIMITS, THRESHOLDS, payoffMonths } from './finance.js'
 import { accountFamily, isWorkplaceAccount } from './moneyModel.js'
+import { PLAN_MAX, PLAN_MIN, composePlan, eligibleBackfill } from './planComposition.js'
 
 // Accounts with a shared annual contribution ceiling. A taxable brokerage has
 // none, which is what makes it the right home for anything above the cap.
@@ -735,6 +736,13 @@ export function buildMoneyRoute({
     conditionalChanges,
     primaryQuestion: blockers.find(blocker => blocker.question)?.question || null,
     nextDestination: nextDestinationFor(finalAllocations, snapshot, goals),
+    // The few facts the practice bank needs to know whether a general habit
+    // already applies — carried on the route so building a plan never needs a
+    // second read of the user's records.
+    planContext: {
+      expenses: roundMoney(snapshot.expenses),
+      debts: activeDebts.map(debt => ({ balance: num(debt.balance) })),
+    },
     baseFingerprint,
     fingerprint,
   }
@@ -936,7 +944,7 @@ export function formatDuration(months) {
 /** Beyond this, a *start* date stops being information and becomes discouragement. */
 export const HORIZON_MONTHS = 120
 
-const PLAN_SIZE = 5
+const PLAN_SIZE = PLAN_MAX
 
 /**
  * Money moves lead the plan. Steps with no dollar amount — claim your employer
@@ -959,33 +967,36 @@ export function orderForPresentation(allocations = []) {
  */
 export function buildInitialPlan(route) {
   if (!route) return []
-  const steps = []
   const actionable = orderForPresentation((route.allocations || []).filter(item => (
     !['unassigned', 'hold_for_coverage'].includes(item.key)
     && (item.amount > 0 || ZERO_DOLLAR_STEPS.includes(item.key))
   )))
 
+  // Every rung the ladder produced, uncapped. Trimming here is what used to
+  // hide the general-practice steps behind whichever priority happened to
+  // absorb the money; composePlan does the choosing now, with the whole pool
+  // in front of it.
+  const pool = []
   for (const allocation of actionable) {
-    if (steps.length >= PLAN_SIZE) break
-    const step = allocationStep(route, allocation, steps.length)
-    if (step && !steps.some(existing => existing.intentKey === step.intentKey)) steps.push(step)
+    const step = allocationStep(route, allocation, pool.length)
+    if (step && !pool.some(existing => existing.intentKey === step.intentKey)) pool.push(step)
   }
 
   // Automating the biggest recurring transfer is what keeps the plan running
   // without relying on memory, so it earns a place once the priorities are in.
   // `find` took whichever came first, which meant a $2,000 plan automated its
   // $625 rung and left $1,375 to be remembered by hand every month.
-  const primary = steps
+  const primary = pool
     .filter(step => step.outcome?.amount > 0
       && ['transfer', 'contribution', 'debt_payment'].includes(step.outcome.kind))
     .sort((left, right) => right.outcome.amount - left.outcome.amount)[0]
-  if (primary && steps.length < PLAN_SIZE) {
+  if (primary) {
     const target = actionable.find(item => allocationStep(route, item, 0)?.intentKey === primary.intentKey)
     // Appended, this landed after the setup chores — "move $250", "autopay your
     // minimums", "schedule $250" — separating the transfer from its own
     // automation. It belongs immediately after the move it automates.
-    const afterPrimary = steps.findIndex(step => step.intentKey === primary.intentKey) + 1
-    steps.splice(afterPrimary, 0, stepBase(route, afterPrimary, {
+    const afterPrimary = pool.findIndex(step => step.intentKey === primary.intentKey) + 1
+    pool.splice(afterPrimary, 0, stepBase(route, afterPrimary, {
       key: `automate.${target?.key || 'primary'}`,
       text: `Schedule ${money(primary.outcome.amount)} monthly toward ${target?.destinationName || (target?.label || 'this priority').replace(/^Pay extra toward |^Fund |^Build the |^Grow |^Increase investing in /, '')}`,
       detail: 'Automation keeps the plan moving without relying on memory.',
@@ -1002,7 +1013,22 @@ export function buildInitialPlan(route) {
     }))
   }
 
-  return steps.slice(0, PLAN_SIZE).map((step, index) => ({ ...step, chapterOrder: index + 1 }))
+  const taken = new Set(pool.map(step => step.intentKey))
+  const backfill = eligibleBackfill(route.planContext, taken)
+    .map((entry, index) => stepBase(route, pool.length + index, {
+      key: entry.key,
+      text: entry.text,
+      detail: entry.detail,
+      doneWhen: entry.doneWhen,
+      impact: entry.impact,
+      intentKey: entry.intentKey,
+      priorityKey: entry.priorityKey,
+      outcome: { kind: 'information_only' },
+      basis: { recordType: 'habit', recordId: null, monthlyCapacity: route.availableMonthlyAmount },
+    }))
+
+  const { steps } = composePlan(pool, { backfill, min: PLAN_MIN, max: PLAN_SIZE })
+  return steps.map((step, index) => ({ ...step, chapterOrder: index + 1 }))
 }
 
 export function formatMoneyRouteForAdvisor(route) {

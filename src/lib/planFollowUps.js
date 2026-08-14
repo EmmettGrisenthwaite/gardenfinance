@@ -1,3 +1,5 @@
+import { isWorkplaceAccount } from './moneyModel.js'
+
 const num = value => Number(value) || 0
 const known = value => value !== null && value !== undefined && value !== ''
 const money = value => `$${Math.max(0, Math.round(num(value))).toLocaleString()}`
@@ -7,8 +9,11 @@ const money = value => `$${Math.max(0, Math.round(num(value))).toLocaleString()}
 // the next. Without it the model answers and then dumps five more questions.
 const ADVISOR_MODE = 'Answer as my planner: tell me what my answer changes about the plan, then ask me the next most useful question — one at a time.'
 
-const followUp = (id, { topic, label, question, why, ask }) => ({
-  id, topic, label, question, why,
+// `answer` is optional. When present the question maps to a real column, so it
+// can be asked inline with a typed control and written straight to the record —
+// see planAnswers.js. Without one it stays a conversation with the advisor.
+const followUp = (id, { topic, label, question, why, ask, answer = null }) => ({
+  id, topic, label, question, why, answer,
   prompt: `${ask || question}\n\n${ADVISOR_MODE}`,
 })
 
@@ -54,7 +59,7 @@ function goalTiming(goal, route, now) {
  * about an employer match they do not have. Order is by how much the answer
  * would move the plan.
  */
-export function planFollowUps({ route, profile, debts = [], goals = [], now = Date.now() } = {}) {
+export function planFollowUps({ route, profile, accounts = [], debts = [], goals = [], now = Date.now() } = {}) {
   if (!route?.ready) return []
 
   const list = []
@@ -81,13 +86,39 @@ export function planFollowUps({ route, profile, debts = [], goals = [], now = Da
   }
 
   // The only guaranteed return in the whole ladder.
+  // A balance with no rate is ranked by nothing, so it sits outside the ladder
+  // entirely. This is the single answer that can reorder the whole plan, and it
+  // is one number the user can read off a statement.
+  const unrated = liveDebts.find(debt => !known(debt.interest_rate))
+  if (unrated) {
+    list.push(followUp('debt_rate', {
+      topic: 'debt',
+      label: `What rate is ${unrated.name}?`,
+      question: `What interest rate is ${unrated.name} charging?`,
+      why: `${money(unrated.balance)} is sitting outside your plan because nothing can rank it. The rate decides whether it belongs above or below everything on this list.`,
+      ask: `I owe ${money(unrated.balance)} on ${unrated.name} but I do not know the rate. Walk me through where to find it and what each likely answer would mean for my plan.`,
+      answer: {
+        kind: 'percent', table: 'debts', id: unrated.id, column: 'interest_rate',
+        prompt: `${unrated.name} interest rate`, placeholder: 'e.g. 19.99', suffix: '%',
+      },
+    }))
+  }
+
   if (profile?.employer_401k === 'match') {
+    const workplace = accounts.find(account => isWorkplaceAccount(account))
     list.push(followUp('match_details', {
       topic: 'retirement',
       label: 'My employer match',
-      question: 'What percent does your employer match, and what are you putting in right now?',
+      question: 'What percent of your pay does your employer match up to?',
       why: 'A match is the one guaranteed return in this plan — it beats paying down debt.',
       ask: 'My employer offers a retirement match. Help me work out exactly what I need to contribute to capture all of it, and where that should sit in my plan.',
+      // Only answerable in place once the workplace account exists to write to.
+      answer: workplace?.id
+        ? {
+          kind: 'percent', table: 'accounts', id: workplace.id, column: 'employer_match_limit_percent',
+          prompt: 'They match up to', placeholder: 'e.g. 5', suffix: '% of pay',
+        }
+        : null,
     }))
   }
 
@@ -194,6 +225,10 @@ export function planFollowUps({ route, profile, debts = [], goals = [], now = Da
       question: `When do you want ${undatedGoal.name} done by?`,
       why: 'A date turns it into a monthly number instead of a someday.',
       ask: `I am saving for ${undatedGoal.name} (${money(undatedGoal.target_amount)}) with no deadline. Help me pick a realistic date and tell me what it costs me per month.`,
+      answer: {
+        kind: 'date', table: 'goals', id: undatedGoal.id, column: 'deadline',
+        prompt: 'Pick the date you need it by', placeholder: 'YYYY-MM-DD',
+      },
     }))
   }
 
@@ -220,6 +255,12 @@ export function planFollowUps({ route, profile, debts = [], goals = [], now = Da
       question: 'Is anything big landing in the next six months — tuition, a move, a car repair, travel?',
       why: 'A cost you already know about changes what the cushion has to absorb first.',
       ask: 'I have a known expense coming in the next few months. Help me work out whether to save for it separately or let it come out of my emergency fund.',
+      // Naming it creates the goal, which puts it in the ladder at a real pace.
+      // Filing the fact anywhere else would leave it somewhere nothing reads.
+      answer: {
+        kind: 'newGoal', table: 'goals', column: 'name',
+        prompt: 'Name it and the plan will pace it', placeholder: 'e.g. Semester rent',
+      },
     }))
   }
 

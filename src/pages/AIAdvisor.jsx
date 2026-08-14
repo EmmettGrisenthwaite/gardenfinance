@@ -20,7 +20,9 @@ import { listReminderEvents, listReminders } from '@/lib/reminders'
 import { selectAdvisorResponseAction, selectPendingAdvisorAttachment } from '@/lib/advisorResponseAction'
 import { splitInlineMarkdown } from '@/lib/inlineMarkdown'
 import { planFollowUps, topFollowUps } from '@/lib/planFollowUps'
+import { applyRevisions, buildInterview } from '@/lib/planInterview'
 import MoneyRouteCard from '@/components/MoneyRouteCard'
+import PlanInterview from '@/components/PlanInterview'
 import BottomSheet from '@/components/ui/BottomSheet'
 import ResourceLinks from '@/components/ResourceLinks'
 import GuideCard from '@/components/GuideCard'
@@ -292,6 +294,7 @@ function SetupNeeded({ missing, onResolve }) {
 function WelcomeScreen({
   onSuggest, progressDelta, suggestions, moneyRoute,
   onUseRoute, onAdjustRoute, onResolveBlocker, routeBusy, followUps,
+  interview, onAnswerInterview, onDiscussInterview,
 }) {
   return (
     <motion.div className="py-5 text-center"
@@ -317,9 +320,18 @@ function WelcomeScreen({
 
       <div className="mb-7">
         {moneyRoute?.ready ? (
-          <MoneyRouteCard route={moneyRoute} onPrimary={onUseRoute} onAdjust={onAdjustRoute}
-            followUps={followUps} onAskFollowUp={item => onSuggest(item.prompt)}
-            onResolveBlocker={onResolveBlocker} busy={routeBusy} />
+          <>
+            <MoneyRouteCard route={moneyRoute} onPrimary={onUseRoute} onAdjust={onAdjustRoute}
+              followUps={followUps} onAskFollowUp={item => onSuggest(item.prompt)}
+              onResolveBlocker={onResolveBlocker} busy={routeBusy} />
+            {/* Sits under the plan it refines: read the ladder first, then
+                answer what the ladder could not know. */}
+            <PlanInterview
+              interview={interview} busy={routeBusy}
+              onAnswer={onAnswerInterview} onDiscuss={onDiscussInterview}
+              onFinish={onUseRoute} finishLabel="Add this plan to my Plan"
+            />
+          </>
         ) : (
           <SetupNeeded missing={moneyRoute?.missingInputs || []} onResolve={onResolveBlocker} />
         )}
@@ -544,11 +556,25 @@ export default function AIAdvisor() {
 
   const noKey  = !chatConfigured
   const hasData = goals.length > 0 || debts.length > 0 || plans.length > 0 || money.income > 0 || money.expenses > 0 || money.netWorth !== 0
-  // What a planner would ask about THIS plan, once it is settled.
-  const followUps = useMemo(
-    () => topFollowUps({ route: moneyRoute, profile, debts, goals }, 3),
-    [moneyRoute, profile, debts, goals],
+  // The interview between a generated plan and a committed one. Answers live
+  // as a plain {questionId: optionId} map keyed by fingerprint, so changing the
+  // underlying numbers restarts it rather than silently keeping stale answers.
+  const [interviewAnswers, setInterviewAnswers] = useState({})
+  useEffect(() => { setInterviewAnswers({}) }, [moneyRoute.fingerprint])
+  const interview = useMemo(
+    () => buildInterview({ route: moneyRoute, profile, debts, goals, answers: interviewAnswers }),
+    [moneyRoute, profile, debts, goals, interviewAnswers],
   )
+
+  // What a planner would ask about THIS plan, once it is settled.
+  const allFollowUps = useMemo(
+    () => topFollowUps({ route: moneyRoute, profile, accounts, debts, goals }, 3),
+    [moneyRoute, profile, accounts, debts, goals],
+  )
+  // The interview asks these as taps. Listing them on the card as well
+  // would put the same question on the screen twice, so the card only
+  // carries them when there is no interview to run.
+  const followUps = interview.status === 'unavailable' ? allFollowUps : []
 
   const quickSuggestions = useMemo(() => {
     // Once a plan exists the advisor's job is to REFINE it, so the prompts
@@ -558,7 +584,7 @@ export default function AIAdvisor() {
       // The card already shows the top follow-ups in full; the chip row offers
       // the next ones down so the two surfaces do not repeat each other.
       const shown = new Set(followUps.map(item => item.id))
-      const rest = planFollowUps({ route: moneyRoute, profile, debts, goals })
+      const rest = planFollowUps({ route: moneyRoute, profile, accounts, debts, goals })
         .filter(item => !shown.has(item.id))
         .slice(0, 3)
         .map(item => ({ label: item.label, q: item.prompt, icon: Brain }))
@@ -657,9 +683,13 @@ export default function AIAdvisor() {
       const admission = buildPlanModel({
         snapshot: financialSnapshot, setupState, plan: currentPlan, activities, reminders, moneyRoute,
       })
+      // The interview's answers are the difference between the plan the ladder
+      // produced and the plan the user agreed to, so they fold in here rather
+      // than being displayed and then discarded at the moment of saving.
+      const revised = applyRevisions(admission.routeCandidates, interview.revisions)
       // Save the whole plan, not just what fits the three-slot focus view —
       // the rest lands in Later so nothing recommended is silently dropped.
-      const result = await appendSteps(user.id, admission.routeCandidates, {
+      const result = await appendSteps(user.id, revised.steps, {
         source: 'money-route', group: 'Your plan', dedupeCompleted: true,
       })
       setPlans(result.plan ? [result.plan] : await listPlans(user.id))
@@ -973,6 +1003,9 @@ export default function AIAdvisor() {
               progressDelta={progressDelta}
               suggestions={quickSuggestions}
               followUps={followUps}
+              interview={interview}
+              onAnswerInterview={(questionId, optionId) => setInterviewAnswers(prev => ({ ...prev, [questionId]: optionId }))}
+              onDiscussInterview={question => send(question.prompt)}
               moneyRoute={moneyRoute}
               onUseRoute={handleUseMoneyRoute}
               onAdjustRoute={openRouteAdjustments}
@@ -986,6 +1019,13 @@ export default function AIAdvisor() {
               <MoneyRouteCard route={moneyRoute} onPrimary={handleUseMoneyRoute} onAdjust={openRouteAdjustments}
                 followUps={followUps} onAskFollowUp={item => send(item.prompt)}
                 onResolveBlocker={resolveRouteBlocker} busy={routeBusy} />
+              <PlanInterview
+                interview={interview} busy={routeBusy}
+                onAnswer={(questionId, optionId) => setInterviewAnswers(prev => ({ ...prev, [questionId]: optionId }))}
+                onDiscuss={question => send(question.prompt)}
+                onFinish={handleUseMoneyRoute}
+                finishLabel="Add this plan to my Plan"
+              />
             </div>
           )}
 

@@ -150,6 +150,10 @@ export default function MoneyRouteCard({
           <ul className="mt-2 space-y-1.5">
             {followUps.map(item => (
               <li key={item.id}>
+                {/* A question whose answer is one field does not deserve a trip
+                    through the chat. Answering here writes the record and the
+                    plan above recomputes; only the ones no column can hold open
+                    the advisor. */}
                 <button
                   type="button" disabled={busy} onClick={() => onAskFollowUp(item)}
                   className="w-full rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-white/[0.05] disabled:opacity-50"
