@@ -156,7 +156,7 @@ test('swinging income puts the cushion in front', () => {
   const state = buildInterview({ ...context, answers: { income_stability: 'swings' } })
   const { steps } = applyRevisions(context.plan, state.revisions)
   assert.equal(steps[0].intentKey, 'fund.emergency_reserve')
-  assert.ok(steps.some(step => step.intentKey === 'size.reserve_to_lean_month'))
+  assert.ok(steps.some(step => step.intentKey === 'open.lean_month_buffer'))
 })
 
 test('a missed payment makes protecting the minimums the first thing in the plan', () => {

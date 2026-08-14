@@ -620,17 +620,10 @@ export function buildMoneyRoute({
         }
       }
 
-      // Someone with money left over and nothing named to save for gets a plan
-      // about accounts, not about their life. Naming one thing is what makes
-      // the rest of the ladder feel like it is going somewhere.
-      if (!goal) {
-        allocations.push({
-          key: 'name_a_goal', label: 'Name something you are saving for',
-          amount: 0, destinationType: 'goal_opening', destinationId: null,
-          reason: 'A trip, a car, a deposit, a course. Once it has a name and a number, it earns a place in this list and the plan can pace it.',
-          adjustable: false,
-        })
-      }
+      // Nothing named to save for used to add a rung here telling the user to
+      // go and name one. A plan is a list of things to do with money, not a
+      // list of fields to fill in — the interview asks what is coming instead,
+      // and a real goal earns a rung the normal way once it exists.
     }
     // ── Setup that makes the moves above actually happen ────────────────────
     //
@@ -781,7 +774,7 @@ function allocationStep(route, allocation, index) {
     const target = roundMoney(allocation.targetAmount)
     return stepBase(route, index, {
       key: allocation.key, text: allocation.label, detail: allocation.reason,
-      doneWhen: 'Money left to assign is $0 or more in the Monthly Plan.',
+      doneWhen: 'Your monthly spending no longer exceeds what you bring in.',
       intentKey: allocation.key === 'repair_budget' ? 'budget.close_deficit.total' : 'budget.fix_allocations.total',
       priorityKey: allocation.key === 'repair_budget' ? 'deficit' : 'overcommitted',
       impact: `Repairs a ${money(target)}/mo gap`, basis,
@@ -790,7 +783,7 @@ function allocationStep(route, allocation, index) {
   if (allocation.key === 'find_margin') {
     return stepBase(route, index, {
       key: allocation.key, text: allocation.label, detail: allocation.reason,
-      doneWhen: `Your recorded spending is at least ${money(allocation.targetAmount)} below your income.`,
+      doneWhen: `You have cancelled or cut enough to leave ${money(allocation.targetAmount)} spare each month.`,
       intentKey: 'budget.find_first_margin', priorityKey: 'deficit',
       impact: `Turns a break-even month into ${money(allocation.targetAmount)} you can direct`, basis,
     })
@@ -805,7 +798,7 @@ function allocationStep(route, allocation, index) {
   if (allocation.key === 'confirm_employer_match') {
     return stepBase(route, index, {
       key: allocation.key, text: allocation.label, detail: allocation.reason,
-      doneWhen: 'You know whether your employer matches, and it is saved here.',
+      doneWhen: 'You have an answer from HR or your benefits portal.',
       intentKey: 'verify.employer_match', priorityKey: 'capture_match',
       outcome: { kind: 'information_only' },
       basis: { recordType: 'profile', recordId: null },
@@ -829,7 +822,7 @@ function allocationStep(route, allocation, index) {
     const monthly = amount > 0 ? ` and set up ${money(amount)}/mo` : ''
     return stepBase(route, index, {
       key: allocation.key, text: `${allocation.openLabel || allocation.label}${monthly}`, detail: allocation.reason,
-      doneWhen: `The account appears in Money with its institution and current balance${amount > 0 ? `, and ${money(amount)}/mo is scheduled` : ''}.`,
+      doneWhen: `The account is open at the provider${amount > 0 ? ` and ${money(amount)}/mo is scheduled into it` : ''}.`,
       intentKey: allocation.key === 'open_investment_account' ? 'open.investment_account' : 'open.taxable_brokerage',
       priorityKey: 'roth',
       outcome: { kind: 'account_opening', amount: amount || null },
@@ -839,7 +832,7 @@ function allocationStep(route, allocation, index) {
   if (allocation.key === 'separate_cushion_account') {
     return stepBase(route, index, {
       key: allocation.key, text: 'Open a savings account for your cushion', detail: allocation.reason,
-      doneWhen: 'A savings account appears in Money, separate from the one you spend from.',
+      doneWhen: 'The savings account is open at your bank, separate from the one you spend from.',
       intentKey: 'open.cushion_savings', priorityKey: 'starter_ef',
       impact: 'Keeps the money above out of your spending account',
       outcome: { kind: 'account_opening', accountSubtypeHint: 'hysa' }, basis,
@@ -848,7 +841,7 @@ function allocationStep(route, allocation, index) {
   if (allocation.key === 'upgrade_savings_rate') {
     return stepBase(route, index, {
       key: allocation.key, text: allocation.label, detail: allocation.reason,
-      doneWhen: 'The balance sits in a high-yield account and the rate is recorded in Money.',
+      doneWhen: 'The balance has been transferred and is earning the higher rate.',
       intentKey: `move.savings_to_hysa.${allocation.destinationId || 'primary'}`, priorityKey: 'build_ef',
       impact: 'Earns real interest on money you were already saving',
       outcome: { kind: 'account_opening', accountSubtypeHint: 'hysa' }, basis,
@@ -861,13 +854,6 @@ function allocationStep(route, allocation, index) {
       intentKey: 'setup.autopay_minimums', priorityKey: 'kill_debt',
       impact: 'Protects the plan from a single missed payment',
       outcome: { kind: 'recurring_setup', recurrence: 'monthly' }, basis,
-    })
-  }
-  if (allocation.key === 'name_a_goal') {
-    return stepBase(route, index, {
-      key: allocation.key, text: 'Name one thing you are saving for', detail: allocation.reason,
-      doneWhen: 'The goal has a name, an amount, and a date in your Plan.',
-      intentKey: 'name.first_goal', priorityKey: 'goal', outcome: { kind: 'goal_opening' }, basis,
     })
   }
   if (amount <= 0 || ['unassigned', 'hold_for_coverage'].includes(allocation.key)) return null
@@ -903,7 +889,7 @@ function allocationStep(route, allocation, index) {
     // which cannot be spliced in after "toward" — hence destinationName.
     text: `${isDebt ? 'Pay' : 'Move'} ${money(amount)}/mo ${isDebt ? 'to' : 'toward'} ${allocation.destinationName || allocation.label.replace(/^Pay extra toward |^Build the |^Grow |^Fund |^Increase investing in /, '')}`,
     detail: allocation.reason,
-    doneWhen: `${money(amount)} is ${isDebt ? 'paid and the balance here is updated' : `moved and the new balance is saved here`}.`,
+    doneWhen: `${money(amount)} has actually ${isDebt ? 'been paid' : 'moved'}.`,
     // Says what the money DOES, in the words the user would use. "Directs
     // $250/mo to the highest verified debt cost" describes the algorithm.
     impact: isDebt
@@ -921,7 +907,7 @@ function allocationStep(route, allocation, index) {
 const ZERO_DOLLAR_STEPS = [
   'repair_budget', 'repair_allocations', 'find_margin', 'choose_health_coverage',
   'capture_employer_match', 'confirm_employer_match',
-  'open_investment_account', 'open_taxable_brokerage', 'name_a_goal',
+  'open_investment_account', 'open_taxable_brokerage',
   'separate_cushion_account', 'upgrade_savings_rate', 'autopay_minimums',
 ]
 

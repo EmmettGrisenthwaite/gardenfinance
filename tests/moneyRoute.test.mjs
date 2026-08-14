@@ -367,15 +367,14 @@ test('a surplus with no accounts and no goals still gets a real, multi-step plan
   assert.equal(roth.amount, Math.floor(LIMITS.rothIra / 12))
   assert.equal(brokerage.amount, 2000 - roth.amount)
 
-  // Nothing named to save for is itself a rung — a plan about accounts only is
-  // not a plan about the user's life.
-  assert.ok(route.allocations.some(item => item.key === 'name_a_goal'))
+  // No rung asks the user to go and name a goal. A plan is a list of things to
+  // do with money, not a list of app fields to fill in.
+  assert.equal(route.allocations.some(item => item.key === 'name_a_goal'), false)
 
   // Three steps, and the money moves are stated with their amounts.
   const steps = buildInitialPlan(route)
   assert.ok(steps.length >= 3, `expected a multi-step plan, got ${steps.length}`)
   assert.match(steps[0].text, /Open a Roth IRA and set up \$\d+\/mo/)
-  assert.ok(steps.some(step => step.intentKey === 'name.first_goal'))
   // "Open a Roth IRA and start investing and set up $625/mo" — no doubled verb.
   for (const step of steps) assert.ok(!/ and .* and /.test(step.text), `clumsy text: ${step.text}`)
 })

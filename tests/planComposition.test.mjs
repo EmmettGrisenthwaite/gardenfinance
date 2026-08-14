@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { computeSnapshot } from '../src/lib/finance.js'
+import { registryLinksFor } from '../src/lib/providerLinks.js'
 import { buildInitialPlan, buildMoneyRoute } from '../src/lib/moneyRoute.js'
 import {
   MAX_PER_TOPIC,
@@ -252,4 +253,56 @@ test('the practice bank only offers what is not already true of someone', () => 
 
   const already = eligibleBackfill({ expenses: 2000, debts: [] }, new Set(['habit.weekly_checkin']))
   assert.ok(!already.some(entry => entry.intentKey === 'habit.weekly_checkin'))
+})
+
+// ── Steps are things you do in the world, not things you type into this app ──
+
+test('no plan step is app housekeeping', () => {
+  // The reported plan contained "Name something you are saving for" and
+  // "Work out your leanest realistic month" — one is data entry, the other is
+  // homework. A plan is a list of things to do with money.
+  const APP_CHORE = /\b(name (something|one thing)|record it here|save(d)? (it )?here|in your Plan\b|appears in Money|write (it )?down|work out your)\b/i
+  const OUTCOME_IN_APP = /\b(is saved here|updated here|recorded in Money|in the Monthly Plan)\b/i
+
+  const scenarios = [
+    { name: 'surplus, no accounts', profile: { monthly_income: 5000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+      accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3000 }, { id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 15000 }], debts: [], goals: [] },
+    { name: '20yo with a card', profile: { monthly_income: 1450, monthly_expenses: 1200, health_insurance: 'parents', employer_401k: 'na', age: 20, employment_type: 'student', onboarding_complete: true },
+      accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 420 }],
+      debts: [{ id: 'd', name: 'Credit card', type: 'credit_card', balance: 900, interest_rate: 26.99, minimum_payment: 25 }], goals: [] },
+    { name: 'breaking even', profile: { monthly_income: 3000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+      accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 500 }], debts: [], goals: [] },
+    { name: 'idle savings', profile: { monthly_income: 5000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+      accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3000 }, { id: 's', name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: 15000 }], debts: [], goals: [] },
+  ]
+
+  for (const scenario of scenarios) {
+    const snapshot = computeSnapshot({ ...scenario, cashFlowItems: [] })
+    const route = buildMoneyRoute({ snapshot, ...scenario })
+    for (const step of buildInitialPlan(route)) {
+      assert.ok(!APP_CHORE.test(step.text), `${scenario.name}: app chore as a step — "${step.text}"`)
+      assert.ok(!OUTCOME_IN_APP.test(step.doneWhen || ''), `${scenario.name}: done-when is about this app — "${step.doneWhen}"`)
+      // Every step names an action, and says how you know it is finished.
+      assert.ok(step.doneWhen && step.doneWhen.length > 10, `${scenario.name}: no done-when on "${step.text}"`)
+    }
+  }
+})
+
+test('steps that need a provider carry real links', () => {
+  const scenario = {
+    profile: { monthly_income: 5000, monthly_expenses: 3000, health_insurance: 'employer', employer_401k: 'none', age: 28, onboarding_complete: true },
+    accounts: [{ id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3000 }, { id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 15000 }],
+    debts: [], goals: [],
+  }
+  const snapshot = computeSnapshot({ ...scenario, cashFlowItems: [] })
+  const steps = buildInitialPlan(buildMoneyRoute({ snapshot, ...scenario }))
+
+  const opening = steps.find(step => /^Open a Roth IRA/.test(step.text))
+  assert.ok(opening, 'this profile should be told to open a Roth IRA')
+  const links = registryLinksFor(opening.text)
+  assert.ok(links.length > 0, 'an account-opening step must carry somewhere to open it')
+  for (const link of links) assert.match(link.url, /^https:\/\//)
+
+  // And a step with nowhere to go gets no invented link.
+  assert.deepEqual(registryLinksFor('Put every debt minimum on autopay'), [])
 })
