@@ -55,6 +55,8 @@ export default function MoneyRouteCard({
   onPrimary,
   primaryLabel = 'Add this to my Plan',
   onAdjust,
+  onSecondary,
+  secondaryLabel,
   onResolveBlocker,
   followUps = [],
   onAskFollowUp,
@@ -174,6 +176,13 @@ export default function MoneyRouteCard({
           {busy ? 'Saving…' : primaryLabel} <ArrowRight className="h-4 w-4" />
         </button>}
         {!compact && onAdjust && route.allocations.some(item => item.adjustable) && <button type="button" onClick={onAdjust} disabled={busy} className="btn-ghost min-h-11 flex-1"><SlidersHorizontal className="h-4 w-4" /> Adjust amounts</button>}
+        {/* Refining is worth offering, not worth requiring — the plan is valid
+            before a single question is answered. */}
+        {onSecondary && secondaryLabel && (
+          <button type="button" onClick={onSecondary} disabled={busy} className="btn-ghost min-h-11 shrink-0 px-4">
+            {secondaryLabel}
+          </button>
+        )}
       </div>
 
       {/* Optional detail that would sharpen an already-valid plan. Deliberately

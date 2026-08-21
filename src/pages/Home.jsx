@@ -12,7 +12,7 @@ import DashboardGrid from '@/components/dashboard/DashboardGrid'
 import CustomizeHomeSheet from '@/components/dashboard/CustomizeHomeSheet'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden } from '@/context/GardenContext'
-import { getPlan } from '@/lib/advisorPlans'
+import { appendSteps, getPlan } from '@/lib/advisorPlans'
 import { milestoneEventsFromState, groupGardenGoals, stageProgress, STAGE_NAMES } from '@/lib/gardenModel'
 import { netWorthExplanation } from '@/lib/finance'
 import { reconcileGardenMilestones } from '@/lib/gardenProgress'
@@ -181,9 +181,31 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
     else if (action.href) navigate(action.href)
   }
 
-  function runMoneyRoute() {
-    if (approvedRouteStep?.id) navigate(`/plan/step/${approvedRouteStep.id}`)
-    else navigate('/advisor?firstRoute=1')
+  const [adopting, setAdopting] = useState(false)
+
+  /**
+   * Home already shows the plan, so sending the user to the Advisor to press a
+   * second button was a navigation that changed nothing about the decision.
+   * Accept it here and land on the Plan, where the steps now are.
+   *
+   * Refining is still worth doing — it is the secondary action, not a toll gate.
+   */
+  async function runMoneyRoute() {
+    if (approvedRouteStep?.id) { navigate(`/plan/step/${approvedRouteStep.id}`); return }
+    if (adopting) return
+    setAdopting(true)
+    try {
+      await appendSteps(user.id, planModel.routeCandidates, {
+        source: 'money-route', group: 'Your plan', dedupeCompleted: true,
+      })
+      navigate('/plan')
+    } catch {
+      // Falling back to the Advisor keeps the action honest when the write
+      // fails — the plan is still there and still addable from that screen.
+      navigate('/advisor?firstRoute=1')
+    } finally {
+      setAdopting(false)
+    }
   }
 
   function openGoal(goal) {
@@ -271,7 +293,12 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
           variant="home"
           hideAmounts={dashboardPreferences.hideAmounts}
           onPrimary={runMoneyRoute}
-          primaryLabel={approvedRouteStep ? 'Do the next move' : 'Review my plan'}
+          primaryLabel={approvedRouteStep
+            ? 'Do the next move'
+            : (adopting ? 'Adding…' : 'Add to my Plan')}
+          onSecondary={approvedRouteStep ? null : () => navigate('/advisor?firstRoute=1')}
+          secondaryLabel="Refine first"
+          busy={adopting}
         /> : <motion.section key={action.kind + action.title}
             initial={reducedMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}
             className="rounded-[24px] border border-emerald-200/15 bg-[linear-gradient(145deg,rgba(18,41,31,.96),rgba(8,20,15,.98))] p-4 shadow-[0_18px_45px_rgba(0,0,0,.2)] sm:p-5">
