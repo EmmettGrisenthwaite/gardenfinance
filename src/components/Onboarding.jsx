@@ -4,7 +4,12 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
-import { Sprout, ArrowRight, ArrowLeft, Check, Landmark, X } from 'lucide-react'
+import {
+  ArrowLeft, ArrowRight, Briefcase, Building2, Check, CircleSlash, ClipboardList,
+  CreditCard, Gauge, GraduationCap, Heart, HeartPulse, HelpCircle, Home, Hourglass, Landmark,
+  Laptop, LineChart, ListChecks, Minus, ShieldCheck, ShoppingCart, Shuffle, Sprout,
+  Target, TrendingUp, Users, X,
+} from 'lucide-react'
 import { ONBOARDING_ACCOUNTS_ROUTE } from '@/lib/routes'
 import { ACCOUNT_SHAPE_FOR_INVESTMENT_TYPE } from '@/lib/moneyModel'
 
@@ -36,10 +41,10 @@ const BASE_STEPS = [
     type: 'single',
     field: 'employment_type',
     options: [
-      { value: 'w2',        label: 'Salaried / W-2',            icon: '💼', sub: 'Regular paycheck, employer withholds taxes' },
-      { value: 'freelance', label: 'Freelance / Self-employed',  icon: '🧑‍💻', sub: 'You pay quarterly estimated taxes' },
-      { value: 'student',   label: 'Student',                    icon: '🎓', sub: 'In school, may have part-time income' },
-      { value: 'other',     label: 'Other',                      icon: '🌀', sub: 'Gig work, part-time, between jobs, etc.' },
+      { value: 'w2',        label: 'Salaried / W-2', sub: 'Regular paycheck, employer withholds taxes' },
+      { value: 'freelance', label: 'Freelance / Self-employed', sub: 'You pay quarterly estimated taxes' },
+      { value: 'student',   label: 'Student', sub: 'In school, may have part-time income' },
+      { value: 'other',     label: 'Other', sub: 'Gig work, part-time, between jobs, etc.' },
     ],
   },
   {
@@ -49,11 +54,11 @@ const BASE_STEPS = [
     type: 'single',
     field: 'employer_401k',
     options: [
-      { value: 'match',    label: 'Yes — with employer match', icon: '🎯', sub: 'Free money — usually 3–6% of your salary' },
-      { value: 'no_match', label: 'Yes — but no match',        icon: '📋', sub: 'Still useful for tax savings' },
-      { value: 'none',     label: 'No / Not offered',          icon: '❌', sub: "We'll focus on IRA instead" },
-      { value: 'unsure',   label: "I'm not sure",              icon: '🤷', sub: 'Worth checking your HR portal' },
-      { value: 'na',       label: 'Not applicable',            icon: '—',  sub: 'Student, freelance, or other' },
+      { value: 'match',    label: 'Yes — with employer match', sub: 'Free money — usually 3–6% of your salary' },
+      { value: 'no_match', label: 'Yes — but no match', sub: 'Still useful for tax savings' },
+      { value: 'none',     label: 'No / Not offered', sub: "We'll focus on IRA instead" },
+      { value: 'unsure',   label: "I'm not sure", sub: 'Worth checking your HR portal' },
+      { value: 'na',       label: 'Not applicable',  sub: 'Student, freelance, or other' },
     ],
   },
   {
@@ -63,12 +68,12 @@ const BASE_STEPS = [
     type: 'multi',
     field: 'investment_types',
     options: [
-      { value: 'roth_ira',  label: 'Roth IRA',         icon: '🌱' },
-      { value: 'trad_ira',  label: 'Traditional IRA',  icon: '📘' },
-      { value: '401k',      label: '401(k) / 403(b)',  icon: '🏢' },
-      { value: 'brokerage', label: 'Brokerage account', icon: '📈' },
-      { value: 'hsa',       label: 'HSA',              icon: '🏥' },
-      { value: 'none',      label: 'Not yet',          icon: '⏳' },
+      { value: 'roth_ira',  label: 'Roth IRA' },
+      { value: 'trad_ira',  label: 'Traditional IRA' },
+      { value: '401k',      label: '401(k) / 403(b)' },
+      { value: 'brokerage', label: 'Brokerage account' },
+      { value: 'hsa',       label: 'HSA' },
+      { value: 'none',      label: 'Not yet' },
     ],
   },
   {
@@ -78,10 +83,10 @@ const BASE_STEPS = [
     type: 'single',
     field: 'health_insurance',
     options: [
-      { value: 'employer',    label: 'Yes — through work',      icon: '🏢' },
-      { value: 'marketplace', label: 'Yes — marketplace / ACA', icon: '🛒' },
-      { value: 'parents',     label: "Yes — on parents' plan",  icon: '👨‍👩‍👧', sub: 'Available until age 26' },
-      { value: 'none',        label: 'No — uninsured',          icon: '⚠️', sub: "We'll flag this as a priority" },
+      { value: 'employer',    label: 'Yes — through work' },
+      { value: 'marketplace', label: 'Yes — marketplace / ACA' },
+      { value: 'parents',     label: "Yes — on parents' plan", sub: 'Available until age 26' },
+      { value: 'none',        label: 'No — uninsured', sub: "We'll flag this as a priority" },
     ],
   },
   {
@@ -103,12 +108,12 @@ const BASE_STEPS = [
     type: 'single',
     field: 'primary_goal',
     options: [
-      { value: 'emergency_fund',  label: 'Build my emergency fund', icon: '🛡️' },
-      { value: 'pay_debt',        label: 'Pay off debt',            icon: '💳' },
-      { value: 'start_investing', label: 'Start investing',         icon: '📈' },
-      { value: 'major_purchase',  label: 'Save for a big purchase', icon: '🏠', sub: 'House, car, travel, etc.' },
-      { value: 'optimize',        label: 'Optimize what I have',    icon: '⚡', sub: "Already on track, want to do more" },
-      { value: 'organize',        label: 'Just get organized',      icon: '📊', sub: "Starting from scratch" },
+      { value: 'emergency_fund',  label: 'Build my emergency fund' },
+      { value: 'pay_debt',        label: 'Pay off debt' },
+      { value: 'start_investing', label: 'Start investing' },
+      { value: 'major_purchase',  label: 'Save for a big purchase', sub: 'House, car, travel, etc.' },
+      { value: 'optimize',        label: 'Optimize what I have', sub: "Already on track, want to do more" },
+      { value: 'organize',        label: 'Just get organized', sub: "Starting from scratch" },
     ],
   },
 ]
@@ -163,7 +168,7 @@ function buildSteps(answers, profileOnly) {
         return {
           ...step,
           options: [
-            { value: 'retirement_catchup', label: 'Catch up on retirement', icon: '🎯', sub: 'Make the most of catch-up contributions' },
+            { value: 'retirement_catchup', label: 'Catch up on retirement', sub: 'Make the most of catch-up contributions' },
             ...step.options.map(option => option.value === 'start_investing' ? { ...option, label: 'Grow my investments' } : option),
           ],
         }
@@ -187,7 +192,7 @@ function buildSteps(answers, profileOnly) {
       if (s.id === 'insurance') {
         let options = [
           ...s.options.slice(0, 2),
-          { value: 'spouse', label: "Yes — on my spouse's plan", icon: '💑' },
+          { value: 'spouse', label: "Yes — on my spouse's plan" },
           ...s.options.slice(2),
         ]
         // The parents'-plan option ends at 26 — hide it for anyone older.
@@ -197,7 +202,7 @@ function buildSteps(answers, profileOnly) {
       if (s.id === 'goal' && age >= 45) {
         // Priorities shift with life stage: retirement readiness leads.
         const options = [
-          { value: 'retirement_catchup', label: 'Catch up on retirement', icon: '🎯', sub: 'Make the most of catch-up contributions' },
+          { value: 'retirement_catchup', label: 'Catch up on retirement', sub: 'Make the most of catch-up contributions' },
           ...s.options.map(o => o.value === 'start_investing' ? { ...o, label: 'Grow my investments' } : o),
         ]
         return { ...s, options }
@@ -242,13 +247,36 @@ function ChipSelect({ options, value, onChange }) {
                 : 'border-white/10 bg-white/[0.045] text-readable-secondary hover:border-emerald-400/35'
             }`}
           >
-            {option.icon && <span className="shrink-0 text-base leading-none">{option.icon}</span>}
+            <OptionIcon value={option.value} className={`h-4 w-4 shrink-0 ${selected ? 'text-emerald-200' : 'text-readable-muted'}`} />
             <span className="min-w-0 flex-1 truncate">{option.label}</span>
           </button>
         )
       })}
     </div>
   )
+}
+
+// Onboarding used emoji as its option glyphs. They render differently on every
+// platform, sit at the wrong optical weight beside the type, and are the one
+// thing the design system rules out in app chrome. Keyed by answer value so a
+// missing entry is a blank space rather than the wrong picture.
+const OPTION_ICONS = {
+  // work
+  w2: Briefcase, freelance: Laptop, student: GraduationCap, other: Shuffle,
+  // workplace retirement
+  match: Target, no_match: ClipboardList, none: CircleSlash, na: Minus, unsure: HelpCircle,
+  // investment accounts
+  roth_ira: Sprout, trad_ira: Landmark, '401k': Building2, brokerage: LineChart, hsa: HeartPulse,
+  // coverage
+  employer: Building2, marketplace: ShoppingCart, parents: Users, parent: Users, spouse: Heart,
+  // starting priority
+  emergency_fund: ShieldCheck, pay_debt: CreditCard, start_investing: TrendingUp,
+  major_purchase: Home, optimize: Gauge, organize: ListChecks, retirement_catchup: Hourglass,
+}
+
+function OptionIcon({ value, className = 'h-4 w-4' }) {
+  const Icon = OPTION_ICONS[value]
+  return Icon ? <Icon className={className} aria-hidden="true" /> : null
 }
 
 function OptionCard({ option, selected, onClick, multi }) {
@@ -263,7 +291,9 @@ function OptionCard({ option, selected, onClick, multi }) {
           : 'border-white/10 bg-white/[0.045] text-white/80 hover:border-emerald-400/40 hover:bg-emerald-500/[0.06]'
       }`}
     >
-      <span className="text-xl flex-shrink-0 w-7 text-center">{option.icon}</span>
+      <span className="flex w-7 flex-shrink-0 justify-center">
+        <OptionIcon value={option.value} className={`h-5 w-5 ${active ? 'text-emerald-200' : 'text-readable-muted'}`} />
+      </span>
       <div className="flex-1 min-w-0">
         <div className="font-medium text-sm">{option.label}</div>
         {option.sub && <div className="text-xs text-white/40 mt-0.5">{option.sub}</div>}
@@ -725,10 +755,10 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                     <ChipSelect
                       value={answers.employment_type}
                       options={[
-                        { value: 'w2', label: 'Salaried / W-2', icon: '💼' },
-                        { value: 'freelance', label: 'Freelance / self-employed', icon: '🧑‍💻' },
-                        { value: 'student', label: 'Student', icon: '🎓' },
-                        { value: 'other', label: 'Other or between jobs', icon: '🌀' },
+                        { value: 'w2', label: 'Salaried / W-2' },
+                        { value: 'freelance', label: 'Freelance / self-employed' },
+                        { value: 'student', label: 'Student' },
+                        { value: 'other', label: 'Other or between jobs' },
                       ]}
                       onChange={value => setAnswers(previous => ({
                         ...previous,
@@ -748,11 +778,11 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                       value={answers.health_insurance}
                       onChange={value => set('health_insurance', value)}
                       options={[
-                        { value: 'employer', label: 'Covered through work', icon: '🏢' },
-                        { value: 'marketplace', label: 'Marketplace / ACA plan', icon: '🛒' },
-                        ...(Number(answers.age) < 26 ? [{ value: 'parents', label: "On a parent's plan", icon: '👨‍👩‍👧' }] : []),
-                        { value: 'spouse', label: "On a spouse's plan", icon: '💑' },
-                        { value: 'none', label: 'Not currently covered', icon: '⚠️' },
+                        { value: 'employer', label: 'Covered through work' },
+                        { value: 'marketplace', label: 'Marketplace / ACA plan' },
+                        ...(Number(answers.age) < 26 ? [{ value: 'parents', label: "On a parent's plan" }] : []),
+                        { value: 'spouse', label: "On a spouse's plan" },
+                        { value: 'none', label: 'Not currently covered' },
                       ]}
                     />
                   </div>
@@ -764,10 +794,10 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                         value={answers.employer_401k}
                         onChange={value => set('employer_401k', value)}
                         options={[
-                          { value: 'match', label: 'Offered, with a match', icon: '🎯' },
-                          { value: 'no_match', label: 'Offered, no match', icon: '📋' },
-                          { value: 'none', label: 'Not offered', icon: '❌' },
-                          { value: 'unsure', label: "I'm not sure", icon: '🤷' },
+                          { value: 'match', label: 'Offered, with a match' },
+                          { value: 'no_match', label: 'Offered, no match' },
+                          { value: 'none', label: 'Not offered' },
+                          { value: 'unsure', label: "I'm not sure" },
                         ]}
                       />
                     </div>
@@ -785,13 +815,14 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                             key={option.value}
                             aria-pressed={selected}
                             onClick={() => toggleMulti('investment_types', option.value)}
-                            className={`min-h-11 rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors ${
+                            className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors ${
                               selected
                                 ? 'border-emerald-400/60 bg-emerald-500/[0.12] text-white'
                                 : 'border-white/10 bg-white/[0.045] text-readable-secondary hover:border-emerald-400/35'
                             }`}
                           >
-                            {option.label}
+                            <OptionIcon value={option.value} className={`h-4 w-4 shrink-0 ${selected ? 'text-emerald-200' : 'text-readable-muted'}`} />
+                            <span className="min-w-0 flex-1 truncate">{option.label}</span>
                           </button>
                         )
                       })}
