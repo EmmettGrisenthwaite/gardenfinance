@@ -48,6 +48,22 @@ self.addEventListener('message', event => {
   if (event.data === 'skip-waiting') self.skipWaiting()
 })
 
+// Every deploy mints new hashes, so the old bundle is cached forever and never
+// read again. Left alone this grows by roughly a megabyte per release — on a
+// phone, storage taken from the user for files that can never be served.
+//
+// Cache API keys come back in insertion order, so the oldest entries are the
+// front of the list. The cap is generous: one deploy is a handful of files, so
+// this only bites after many releases.
+const MAX_ASSET_ENTRIES = 24
+
+async function trimAssets(cache) {
+  const keys = await cache.keys()
+  if (keys.length <= MAX_ASSET_ENTRIES) return
+  const excess = keys.slice(0, keys.length - MAX_ASSET_ENTRIES)
+  await Promise.all(excess.map(key => cache.delete(key)))
+}
+
 const isHashedAsset = url => url.origin === self.location.origin
   && /^\/assets\/.+-[A-Za-z0-9_-]{8,}\.(js|css|woff2?|png|svg|jpg|webp)$/.test(url.pathname)
 
@@ -80,7 +96,8 @@ self.addEventListener('fetch', event => {
       const fresh = await fetch(request)
       if (fresh.ok) {
         const cache = await caches.open(ASSETS)
-        cache.put(request, fresh.clone())
+        await cache.put(request, fresh.clone())
+        await trimAssets(cache)
       }
       return fresh
     })())
