@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import { BANK_LINKING_ENABLED } from '@/lib/features'
 import {
   ArrowLeft, ArrowRight, Briefcase, Building2, Check, CircleSlash, ClipboardList,
   CreditCard, Gauge, GraduationCap, Heart, HeartPulse, HelpCircle, Home, Hourglass, Landmark,
@@ -981,7 +982,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                     </span>
                     <div>
                       <p className="text-sm font-semibold text-white">Retirement and brokerage come later</p>
-                      <p className="mt-1 text-xs leading-5 text-readable-secondary">These two set your emergency-fund target. Add retirement and investment accounts — or connect your bank — right after setup.</p>
+                      <p className="mt-1 text-xs leading-5 text-readable-secondary">These two set your emergency-fund target. Add retirement and investment accounts{BANK_LINKING_ENABLED ? ' — or connect your bank — ' : ' '}right after setup.</p>
                     </div>
                   </div>
                 </div>

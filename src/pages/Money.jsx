@@ -21,6 +21,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import BottomSheet from '@/components/ui/BottomSheet'
 import MoneySetupNudge from '@/components/MoneySetupNudge'
 import ConnectBank from '@/components/ConnectBank'
+import { BANK_LINKING_ENABLED } from '@/lib/features'
 import { actOnReminder, listReminders } from '@/lib/reminders'
 
 const fmt = value => {
@@ -998,10 +999,10 @@ export default function Money({
     const debtTotal = debts.reduce((sum, debt) => sum + Number(debt.balance || 0), 0)
     return (
       <div className="space-y-6">
-        <ConnectBank onConnected={loadData} />
+        {BANK_LINKING_ENABLED && <ConnectBank onConnected={loadData} />}
 
         <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4">
-          <p className="text-[15px] font-semibold text-white">Or add an account manually</p>
+          <p className="text-[15px] font-semibold text-white">{BANK_LINKING_ENABLED ? 'Or add an account manually' : 'Add your accounts'}</p>
           <p className="mt-1 text-[13px] leading-5 text-readable-secondary">Save each checking, savings, retirement, or brokerage account separately. Balances and account types update Home, net worth, Plan, and Advisor automatically.</p>
         </div>
 
