@@ -11,16 +11,16 @@ Everything below follows from that.
 
 ```
   1. COLLECT          2. GENERATE            3. REFINE              4. COMMIT
-  onboarding    →     money route      →     follow-ups       →     Plan tab
-  (facts)             (3–5 steps)            (answers)              (approved steps)
-                           ↑                      │
-                           └──────────────────────┘
-                            answers rewrite records,
-                            the route recomputes
+  onboarding    →     money route      →     interview        →     Plan tab
+  (facts)             (3–5 steps)            (≤3 taps)              (approved steps)
+                                                  │                      ↑
+                                                  └──────────────────────┘
+                                              revisions fold in at save time
 ```
 
-Stage 3 loops back into stage 2. That loop is the point: a question is only worth
-asking if the answer can change the plan.
+A question is only worth asking if the answer changes the plan — every question
+carries what it will change, and the plan that reaches stage 4 is the revised
+one, not the one the ladder first produced.
 
 ---
 
@@ -86,23 +86,42 @@ Rules:
 3. **Ordered by how much the answer moves the plan.** An expiring 0% balance
    outranks a deductible.
 
-### Two kinds of follow-up
+### The interview
 
-**Answerable** — the answer maps to a real column, so it is asked inline with a
-typed control, written straight to the record, and the route recomputes. No chat
-detour.
+`planInterview.js` turns those questions into a bounded flow: at most
+`INTERVIEW_MAX` (3), tapped rather than typed, each showing what it will change
+*before* it is answered.
 
-| Question | Writes |
-|---|---|
-| When do you need this goal? | `goals.deadline` |
-| What rate is this debt? | `debts.interest_rate` |
-| What does your employer match? | `accounts.employer_match_limit_percent` |
-| What is the big expense coming? | a new `goals` row |
+Only questions whose answer reduces to two taps get one — a question without a
+`SPECS` entry stays a chat prompt, because pretending a shrug is a decision is
+worse than asking properly. "Talk it through" hands any question to the advisor
+mid-flow without losing its wording.
 
-**Conversational** — no column can hold it ("what might go wrong in your life
-right now?"). Opens the advisor with a prompt that ends by instructing it to say
-what the answer changes, then ask one more question. Without that instruction the
-model answers and dumps five.
+Each answer produces a **revision**: a promotion, an added step, or a note.
+Nothing computes a new dollar figure, because a number derived from a
+multiple-choice answer would be a guess wearing arithmetic's clothes.
+
+Revisions fold in at the moment of saving, so what reaches the Plan is the plan
+the user agreed to rather than the one the ladder first produced.
+
+### Keeping the result clean
+
+Three passes run over a revised plan, in order:
+
+1. **`dedupeByFamily`** — one errand per family. The ladder offers a savings
+   account for the cushion, an uneven-income answer offers one for lean months,
+   a known-bill answer offers one for the bill; each is correct alone and
+   together they say "open three savings accounts". The best-informed member
+   survives — an interview step outranks one generated before asking.
+2. **`trimToMax`** — the interview may sharpen a plan, never inflate it.
+   Generic practice gives way first, never an answer the user just gave, and a
+   rider never outlives the move it automates.
+3. **`orderPrerequisitesFirst`** — only ever moves a step earlier, and only when
+   leaving it would produce an impossible instruction.
+
+Where the account-opening *is* the money move, the two are one step ("Open a
+savings account and move $900 into it") rather than a transfer ranked above the
+errand that makes it possible.
 
 ## 4. Commit — the Plan tab
 
@@ -129,13 +148,18 @@ Enforced by tests; break one and the suite fails.
 7. No copy contains `undefined`, `NaN`, or a `$0` monthly figure.
 8. Durations read in months under two years, then years, capped at "over 10
    years"; a *start* date beyond ten years is dropped rather than shown.
+9. No step reads as app housekeeping, and no completion criterion describes a
+   record in this app rather than something true in the world.
+10. One errand per family, for every profile against every combination of
+    interview answers — and the interview never pushes a plan past 5 steps.
 
 ## Where things live
 
 ```
 src/lib/moneyRoute.js      the waterfall, steps, durations
 src/lib/planFollowUps.js   the questions, their gating and topics
-src/lib/planAnswers.js     answer → record write → recompute
+src/lib/planInterview.js   the three questions, and what answers do
+src/lib/planComposition.js 3-5 steps, families, trimming, ordering
 src/lib/finance.js         snapshot, thresholds, amortization
 src/components/MoneyRouteCard.jsx   the plan and its refinement
 src/pages/AIAdvisor.jsx    conversation, guides, committing to Plan
