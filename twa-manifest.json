@@ -1,5 +1,5 @@
 {
-  "packageId": "app.vercel.garden_financial.twa",
+  "packageId": "app.gardenfinancial.twa",
   "host": "garden-financial.vercel.app",
   "name": "Garden Financial",
   "launcherName": "Garden",
@@ -46,5 +46,5 @@
     "standalone",
     "minimal-ui"
   ],
-  "appVersion": "1"
+  "appVersion": "2"
 }
