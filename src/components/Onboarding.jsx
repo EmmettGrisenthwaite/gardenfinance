@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
@@ -12,6 +12,71 @@ import {
 } from 'lucide-react'
 import { ONBOARDING_ACCOUNTS_ROUTE } from '@/lib/routes'
 import { ACCOUNT_SHAPE_FOR_INVESTMENT_TYPE } from '@/lib/moneyModel'
+
+/**
+ * Keeps a modal behaving like one.
+ *
+ * Setup is a full-screen overlay, but the page behind it stayed in the tab
+ * order: seven focusable controls, so Tab walked out of the questions and into
+ * Home, and a screen reader announced a dashboard the user could not see.
+ * The background also scrolled under the sheet on a phone.
+ *
+ * Restores focus to wherever it was when the overlay closes, because losing
+ * your place is its own small failure.
+ */
+function useModalFocus(containerRef) {
+  useEffect(() => {
+    const node = containerRef.current
+    if (!node) return undefined
+    const previous = document.activeElement
+    const { body } = document
+    const priorOverflow = body.style.overflow
+    body.style.overflow = 'hidden'
+
+    // Containing Tab is not enough: the dashboard behind stays in the
+    // accessibility tree, so a screen reader still walks a page the user
+    // cannot see. The overlay is portalled to body, which makes #root purely
+    // background and safe to take out of the tree entirely.
+    const background = document.getElementById('root')
+    if (background) {
+      background.setAttribute('aria-hidden', 'true')
+      background.setAttribute('inert', '')
+    }
+
+    const selector = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+    const focusable = () => [...node.querySelectorAll(selector)].filter(el => el.offsetParent !== null)
+
+    const first = focusable()[0]
+    if (first) first.focus()
+
+    function onKeyDown(event) {
+      if (event.key !== 'Tab') return
+      const items = focusable()
+      if (!items.length) return
+      const firstItem = items[0]
+      const lastItem = items[items.length - 1]
+      if (event.shiftKey && document.activeElement === firstItem) {
+        event.preventDefault()
+        lastItem.focus()
+      } else if (!event.shiftKey && document.activeElement === lastItem) {
+        event.preventDefault()
+        firstItem.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      body.style.overflow = priorOverflow
+      if (background) {
+        background.removeAttribute('aria-hidden')
+        background.removeAttribute('inert')
+      }
+      if (previous instanceof HTMLElement) previous.focus()
+    }
+  }, [containerRef])
+}
+
 
 // ─── Step definitions ──────────────────────────────────────────────────────────
 const BASE_STEPS = [
@@ -372,6 +437,8 @@ function DebtsStep({ debts, setDebts }) {
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export default function Onboarding({ onClose, profileOnly = false }) {
+  const overlayRef = useRef(null)
+  useModalFocus(overlayRef)
   const { user, profile, setProfile } = useAuth()
   const navigate = useNavigate()
   // profileOnly (editing from Settings) shows just the profile questions — no
@@ -627,7 +694,13 @@ export default function Onboarding({ onClose, profileOnly = false }) {
   // Portal to <body> so the modal escapes the page's z-10 stacking context and
   // sits above the floating mobile nav (z-50), which otherwise overlaps the footer.
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4">
+    <div
+      ref={overlayRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Set up your plan"
+      className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm sm:p-4"
+    >
       <motion.div
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
