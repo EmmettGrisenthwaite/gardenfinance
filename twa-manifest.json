@@ -17,11 +17,11 @@
   "maskableIconUrl": "https://garden-financial.vercel.app/icon-maskable-512.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
-    "path": "C:\\Users\\emmet\\OneDrive\\Documents\\gardenfinancial\\.claude\\worktrees\\crazy-germain-d3da8e\\android.keystore",
+    "path": "C:\\Users\\emmet\\garden-twa\\android.keystore",
     "alias": "android"
   },
-  "appVersionName": "1",
-  "appVersionCode": 1,
+  "appVersionName": "1.0.0",
+  "appVersionCode": 2,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://garden-financial.vercel.app/manifest.webmanifest",
@@ -46,5 +46,5 @@
     "standalone",
     "minimal-ui"
   ],
-  "appVersion": "2"
+  "appVersion": "1.0.0"
 }

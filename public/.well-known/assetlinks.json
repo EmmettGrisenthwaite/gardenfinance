@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.gardenfinancial.twa",
+      "sha256_cert_fingerprints": [
+        "92:C3:3F:A2:6D:9C:08:8A:5F:0F:75:E9:07:AF:07:12:4F:B2:38:32:E6:18:B6:A1:AC:5C:B0:0B:42:37:E4:AA"
+      ]
+    }
+  }
+]
