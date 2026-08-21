@@ -283,7 +283,10 @@ test('the plan is several real money moves, not one suggestion', () => {
 test('step text names a destination, never a whole sentence', () => {
   const route = buildMoneyRoute(state({
     profile: { monthly_income: 1600, monthly_expenses: 1350, health_insurance: 'parent', employer_401k: 'none', onboarding_complete: true },
-    accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 300 }],
+    accounts: [
+      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 300 },
+      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: 100 },
+    ],
     debts: [{ id: 'card', name: 'Credit card', balance: 600, interest_rate: 24, minimum_payment: 25 }],
   }))
   const steps = buildInitialPlan(route)
@@ -578,7 +581,11 @@ test('one priority absorbing the surplus still yields a plan, not a single move'
 
   // The additions are real setup work, each earned by this user's records.
   const intents = steps.map(step => step.intentKey)
-  assert.ok(intents.includes('open.cushion_savings'), 'cash only in checking should prompt a savings account')
+  // With nowhere to put the money, the transfer opens the account itself
+  // rather than trailing a separate "open an account" step behind it.
+  const reserve = steps.find(step => step.intentKey === 'fund.emergency_reserve')
+  assert.match(reserve.text, /^Open a savings account and move \$[\d,]+ into it$/)
+  assert.equal(intents.includes('open.cushion_savings'), false)
   assert.ok(intents.includes('setup.autopay_minimums'), 'having debt should prompt autopay')
 })
 

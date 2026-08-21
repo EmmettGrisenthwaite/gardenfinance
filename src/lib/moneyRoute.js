@@ -1,6 +1,6 @@
 import { LIMITS, THRESHOLDS, payoffMonths } from './finance.js'
 import { accountFamily, isWorkplaceAccount } from './moneyModel.js'
-import { PLAN_MAX, PLAN_MIN, composePlan, eligibleBackfill } from './planComposition.js'
+import { PLAN_MAX, PLAN_MIN, composePlan, eligibleBackfill, orderPrerequisitesFirst } from './planComposition.js'
 
 // Accounts with a shared annual contribution ceiling. A taxable brokerage has
 // none, which is what makes it the right home for anything above the cap.
@@ -464,7 +464,7 @@ export function buildMoneyRoute({
     const starterGap = Math.max(0, THRESHOLDS.starterEmergency - num(snapshot.liquid))
     if (starterGap > 0 && remaining > 0) {
       remaining = addAllocation(allocations, {
-        key: 'starter_emergency', label: `Save your first ${money(THRESHOLDS.starterEmergency)}`, destinationName: 'your emergency fund',
+        key: 'starter_emergency', needsAccount: !emergency, label: `Save your first ${money(THRESHOLDS.starterEmergency)}`, destinationName: 'your emergency fund',
         maxAmount: starterGap, destinationType: 'account', destinationId: emergency?.id || null,
         sourceAccountId: source?.id || null,
         // Someone with $570 banked is 57% of the way up this rung and the card
@@ -544,7 +544,7 @@ export function buildMoneyRoute({
     const fullReserveGap = Math.max(0, num(snapshot.efTargetAmount) - projectedLiquid)
     if (fullReserveGap > 0 && remaining > 0) {
       remaining = addAllocation(allocations, {
-        key: 'full_emergency', label: `Grow emergency savings to ${snapshot.efTargetMonths || 3} months`, destinationName: 'your emergency fund',
+        key: 'full_emergency', needsAccount: !emergency, label: `Grow emergency savings to ${snapshot.efTargetMonths || 3} months`, destinationName: 'your emergency fund',
         maxAmount: fullReserveGap, destinationType: 'account', destinationId: emergency?.id || null,
         sourceAccountId: source?.id || null,
         reason: `Enough cash to cover ${snapshot.efTargetMonths || 3} months of your spending — ${money(snapshot.efTargetAmount)}.`,
@@ -639,7 +639,13 @@ export function buildMoneyRoute({
 
     // A cushion living in the account you spend from is a cushion you will
     // spend. This is the most common reason a starter fund never gets built.
-    if (cashAccounts.length && !savingsAccounts.length) {
+    const reserveFunded = allocations.some(item => (item.key === 'starter_emergency' || item.key === 'full_emergency')
+      && num(item.amount) > 0)
+    // When money is already heading for the cushion, the transfer step opens the
+    // account itself (see allocationStep). A separate "open an account" rung
+    // would be a second line for one errand — and, ranked below the transfer,
+    // would tell someone to fund an account they do not have yet.
+    if (cashAccounts.length && !savingsAccounts.length && !reserveFunded) {
       allocations.push({
         key: 'separate_cushion_account', label: 'Open a savings account to keep your cushion in',
         amount: 0, destinationType: 'account_opening', destinationId: null,
@@ -887,9 +893,18 @@ function allocationStep(route, allocation, index) {
     // A step reads "Move $250/mo toward your emergency fund", so it needs a
     // destination NOUN. Card labels are sentences ("Save your first $1,000"),
     // which cannot be spliced in after "toward" — hence destinationName.
-    text: `${isDebt ? 'Pay' : 'Move'} ${money(amount)}/mo ${isDebt ? 'to' : 'toward'} ${allocation.destinationName || allocation.label.replace(/^Pay extra toward |^Build the |^Grow |^Fund |^Increase investing in /, '')}`,
-    detail: allocation.reason,
-    doneWhen: `${money(amount)} has actually ${isDebt ? 'been paid' : 'moved'}.`,
+    // With nowhere yet to put it, the transfer opens the account too. Two steps
+    // would be one errand split in half — and ranked below the transfer, the
+    // opener would arrive after the instruction that depends on it.
+    text: allocation.needsAccount
+      ? `Open a savings account and move ${money(amount)} into it`
+      : `${isDebt ? 'Pay' : 'Move'} ${money(amount)}/mo ${isDebt ? 'to' : 'toward'} ${allocation.destinationName || allocation.label.replace(/^Pay extra toward |^Build the |^Grow |^Fund |^Increase investing in /, '')}`,
+    detail: allocation.needsAccount
+      ? `${allocation.reason} Keep it somewhere separate from the account you spend from — money that sits beside your everyday balance gets spent without a decision.`
+      : allocation.reason,
+    doneWhen: allocation.needsAccount
+      ? `The savings account is open and ${money(amount)} has landed in it.`
+      : `${money(amount)} has actually ${isDebt ? 'been paid' : 'moved'}.`,
     // Says what the money DOES, in the words the user would use. "Directs
     // $250/mo to the highest verified debt cost" describes the algorithm.
     impact: isDebt
@@ -1014,7 +1029,10 @@ export function buildInitialPlan(route) {
     }))
 
   const { steps } = composePlan(pool, { backfill, min: PLAN_MIN, max: PLAN_SIZE })
-  return steps.map((step, index) => ({ ...step, chapterOrder: index + 1 }))
+  // Priority order puts the transfer above the account-opening that makes it
+  // possible. Correct as ranking, impossible as a sequence — so prerequisites
+  // move ahead of whatever needs them, and nothing else shifts.
+  return orderPrerequisitesFirst(steps).map((step, index) => ({ ...step, chapterOrder: index + 1 }))
 }
 
 export function formatMoneyRouteForAdvisor(route) {

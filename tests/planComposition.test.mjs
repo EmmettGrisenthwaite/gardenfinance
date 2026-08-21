@@ -5,6 +5,10 @@ import { registryLinksFor } from '../src/lib/providerLinks.js'
 import { buildInitialPlan, buildMoneyRoute } from '../src/lib/moneyRoute.js'
 import {
   MAX_PER_TOPIC,
+  dedupeByFamily,
+  orderPrerequisitesFirst,
+  stepFamily,
+  trimToMax,
   PLAN_MAX,
   PLAN_MIN,
   composePlan,
@@ -305,4 +309,81 @@ test('steps that need a provider carry real links', () => {
 
   // And a step with nowhere to go gets no invented link.
   assert.deepEqual(registryLinksFor('Put every debt minimum on autopay'), [])
+})
+
+// ── Adding to the Plan cleanly ───────────────────────────────────────────────
+
+test('one errand is never asked for twice, however the interview is answered', () => {
+  // Three correct rungs — a cushion account, a lean-month account, a sinking
+  // fund — added up to a plan that said "open three savings accounts".
+  const steps = [
+    { intentKey: 'open.cushion_savings', text: 'Open a savings account for your cushion', source: 'money-route' },
+    { intentKey: 'fund.emergency_reserve', text: 'Move $900/mo', source: 'money-route', outcome: { amount: 900 } },
+    { intentKey: 'open.lean_month_buffer', text: 'Open a separate savings account', source: 'interview' },
+    { intentKey: 'open.sinking_fund', text: 'Open a second savings account', source: 'interview' },
+  ]
+  const deduped = dedupeByFamily(steps)
+  const savings = deduped.filter(step => stepFamily(step) === 'open_savings')
+  assert.equal(savings.length, 1, `expected one savings errand, got ${savings.length}`)
+  // The one kept reflects what the user actually told us.
+  assert.equal(savings[0].source, 'interview')
+  // Position is inherited, so collapsing a repeat never reshuffles the plan.
+  assert.equal(deduped[0].intentKey, 'open.lean_month_buffer')
+  assert.equal(deduped.length, 2)
+})
+
+test('freeing up margin and culling subscriptions are the same errand', () => {
+  const deduped = dedupeByFamily([
+    { intentKey: 'budget.find_first_margin', text: 'Free up your first $50 a month', source: 'money-route' },
+    { intentKey: 'habit.subscription_audit', text: 'List every recurring charge and cancel one', source: 'interview' },
+  ])
+  assert.equal(deduped.length, 1)
+})
+
+test('the interview can sharpen a plan but never inflate it', () => {
+  const steps = Array.from({ length: 8 }, (_, i) => ({
+    intentKey: i < 4 ? `fund.thing_${i}` : `habit.thing_${i}`,
+    text: `step ${i}`,
+    source: i > 5 ? 'interview' : 'money-route',
+    outcome: i < 4 ? { amount: 100 } : undefined,
+  }))
+  const trimmed = trimToMax(steps, PLAN_MAX)
+  assert.equal(trimmed.length, PLAN_MAX)
+  // What the user just told us survives; generic habits are what give way.
+  assert.ok(trimmed.some(step => step.source === 'interview'))
+})
+
+test('trimming never orphans an automation from the move it automates', () => {
+  const steps = [
+    { intentKey: 'fund.emergency_reserve', text: 'Move $500', source: 'money-route', outcome: { amount: 500 } },
+    { intentKey: 'setup.fund.emergency_reserve', text: 'Schedule $500', source: 'money-route' },
+    ...Array.from({ length: 5 }, (_, i) => ({ intentKey: `habit.h${i}`, text: `habit ${i}`, source: 'money-route' })),
+  ]
+  const trimmed = trimToMax(steps, PLAN_MAX)
+  const hasRider = trimmed.some(step => step.intentKey === 'setup.fund.emergency_reserve')
+  const hasParent = trimmed.some(step => step.intentKey === 'fund.emergency_reserve')
+  assert.equal(hasRider && !hasParent, false, 'a rider outlived its parent')
+})
+
+test('you are never told to fund an account before opening it', () => {
+  const ordered = orderPrerequisitesFirst([
+    { intentKey: 'fund.emergency_reserve', text: 'Move $900/mo toward your emergency fund' },
+    { intentKey: 'setup.fund.emergency_reserve', text: 'Schedule $900 monthly' },
+    { intentKey: 'open.lean_month_buffer', text: 'Open a separate savings account' },
+  ]).map(step => step.intentKey)
+  assert.equal(ordered[0], 'open.lean_month_buffer')
+
+  // Already in a workable order, so nothing moves.
+  const untouched = orderPrerequisitesFirst([
+    { intentKey: 'open.lean_month_buffer' },
+    { intentKey: 'fund.emergency_reserve' },
+  ]).map(step => step.intentKey)
+  assert.deepEqual(untouched, ['open.lean_month_buffer', 'fund.emergency_reserve'])
+
+  // No dependent step present — the opener stays where the ladder ranked it.
+  const alone = orderPrerequisitesFirst([
+    { intentKey: 'pay.debt.visa' },
+    { intentKey: 'open.lean_month_buffer' },
+  ]).map(step => step.intentKey)
+  assert.deepEqual(alone, ['pay.debt.visa', 'open.lean_month_buffer'])
 })

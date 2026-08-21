@@ -1,4 +1,5 @@
 import { planFollowUps } from './planFollowUps.js'
+import { PLAN_MAX, dedupeByFamily, orderPrerequisitesFirst, trimToMax } from './planComposition.js'
 
 /**
  * The short interview between "here is your plan" and "this plan is yours".
@@ -121,7 +122,7 @@ const SPECS = {
 
   income_stability: {
     changes: 'Changes how big your cushion needs to be before anything else starts.',
-    options: () => [
+    options: context => [
       { id: 'steady', label: "It's the same most months",
         revise: () => revision({
           id: 'income_stability',
@@ -132,7 +133,7 @@ const SPECS = {
           id: 'income_stability',
           summary: 'Cushion moves ahead of everything that is not urgent.',
           promote: 'fund.emergency_reserve',
-          add: step({
+          add: context.opensCushionAccount ? null : step({
             text: 'Open a separate savings account and start it with one lean month of expenses',
             detail: 'Every amount in this plan assumes the surplus repeats. When income swings, the month that matters is the worst one you can expect — so the cushion needs its own account, funded first, before anything optional gets a share.',
             doneWhen: 'The account is open at your bank and the first transfer has landed in it.',
@@ -309,12 +310,15 @@ const SPECS = {
 
   upcoming_cost: {
     changes: 'Decides whether the cushion has to absorb a known bill.',
-    options: () => [
+    options: context => [
       { id: 'yes', label: 'Yes, within six months',
         revise: () => revision({
           id: 'upcoming_cost',
           summary: 'A separate fund for it joins the plan.',
-          add: step({
+          // "Open a second savings account" means nothing to someone opening
+          // their first one this month. The cushion comes first; the bill gets
+          // its own pot once there is a pot to be second to.
+          add: context.opensCushionAccount ? null : step({
             text: 'Open a second savings account for the bill, and set a transfer to it',
             detail: 'An expense you already know about is not an emergency, and paying it out of the emergency fund leaves you with no emergency fund the day after. Two accounts, two jobs — most banks let you open another savings account in a few minutes at no cost.',
             doneWhen: 'The second account exists and a recurring transfer into it is scheduled.',
@@ -345,6 +349,9 @@ function questionContext({ debts = [], goals = [], route }) {
     expensiveDebt: live.filter(debt => num(debt.interest_rate) > 7)
       .sort((left, right) => num(right.interest_rate) - num(left.interest_rate))[0] || null,
     lateGoal: goals.find(goal => goal.deadline && num(goal.target_amount) > num(goal.current_amount)) || null,
+    // The reserve transfer opens the account itself when there is nowhere to
+    // put the money, so an answer must not offer to open a second one.
+    opensCushionAccount: funded.some(item => item.needsAccount),
     funded,
   }
 }
@@ -475,8 +482,14 @@ export function applyRevisions(steps = [], revisions = []) {
     added.push(item.add)
   }
 
+  // Exact intentKey matching cannot see that "open a savings account for your
+  // cushion", "open one for lean months" and "open a second one for the bill"
+  // are one errand asked three ways. Collapsing by family keeps the best-
+  // informed version of each — the one that reflects what the user just said.
+  const finalSteps = orderPrerequisitesFirst(trimToMax(dedupeByFamily([...ordered, ...added]), PLAN_MAX))
+
   return {
-    steps: [...ordered, ...added].map((step, index) => ({ ...step, chapterOrder: index + 1 })),
+    steps: finalSteps.map((step, index) => ({ ...step, chapterOrder: index + 1 })),
     notes: revisions.map(item => item.note).filter(Boolean),
   }
 }

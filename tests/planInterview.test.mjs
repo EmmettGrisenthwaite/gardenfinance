@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { computeSnapshot } from '../src/lib/finance.js'
 import { buildInitialPlan, buildMoneyRoute } from '../src/lib/moneyRoute.js'
 import { INTERVIEW_MAX, applyRevisions, buildInterview, interviewQuestions } from '../src/lib/planInterview.js'
+import { PLAN_MAX } from '../src/lib/planComposition.js'
 
 function setup(input) {
   const snapshot = computeSnapshot({ ...input, cashFlowItems: [] })
@@ -156,7 +157,18 @@ test('swinging income puts the cushion in front', () => {
   const state = buildInterview({ ...context, answers: { income_stability: 'swings' } })
   const { steps } = applyRevisions(context.plan, state.revisions)
   assert.equal(steps[0].intentKey, 'fund.emergency_reserve')
-  assert.ok(steps.some(step => step.intentKey === 'open.lean_month_buffer'))
+  // YOUNG_PRO has no savings account, so the reserve transfer already opens
+  // one — offering to open a second would be the same errand twice.
+  assert.equal(steps.some(step => step.intentKey === 'open.lean_month_buffer'), false)
+
+  // Someone who already has somewhere to save does get the extra account.
+  const withSavings = setup({
+    ...YOUNG_PRO,
+    accounts: [...YOUNG_PRO.accounts, { id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 2000 }],
+  })
+  const second = buildInterview({ ...withSavings, answers: { income_stability: 'swings' } })
+  assert.ok(applyRevisions(withSavings.plan, second.revisions).steps
+    .some(step => step.intentKey === 'open.lean_month_buffer'))
 })
 
 test('a missed payment makes protecting the minimums the first thing in the plan', () => {
@@ -252,6 +264,48 @@ test('no tapped answer ever invents a number', () => {
               `${who}/${question.id}/${option.id}: invented "${claim}"`)
           }
         }
+      }
+    }
+  }
+})
+
+test('no answer combination ever produces a repeated errand or an oversized plan', () => {
+  // The exhaustive version of the redundancy audit: every profile, every
+  // combination of answers. Worst case before this was a plan telling one
+  // person to open three separate savings accounts.
+  const FAMILIES = [
+    ['open a savings account', /open (a|the|a second|another|your)?\s*(separate |second )?savings account/i],
+    ['autopay', /on autopay|pay automatically/i],
+    ['cancel a subscription', /subscription|recurring charge/i],
+  ]
+
+  for (const [who, input] of Object.entries(PEOPLE)) {
+    const context = setup(input)
+    const questions = interviewQuestions(context)
+
+    // every combination of one answer per question, including partial ones
+    let combos = [{}]
+    for (const question of questions) {
+      const next = []
+      for (const base of combos) for (const option of question.options) next.push({ ...base, [question.id]: option.id })
+      combos = [...combos, ...next]
+    }
+
+    for (const answers of combos) {
+      const state = buildInterview({ ...context, answers })
+      const { steps } = applyRevisions(context.plan, state.revisions)
+      const label = `${who} [${Object.entries(answers).map(([k, v]) => `${k}=${v}`).join(',') || 'unanswered'}]`
+
+      const keys = steps.map(step => step.intentKey)
+      assert.equal(new Set(keys).size, keys.length, `${label}: duplicate intentKey`)
+      assert.ok(steps.length <= PLAN_MAX, `${label}: ${steps.length} steps, over PLAN_MAX`)
+
+      for (const [name, pattern] of FAMILIES) {
+        const hits = steps.filter(step => pattern.test(step.text)
+          && !String(step.intentKey || '').startsWith('setup.fund')
+          && !String(step.intentKey || '').startsWith('setup.pay'))
+        assert.ok(hits.length <= 1,
+          `${label}: ${hits.length}× "${name}" —\n      ${hits.map(h => h.text).join('\n      ')}`)
       }
     }
   }

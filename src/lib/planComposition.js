@@ -89,6 +89,118 @@ export function stepKind(step) {
   return 'personal'
 }
 
+// Two steps can sit in different topics and still send the user out of the door
+// to do the same physical thing. Opening a savings account is the clearest case:
+// the ladder offers one for the cushion, an uneven-income answer offers one for
+// lean months, and a known-bill answer offers one for the bill — each correct
+// on its own, and together a plan that says "open three savings accounts".
+//
+// Keyed on intent rather than wording, so rephrasing a step cannot quietly
+// break the grouping.
+const FAMILY_BY_INTENT = [
+  [/^open\.(cushion_savings|lean_month_buffer|sinking_fund)$/, 'open_savings'],
+  [/^(setup\.autopay_minimums|habit\.autopay_bills)$/, 'autopay'],
+  [/^(habit\.subscription_audit|budget\.find_first_margin)$/, 'subscriptions'],
+  [/^(open\.investment_account|open\.taxable_brokerage)$/, 'open_investing'],
+]
+
+/** The physical errand a step sends someone on, or null when it is unique. */
+export function stepFamily(step) {
+  const intent = String(step?.intentKey || '')
+  for (const [pattern, family] of FAMILY_BY_INTENT) {
+    if (pattern.test(intent)) return family
+  }
+  return null
+}
+
+// You cannot pay into an account you have not opened. The ladder ranks by what
+// earns most, which puts the transfer above the errand that makes the transfer
+// possible — correct as priority, impossible as a sequence.
+const PREREQUISITES = [
+  { opens: /^open\.lean_month_buffer$/, needed: /^(setup\.)?fund\.emergency_reserve$/ },
+  { opens: /^open\.sinking_fund$/, needed: /^(setup\.)?fund\.goal\./ },
+]
+
+/**
+ * Move each prerequisite immediately ahead of the first step that depends on it.
+ *
+ * Only ever moves a step earlier, so the priority order the ladder produced is
+ * preserved everywhere it does not create an impossible instruction.
+ */
+export function orderPrerequisitesFirst(steps = []) {
+  const ordered = [...steps]
+  for (const rule of PREREQUISITES) {
+    const openAt = ordered.findIndex(step => rule.opens.test(String(step?.intentKey || '')))
+    if (openAt === -1) continue
+    const needAt = ordered.findIndex(step => rule.needed.test(String(step?.intentKey || '')))
+    if (needAt === -1 || needAt > openAt) continue
+    const [opener] = ordered.splice(openAt, 1)
+    ordered.splice(needAt, 0, opener)
+  }
+  return ordered
+}
+
+/**
+ * Bring a revised plan back inside the size the plan promises.
+ *
+ * composePlan caps at PLAN_MAX, but the interview adds on top of that — answer
+ * three questions and a five-step plan becomes eight, which is the same failure
+ * as a one-step plan seen from the other end. Nobody acts on eight things.
+ *
+ * What goes first is generic practice, because an answer the user just gave
+ * outranks a habit the app would suggest to anyone. A rider never outlives the
+ * move it automates.
+ */
+export function trimToMax(steps = [], max = PLAN_MAX) {
+  if (steps.length <= max) return steps
+  const keep = [...steps]
+
+  const removable = () => {
+    // Never orphan an automation, and never drop something an answer produced
+    // while generic advice is still on the list.
+    const hasChild = step => keep.some(other => parentIntent(other) === step.intentKey)
+    const practice = keep.filter(step => stepKind(step) === 'practice' && !hasChild(step) && step.source !== 'interview')
+    if (practice.length) return practice[practice.length - 1]
+    const generic = keep.filter(step => step.source !== 'interview' && !hasChild(step))
+    if (generic.length) return generic[generic.length - 1]
+    const any = keep.filter(step => !hasChild(step))
+    return any[any.length - 1] || null
+  }
+
+  while (keep.length > max) {
+    const victim = removable()
+    if (!victim) break
+    keep.splice(keep.indexOf(victim), 1)
+  }
+  return keep
+}
+
+/**
+ * Keep one step per family — the best-informed one.
+ *
+ * An interview step reflects something the user just said, so it outranks a
+ * step the ladder generated before asking. Position is inherited from whichever
+ * came first, so collapsing a repeat never reshuffles the plan.
+ */
+export function dedupeByFamily(steps = []) {
+  const bestAt = new Map()
+  const result = []
+  const rank = step => (step?.source === 'interview' ? 2 : 1)
+
+  for (const step of steps) {
+    const family = stepFamily(step)
+    if (!family) { result.push(step); continue }
+    if (!bestAt.has(family)) {
+      bestAt.set(family, result.length)
+      result.push(step)
+      continue
+    }
+    const at = bestAt.get(family)
+    if (rank(step) > rank(result[at])) result[at] = step
+  }
+  return result
+}
+
 export function stepTopic(step) {
   return TOPIC_BY_PRIORITY[step?.priorityKey] || 'habit'
 }
