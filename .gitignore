@@ -24,6 +24,10 @@ dist-ssr
 *.sw?
 
 .env
+# Any variant — .env.local, .env.production, and the .env.bak someone makes
+# before editing. The template is the one file here that must stay tracked.
+.env.*
+!.env.example
 
 # Local-only Supabase deploy token (never commit)
 .supabase-token
