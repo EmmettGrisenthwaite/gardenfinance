@@ -246,6 +246,9 @@ export const PRACTICE_BACKFILL = [
     detail: 'Your report decides what you pay to borrow for the next decade — rent applications, car loans, a mortgage, sometimes a job. It is free, and errors on it are common enough that reading it once is worth the half hour.',
     doneWhen: 'You have read your current credit report and know what is on it.',
     impact: 'Finds errors that quietly cost you the best rates',
+    // Maintenance, not setup: a report read last January says nothing about
+    // what is on it now, and you are entitled to a free one every year.
+    recurMonths: 12,
     gate: () => true,
   },
   {
@@ -256,6 +259,9 @@ export const PRACTICE_BACKFILL = [
     detail: 'Recurring charges are the easiest money in any budget to free up, because cancelling one costs you nothing you would notice. Most people find at least one they had forgotten they were paying for.',
     doneWhen: 'Every recurring subscription is written down and at least one is cancelled.',
     impact: 'Frees up money without changing how you live',
+    // Subscriptions grow back. Half a year is long enough that the list has
+    // genuinely changed, and short enough to catch a free trial that converted.
+    recurMonths: 6,
     gate: context => num(context?.expenses) > 0,
   },
   {
@@ -271,15 +277,62 @@ export const PRACTICE_BACKFILL = [
     impact: 'Removes late fees from the list of things that can go wrong',
     gate: context => !(context?.debts || []).some(debt => num(debt.balance) > 0),
   },
+  {
+    key: 'raise_contribution',
+    intentKey: 'habit.raise_contribution',
+    priorityKey: 'grow',
+    text: 'Raise your monthly transfer by whatever your pay went up',
+    detail: 'The month after a raise is the only time increasing what you save costs you nothing you were already used to. Left alone, a raise is absorbed by spending within about two months and the plan never sees it.',
+    doneWhen: 'Your recurring transfer is higher than it was, or you have confirmed your pay has not changed.',
+    impact: 'Turns a raise into progress instead of higher spending',
+    recurMonths: 12,
+    // Only worth saying to someone who already has a transfer running.
+    gate: context => num(context?.available) > 0,
+  },
+  {
+    key: 'beneficiaries',
+    intentKey: 'habit.beneficiaries',
+    priorityKey: 'grow',
+    text: 'Name a beneficiary on every retirement and investment account',
+    detail: 'A beneficiary on the account overrides anything a will says, and an account with none goes through probate — months of delay for whoever you meant to leave it to. It takes about five minutes per account.',
+    doneWhen: 'Every retirement and investment account has a named beneficiary.',
+    impact: 'Keeps your accounts out of probate',
+    gate: context => (context?.accounts || []).some(account => String(account?.type) === 'brokerage'),
+  },
+  {
+    key: 'rate_check',
+    intentKey: 'habit.rate_check',
+    priorityKey: 'grow',
+    text: 'Check what your savings account is actually paying',
+    detail: 'Savings rates move, and the account paying well when you opened it is often not the one paying well now. Comparing takes five minutes and the difference on a real balance is the easiest money in this plan.',
+    doneWhen: 'You know your current rate and how it compares to the best available.',
+    impact: 'Keeps your cushion earning what it should',
+    recurMonths: 12,
+    gate: context => num(context?.liquid) >= 1000,
+  },
 ]
 
 /**
  * Which bank entries apply to this user and are not already represented.
  * `taken` is the set of intent keys the plan (or their history) already holds.
  */
-export function eligibleBackfill(context = {}, taken = new Set()) {
+/**
+ * @param {object} context     plan context (expenses, debts, accounts, liquid…)
+ * @param {Set} taken          intents already in this plan
+ * @param {Map} settledAgeMonths  intent → months since it was last done
+ *
+ * A habit with no `recurMonths` is one-time setup and never returns once done.
+ * One with `recurMonths` is maintenance, and comes back when it is genuinely
+ * due — a credit report read last January tells you nothing about today.
+ */
+export function eligibleBackfill(context = {}, taken = new Set(), settledAgeMonths = new Map()) {
   return PRACTICE_BACKFILL
     .filter(entry => !taken.has(entry.intentKey))
+    .filter(entry => {
+      const age = settledAgeMonths.get(entry.intentKey)
+      if (age === undefined) return true
+      return entry.recurMonths ? age >= entry.recurMonths : false
+    })
     .filter(entry => {
       try { return entry.gate(context) } catch { return false }
     })

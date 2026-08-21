@@ -63,6 +63,47 @@ function routeState({ snapshot, profile, accounts, debts, goals, activities, set
   }
 }
 
+
+// Some rungs leave no trace in the records. Opening a savings account creates an
+// account, so that rung stops firing on its own; putting your minimums on
+// autopay changes nothing this app can see, so it fired every single month —
+// twelve identical "claim your employer match" steps over a year is how a
+// useful app turns into a nag.
+//
+// These are the ones that need to be told. A completed activity is the signal:
+// the user marked the step done, which is the only evidence that exists.
+function settledIntents(activities = [], now = Date.now()) {
+  const done = new Set()
+  // How long ago, in months, so maintenance habits can come back when due.
+  const ageMonths = new Map()
+  // What the standing order was last set to, so a trivial drift does not ask
+  // the user to go and change it again.
+  const amounts = {}
+  for (const activity of activities) {
+    const status = String(activity?.status || '')
+    if (status !== 'applied' && status !== 'done' && status !== 'completed') continue
+    const intent = String(activity?.intent_key || '')
+    if (!intent) continue
+    done.add(intent)
+    const at = Date.parse(activity?.applied_at || activity?.created_at || '')
+    const months = Number.isFinite(at) ? Math.max(0, (now - at) / (1000 * 60 * 60 * 24 * 30.44)) : 0
+    // Keep the most recent completion — an annual job is due a year after the
+    // last time it was done, not the first.
+    ageMonths.set(intent, Math.min(ageMonths.has(intent) ? ageMonths.get(intent) : Infinity, months))
+    if (num(activity?.amount) > 0) amounts[intent] = num(activity.amount)
+  }
+  return { done, ageMonths, amounts }
+}
+
+/** Has this one-time job already been marked done? Prefix-matched so a rung
+ *  keyed to a record id ("capture.employer_match.abc") still resolves. */
+function isSettled(done, prefix) {
+  for (const intent of done) {
+    if (intent === prefix || intent.startsWith(prefix + '.')) return true
+  }
+  return false
+}
+
 function firstCashAccount(accounts) {
   const cash = accounts.filter(account => accountFamily(account) === 'cash')
   return cash.find(account => String(account.subtype || account.type).toLowerCase() === 'checking') || cash[0] || null
@@ -345,6 +386,7 @@ export function buildMoneyRoute({
   const blockers = []
   const conditionalChanges = []
   const allocations = []
+  const { done: settled, ageMonths: settledAgeMonths, amounts: scheduledAmounts } = settledIntents(activities)
   const source = firstCashAccount(accounts)
   const emergency = emergencyAccount(accounts)
   const activeDebts = debts.filter(debt => num(debt.balance) > 0)
@@ -502,14 +544,16 @@ export function buildMoneyRoute({
       // They told us a match exists. Claiming it beats every other use of a
       // dollar here, so it leads the plan even before we know the percentage.
       allocations.push({
-        key: 'capture_employer_match', label: 'Claim your full employer match',
+        key: 'capture_employer_match', settled: isSettled(settled, 'capture.employer_match'),
+        label: 'Claim your full employer match',
         amount: 0, destinationType: 'account', destinationId: workplace?.id || null,
         reason: 'You said your employer matches contributions. Check a pay stub or your benefits page for the match rate, then put in at least that much — no other dollar here earns as fast.',
         adjustable: false,
       })
     } else if (matchUnknown) {
       allocations.push({
-        key: 'confirm_employer_match', label: 'Find out if your employer matches',
+        key: 'confirm_employer_match', settled: isSettled(settled, 'verify.employer_match'),
+        label: 'Find out if your employer matches',
         amount: 0, destinationType: 'profile', destinationId: null,
         reason: 'If there is a match, it beats everything else on this list. One message to HR or a look at your benefits page settles it.',
         adjustable: false,
@@ -679,14 +723,19 @@ export function buildMoneyRoute({
   // spending more than they earn, or breaking even with nothing spare.
   if (activeDebts.length) {
     allocations.push({
-      key: 'autopay_minimums', label: 'Put every minimum payment on autopay',
+      key: 'autopay_minimums', settled: isSettled(settled, 'setup.autopay_minimums'),
+      label: 'Put every minimum payment on autopay',
       amount: 0, destinationType: 'debt', destinationId: null,
       reason: `One missed payment on ${activeDebts.length === 1 ? activeDebts[0].name : 'any of these'} costs more in fees and credit damage than this plan earns in months. Autopay the minimums, then let the plan handle everything on top.`,
       adjustable: false,
     })
   }
 
-  const finalAllocations = applyAdjustments(allocations, availableMonthlyAmount, adjustments)
+  // A job the user has already done is not advice, it is a reminder they
+  // finished — and repeating it every month buries the rungs that still matter.
+  const liveAllocations = allocations.filter(item => !item.settled)
+
+  const finalAllocations = applyAdjustments(liveAllocations, availableMonthlyAmount, adjustments)
   const fingerprint = adjustments
     ? `${baseFingerprint}-${hashState(JSON.stringify(adjustments))}`
     : baseFingerprint
@@ -727,6 +776,11 @@ export function buildMoneyRoute({
     upcoming,
     notes,
     alreadyCommitted,
+    // One-time jobs the user has already ticked off. Kept on the route so the
+    // practice habits can be skipped the same way the money rungs are.
+    settledIntents: [...settled],
+    settledAgeMonths,
+    scheduledAmounts,
     missingInputs,
     ready,
     // Refinements are optional details that sharpen an already-valid plan —
@@ -741,6 +795,11 @@ export function buildMoneyRoute({
     planContext: {
       expenses: roundMoney(snapshot.expenses),
       debts: activeDebts.map(debt => ({ balance: num(debt.balance) })),
+      // Habits gate on these: a beneficiary reminder is meaningless without an
+      // investment account, and a rate check is noise on a $40 balance.
+      accounts: accounts.map(account => ({ type: account?.type, subtype: account?.subtype })),
+      liquid: roundMoney(snapshot.liquid),
+      available: availableMonthlyAmount,
     },
     baseFingerprint,
     fingerprint,
@@ -991,7 +1050,18 @@ export function buildInitialPlan(route) {
     .filter(step => step.outcome?.amount > 0
       && ['transfer', 'contribution', 'debt_payment'].includes(step.outcome.kind))
     .sort((left, right) => right.outcome.amount - left.outcome.amount)[0]
-  if (primary) {
+  // Once the standing order exists, it keeps running. Re-proposing it every
+  // time the arithmetic nudges the amount asked one user to "schedule $791"
+  // one month and "schedule $800" the next — seven times in a year for a
+  // transfer they set up once. Only worth saying again when the change is big
+  // enough to be worth logging into a bank for.
+  const scheduled = (route.settledAgeMonths instanceof Map)
+    && route.settledAgeMonths.has(`setup.${primary?.intentKey}`)
+  const lastScheduled = num(route.scheduledAmounts?.[`setup.${primary?.intentKey}`])
+  const drift = lastScheduled > 0 ? Math.abs(num(primary?.outcome?.amount) - lastScheduled) / lastScheduled : 1
+  const worthRescheduling = !scheduled || drift >= 0.15
+
+  if (primary && worthRescheduling) {
     const target = actionable.find(item => allocationStep(route, item, 0)?.intentKey === primary.intentKey)
     // Appended, this landed after the setup chores — "move $250", "autopay your
     // minimums", "schedule $250" — separating the transfer from its own
@@ -1014,8 +1084,11 @@ export function buildInitialPlan(route) {
     }))
   }
 
+  // Offering "put a check-in on your calendar" to someone who did that eleven
+  // months ago is the same nag as repeating a money rung — and there are three
+  // other habits waiting behind it.
   const taken = new Set(pool.map(step => step.intentKey))
-  const backfill = eligibleBackfill(route.planContext, taken)
+  const backfill = eligibleBackfill(route.planContext, taken, route.settledAgeMonths || new Map())
     .map((entry, index) => stepBase(route, pool.length + index, {
       key: entry.key,
       text: entry.text,

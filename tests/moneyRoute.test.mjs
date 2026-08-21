@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { computeSnapshot, LIMITS } from '../src/lib/finance.js'
 import { HORIZON_MONTHS, buildInitialPlan, buildMoneyRoute, formatDuration } from '../src/lib/moneyRoute.js'
+import { eligibleBackfill } from '../src/lib/planComposition.js'
 
 function state({
   profile = { monthly_income: 5000, monthly_expenses: 4100, health_insurance: 'employer', employer_401k: 'none' },
@@ -9,9 +10,10 @@ function state({
   debts = [],
   goals = [],
   cashFlowItems = [],
+  activities = [],
 } = {}) {
   const snapshot = computeSnapshot({ profile, accounts, debts, goals, cashFlowItems })
-  return { snapshot, profile, accounts, debts, goals }
+  return { snapshot, profile, accounts, debts, goals, activities }
 }
 
 test('the monthly waterfall assigns exactly the available amount', () => {
@@ -636,4 +638,97 @@ test('setup steps are earned, never handed out to pad the list', () => {
   }))
   assert.equal(buildInitialPlan(broke).some(step => step.intentKey.startsWith('move.savings_to_hysa')), false,
     'chasing a rate on $0 is busywork')
+})
+
+// ── Months of use, not one afternoon ────────────────────────────────────────
+
+const monthsAgo = n => new Date(Date.now() - n * 30.44 * 864e5).toISOString().slice(0, 10)
+
+const SETTLED_USER = {
+  profile: { monthly_income: 4200, monthly_expenses: 3400, health_insurance: 'employer', employer_401k: 'match', age: 26, employment_type: 'salaried', onboarding_complete: true },
+  accounts: [
+    { id: 'c', name: 'Checking', type: 'checking', subtype: 'checking', balance: 900 },
+    { id: 's', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 4800 },
+    { id: 'w', name: 'Work 401(k)', type: 'brokerage', subtype: '401k', balance: 12000, contribution_percent: 5, employer_match_percent: 100, employer_match_limit_percent: 5, monthly_contribution: 210 },
+  ],
+  debts: [{ id: 'v', name: 'Visa', type: 'credit_card', balance: 900, interest_rate: 23.9, minimum_payment: 40 }],
+}
+
+test('a job you have already done is not offered again next month', () => {
+  // Simulating a year found "Claim your full employer match" proposed twelve
+  // times and "Put every minimum payment on autopay" six — one-time work with
+  // no record in the app to make it stop.
+  const fresh = buildMoneyRoute(state(SETTLED_USER))
+  assert.ok(fresh.allocations.some(item => item.key === 'autopay_minimums'),
+    'a user who has never done it should be asked')
+
+  const after = buildMoneyRoute(state({
+    ...SETTLED_USER,
+    activities: [
+      { intent_key: 'setup.autopay_minimums', status: 'applied', applied_at: monthsAgo(3) },
+      { intent_key: 'capture.employer_match.w', status: 'applied', applied_at: monthsAgo(3) },
+    ],
+  }))
+  assert.equal(after.allocations.some(item => item.key === 'autopay_minimums'), false)
+  assert.equal(after.allocations.some(item => item.key.startsWith('capture_employer_match')), false)
+})
+
+test('maintenance comes back when it is due; setup never does', () => {
+  // Recurrence is a property of the habit, so it is tested on the rule itself —
+  // whether a given habit then wins a plan slot depends on what else is
+  // competing for it, which is composePlan's job, not this one.
+  const context = { expenses: 3400, debts: [], accounts: [], liquid: 5000, available: 800 }
+  const ids = ages => eligibleBackfill(context, new Set(), new Map(ages)).map(entry => entry.intentKey)
+
+  // Never done: everything applicable is on the table.
+  assert.ok(ids([]).includes('habit.credit_report'))
+  assert.ok(ids([]).includes('habit.weekly_checkin'))
+
+  // Read last month — not due for another year.
+  assert.equal(ids([['habit.credit_report', 1]]).includes('habit.credit_report'), false)
+  // Read thirteen months ago — you are entitled to a fresh one.
+  assert.ok(ids([['habit.credit_report', 13]]).includes('habit.credit_report'))
+
+  // A weekly check-in is set up once and stays set up, however long ago.
+  assert.equal(ids([['habit.weekly_checkin', 18]]).includes('habit.weekly_checkin'), false)
+
+  // Subscriptions grow back on a shorter cycle than a credit file changes.
+  assert.equal(ids([['habit.subscription_audit', 3]]).includes('habit.subscription_audit'), false)
+  assert.ok(ids([['habit.subscription_audit', 7]]).includes('habit.subscription_audit'))
+})
+
+test('a standing order is not re-scheduled over small drift', () => {
+  const withSchedule = amount => buildInitialPlan(buildMoneyRoute(state({
+    ...SETTLED_USER,
+    activities: [{ intent_key: 'setup.pay.debt.v', status: 'applied', amount, applied_at: monthsAgo(2) }],
+  })))
+  const isReschedule = steps => steps.some(step => /^Schedule /.test(step.text))
+
+  // Never set up: worth doing.
+  assert.ok(isReschedule(buildInitialPlan(buildMoneyRoute(state(SETTLED_USER)))))
+
+  // Already running at roughly this amount: asking again wastes the slot.
+  const funded = buildMoneyRoute(state(SETTLED_USER)).allocations
+    .find(item => item.key.startsWith('debt.'))?.amount
+  assert.ok(funded > 0)
+  assert.equal(isReschedule(withSchedule(funded)), false)
+
+  // Materially different: worth a trip to the bank.
+  assert.ok(isReschedule(withSchedule(Math.round(funded / 2))))
+})
+
+test('a settled user still gets a plan worth opening', () => {
+  const steps = buildInitialPlan(buildMoneyRoute(state({
+    ...SETTLED_USER,
+    debts: [],
+    activities: [
+      { intent_key: 'setup.autopay_minimums', status: 'applied', applied_at: monthsAgo(8) },
+      { intent_key: 'capture.employer_match.w', status: 'applied', applied_at: monthsAgo(8) },
+      { intent_key: 'habit.weekly_checkin', status: 'applied', applied_at: monthsAgo(7) },
+      { intent_key: 'habit.credit_report', status: 'applied', applied_at: monthsAgo(7) },
+    ],
+  })))
+  assert.ok(steps.length >= 3, `eight months in the plan fell to ${steps.length}: ${steps.map(s => s.text).join(' | ')}`)
+  const keys = steps.map(step => step.intentKey)
+  assert.equal(new Set(keys).size, keys.length)
 })
