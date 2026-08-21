@@ -9,6 +9,7 @@ import AIAdvisor from '@/pages/AIAdvisor'
 import Plan from '@/pages/Plan'
 import StepDetail from '@/pages/StepDetail'
 import Settings from '@/pages/Settings'
+import Privacy from '@/pages/Privacy'
 import { Sprout, Compass } from 'lucide-react'
 import { HOME_MONEY_REDIRECTS } from '@/lib/routes'
 
@@ -89,6 +90,9 @@ export default function App() {
               <Route path="/plan/step/:stepId" element={<ProtectedRoute><StepDetail /></ProtectedRoute>} />
               <Route path="/money" element={<Navigate to={HOME_MONEY_REDIRECTS['/money']} replace />} />
               <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+              {/* Public: a store listing links here, and it has to resolve for
+                  someone who has not signed in. */}
+              <Route path="/privacy" element={<Privacy />} />
               <Route path="/budget"   element={<Navigate to={HOME_MONEY_REDIRECTS['/budget']} replace />} />
               <Route path="/debt"     element={<Navigate to={HOME_MONEY_REDIRECTS['/debt']} replace />} />
               <Route path="/accounts" element={<Navigate to={HOME_MONEY_REDIRECTS['/accounts']} replace />} />

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Sprout } from 'lucide-react'
 import { motion } from 'framer-motion'
@@ -235,6 +235,11 @@ export default function Login() {
               Forgot your password?
             </button>
           )}
+          {/* Reachable without an account: the store listing links here, and a
+              policy you can only read after signing up is not a policy. */}
+          <p className="mt-6 text-center text-[11px] text-white/35">
+            <Link to="/privacy" className="hover:text-white/60">Privacy</Link>
+          </p>
           {mode === 'reset' && (
             <div className="mt-4 space-y-2 text-center">
               <button type="button" onClick={sendResetEmail} disabled={loading}

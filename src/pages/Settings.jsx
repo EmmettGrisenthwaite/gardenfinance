@@ -9,7 +9,7 @@ import Onboarding from '@/components/Onboarding'
 import BottomSheet from '@/components/ui/BottomSheet'
 import {
   ChevronLeft, UserCircle, Pencil, Wallet, ArrowRight, Download, ShieldCheck,
-  LogOut, Trash2, Loader2, Brain, X, Plus,
+  LogOut, Trash2, Loader2, Brain, X, Plus, FileText,
 } from 'lucide-react'
 
 const APP_VERSION = '1.0'
@@ -414,6 +414,8 @@ export default function Settings() {
 
         {/* Data & privacy */}
         <Card label="Data & privacy">
+          <Row icon={FileText} title="Privacy" sub="What is stored, who sees it, how to remove it"
+            to="/privacy" trailing={<ArrowRight className="w-4 h-4 text-white/30" />} />
           <Row icon={Download} title="Export my data" sub="Download everything as JSON"
             onClick={exportData} busy={exporting}
             trailing={!exporting && <ArrowRight className="w-4 h-4 text-white/30" />} />
