@@ -40,3 +40,14 @@ supabase/.temp/
 .claude/
 ~$*
 .vercel
+
+# Android signing key. Losing this file means never being able to update the
+# Play listing again; committing it means anyone can publish as you.
+*.keystore
+*.jks
+android.keystore
+
+# Bubblewrap build output — regenerated from twa-manifest.json
+/app/
+*.aab
+*.apk
