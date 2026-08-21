@@ -1,0 +1,50 @@
+{
+  "packageId": "app.vercel.garden_financial.twa",
+  "host": "garden-financial.vercel.app",
+  "name": "Garden Financial",
+  "launcherName": "Garden",
+  "display": "standalone",
+  "themeColor": "#04100A",
+  "themeColorDark": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#04100A",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://garden-financial.vercel.app/icon.svg",
+  "maskableIconUrl": "https://garden-financial.vercel.app/icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "C:\\Users\\emmet\\OneDrive\\Documents\\gardenfinancial\\.claude\\worktrees\\crazy-germain-d3da8e\\android.keystore",
+    "alias": "android"
+  },
+  "appVersionName": "1",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://garden-financial.vercel.app/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://garden-financial.vercel.app/",
+  "minSdkVersion": 21,
+  "orientation": "portrait",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "displayOverride": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "appVersion": "1"
+}
