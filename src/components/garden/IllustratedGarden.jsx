@@ -236,8 +236,7 @@ export default function IllustratedGarden({
         className="illustrated-garden-story-target" aria-label={onOpenStory ? `Open Garden Story. ${summary}` : undefined}>
       <div className="illustrated-garden-status">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/80">Your permanent garden</p>
-          <div className="mt-1 flex flex-wrap items-baseline gap-x-2">
+          <div className="flex flex-wrap items-baseline gap-x-2">
             <h2 className="text-[20px] font-semibold tracking-[-0.02em] text-white">{manifest.name}</h2>
             <span className="shrink-0 text-[13px] font-semibold tabular-nums text-readable-secondary">{milestoneTotal} milestones</span>
           </div>

@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { Sprout, House, Target, Bot, Settings } from 'lucide-react'
+import { House, Target, MessageCircle, Settings } from 'lucide-react'
 import Onboarding from '@/components/Onboarding'
 
 // Home combines the permanent garden, next action, and detailed money workspace.
 const NAV_ITEMS = [
   { to: '/',        label: 'Home',    icon: House },
-  { to: '/advisor', label: 'Advisor', icon: Bot },
+  { to: '/advisor', label: 'Advisor', icon: MessageCircle },
   { to: '/plan',    label: 'Plan',    icon: Target },
 ]
 const HUD_ITEMS = NAV_ITEMS
@@ -90,20 +90,12 @@ export default function Layout({ children }) {
       <div className="relative z-10 flex h-dvh">
 
         {/* ── Desktop glass sidebar ── */}
-        <aside className="hidden md:flex w-56 shrink-0 p-3">
-          <div className="flex flex-col w-full h-full bg-white/[0.085] backdrop-blur-md rounded-2xl border border-white/[0.12] shadow-2xl overflow-hidden">
+        <aside className="hidden md:flex w-56 shrink-0 border-r border-white/[0.07]">
+          <div className="flex flex-col w-full h-full">
 
-            {/* Logo */}
-            <div className="px-4 py-4 border-b border-white/[0.11]">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 bg-green-500/90 rounded-xl flex items-center justify-center shadow-lg">
-                  <Sprout className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <div className="font-brand font-semibold text-white text-[15px] tracking-tight drop-shadow">Garden Financial</div>
-                  <div className="text-[10px] text-white/55">Grow your wealth</div>
-                </div>
-              </div>
+            {/* Wordmark — the one place the brand serif appears in the shell */}
+            <div className="px-5 pb-4 pt-5">
+              <div className="font-brand text-[17px] font-semibold tracking-tight text-white">Garden Financial</div>
             </div>
 
             {/* Nav links */}
@@ -114,10 +106,10 @@ export default function Layout({ children }) {
                   to={to}
                   end={to === '/'}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
                       isActive
-                        ? 'bg-white/30 text-white shadow-sm'
-                        : 'text-white/65 hover:bg-white/15 hover:text-white'
+                        ? 'bg-white/[0.08] text-white'
+                        : 'text-readable-muted hover:bg-white/[0.05] hover:text-white'
                     }`
                   }
                 >
@@ -128,13 +120,13 @@ export default function Layout({ children }) {
             </nav>
 
             {/* User + settings */}
-            <div className="p-2 border-t border-white/[0.11]">
-              <div className="text-[10px] text-white/40 truncate px-3 mb-1">{user?.email}</div>
+            <div className="p-2 border-t border-white/[0.07]">
+              <div className="text-xs text-readable-muted truncate px-3 mb-1">{user?.email}</div>
               <NavLink
                 to="/settings"
                 className={({ isActive }) =>
                   `flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm w-full transition-all ${
-                    isActive ? 'bg-white/30 text-white shadow-sm' : 'text-white/55 hover:bg-white/15 hover:text-white'}`
+                    isActive ? 'bg-white/[0.08] text-white' : 'text-readable-muted hover:bg-white/[0.05] hover:text-white'}`
                 }
               >
                 <Settings className="w-4 h-4 shrink-0" />

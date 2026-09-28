@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react'
 import { useLocation, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -6,6 +6,8 @@ import { callClaude, requestPlan, requestGuide, suggestGoal, chatConfigured } fr
 import { savePlan, appendSteps, applyStep, addGoal, listPlans } from '@/lib/advisorPlans'
 import { buildContext, buildSystemPrompt } from '@/lib/advisorContext'
 import { computeSnapshot } from '@/lib/finance'
+import { loadFinancialRecords } from '@/lib/financialData'
+import DataLoadState from '@/components/ui/DataLoadState'
 import { getMoneySetupState } from '@/lib/moneySetup'
 import { formatMoneyRouteForAdvisor } from '@/lib/moneyRoute'
 import { buildPlanModel } from '@/lib/focusedPlan'
@@ -37,7 +39,7 @@ const GOAL_INTENT = /\b(sav(e|ing|ings)|buy|buying|afford|down\s?-?payment|house
 const GUIDE_INTENT = /\b(open|start|set\s?up|sign\s?up|create|switch|roll\s?over|move|transfer|enroll)\b[^.?!]*\b(roth|ira|401k|403b|hsa|brokerage|savings? account|hysa|high.?yield|index fund|etf|mutual fund|emergency fund|life insurance|will|credit|account|invest)\b|\bwalk me through\b|\bstep[-\s]?by[-\s]?step\b|\bhow (do|can) i (open|start|set\s?up|sign\s?up|get|invest)\b/i
 
 import {
-  Send, Bot, Sparkles, RefreshCw, ArrowDown, Settings, MoreHorizontal,
+  Send, Sparkles, RefreshCw, ArrowDown, Settings, MoreHorizontal,
   Target, BarChart3, PiggyBank, CreditCard, TrendingUp, Shield, Sprout,
   Brain, Plus, ArrowRight,
   ChevronDown,
@@ -102,14 +104,11 @@ function stripForStreaming(text) {
 // ─── Typing indicator ──────────────────────────────────────────────────────────
 function TypingIndicator() {
   return (
-    <div className="flex items-end gap-2 mb-4">
-      <div className="w-8 h-8 rounded-full bg-emerald-500/20 ring-1 ring-emerald-400/30 flex items-center justify-center flex-shrink-0">
-        <Bot className="w-4 h-4 text-emerald-300" />
-      </div>
-      <div className="bg-white/10 border border-white/10 rounded-2xl rounded-bl-sm px-4 py-3.5">
+    <div className="mb-4 flex" role="status" aria-label="Advisor is writing">
+      <div className="rounded-2xl bg-white/[0.06] px-4 py-3.5">
         <div className="flex items-center gap-1.5">
           {[0, 1, 2].map(i => (
-            <motion.div key={i} className="w-2 h-2 bg-emerald-300/70 rounded-full"
+            <motion.div key={i} className="h-1.5 w-1.5 rounded-full bg-white/50"
               animate={{ y: [0, -6, 0] }}
               transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.18 }} />
           ))}
@@ -171,7 +170,7 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
     return (
       <motion.div className="mb-5 flex justify-end"
         initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
-        <div className="max-w-[82%] rounded-2xl rounded-br-md border border-emerald-300/15 bg-emerald-600/90 px-4 py-2.5 text-sm leading-relaxed text-white md:max-w-[72%]">
+        <div className="max-w-[82%] rounded-2xl rounded-br-md bg-emerald-700/80 px-4 py-2.5 text-[15px] leading-6 text-white md:max-w-[72%]">
           {msg.content}
         </div>
       </motion.div>
@@ -191,13 +190,10 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
   const showArtifacts = responseAction === 'attachment'
 
   return (
-    <motion.div className="mb-6 flex items-start gap-3"
-      initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
-      <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-emerald-300/10 bg-emerald-400/[0.07]">
-        <Bot className="h-4 w-4 text-emerald-200/75" />
-      </div>
-      <div className="min-w-0 flex-1 space-y-3">
-        <div className="pr-1 text-[15px] leading-[1.7] text-readable-secondary [&_strong]:font-semibold [&_strong]:text-readable-primary">
+    <motion.div className="mb-6"
+      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+      <div className="min-w-0 space-y-3">
+        <div className="text-[15px] leading-7 text-readable-primary [&_strong]:font-semibold [&_strong]:text-white">
           {renderContent(msg.content)}
         </div>
 
@@ -234,7 +230,7 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
         {showOptions && (
           <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, delay: 0.05 }} className="space-y-1.5">
-            <div className="text-[10px] font-semibold text-readable-muted uppercase tracking-wider pl-1">Tap to answer</div>
+            <p className="section-label">Tap to answer</p>
             <div className="flex flex-wrap gap-1.5">
               {options.map((opt, i) => (
                 <button
@@ -270,12 +266,11 @@ function MessageBubble({ msg, isLast, onArtifactAction, onAddToPlan, debts, goal
 // told about, so the app asks rather than guesses.
 function SetupNeeded({ missing, onResolve }) {
   return (
-    <section className="overflow-hidden rounded-[24px] border border-white/[0.1] bg-white/[0.035] p-5 text-left">
-      <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-readable-muted">Before your plan</p>
-      <h3 className="mt-1.5 text-[17px] font-semibold leading-6 text-white">
-        {missing.length === 1 ? 'One detail left' : `${missing.length} details left`}
+    <section className="rounded-2xl border border-white/[0.09] bg-white/[0.04] p-5 text-left">
+      <h3 className="text-[17px] font-semibold leading-6 text-white">
+        {missing.length === 1 ? 'One detail left before your plan' : `${missing.length} details left before your plan`}
       </h3>
-      <ul className="mt-3 divide-y divide-white/[0.07] rounded-2xl border border-white/[0.09] bg-black/[0.08] px-3.5">
+      <ul className="mt-2 divide-y divide-white/[0.07]">
         {missing.map(item => (
           <li key={item.id}>
             <button type="button" onClick={() => onResolve?.(item)}
@@ -297,25 +292,18 @@ function WelcomeScreen({
   interview, onAnswerInterview, onDiscussInterview,
 }) {
   return (
-    <motion.div className="py-5 text-center"
-      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-      <div className="relative mx-auto mb-5 h-14 w-14">
-        <div className="pointer-events-none absolute -inset-8 rounded-full bg-emerald-400/[0.08] blur-2xl" />
-        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-emerald-300/15 bg-emerald-400/[0.09]">
-          <Bot className="h-7 w-7 text-emerald-200" />
-        </div>
-      </div>
-      <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-100/75">Personal to your numbers</p>
-      <h2 className="text-[25px] font-semibold tracking-[-0.02em] text-white">
+    <motion.div className="py-4"
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+      <h2 className="text-[24px] font-semibold leading-8 tracking-[-0.02em] text-white">
         {moneyRoute?.ready ? 'Here is where your money goes next.' : 'A few details and your plan is ready.'}
       </h2>
-      <p className="mx-auto mb-5 mt-2 max-w-sm text-sm leading-relaxed text-readable-secondary">
+      <p className="mb-5 mt-1.5 max-w-md text-[15px] leading-6 text-readable-secondary">
         {progressDelta?.has
           ? `Since ${progressDelta.days} days ago: ${progressDelta.delta >= 0 ? '+' : ''}$${Math.abs(progressDelta.delta).toLocaleString()} net worth${progressDelta.stepsDone ? `, ${progressDelta.stepsDone} step${progressDelta.stepsDone !== 1 ? 's' : ''} done` : ''}. `
           : ''}
         {moneyRoute?.ready
           ? 'Built from your recorded income, spending, accounts, and debts.'
-          : 'Your plan is built from your real numbers, so it waits until they are all in — no guessing.'}
+          : 'Your plan uses your real numbers, so it waits until they are all in.'}
       </p>
 
       <div className="mb-7">
@@ -337,14 +325,14 @@ function WelcomeScreen({
         )}
       </div>
 
-      <div className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.14em] text-readable-muted">Ask something specific</div>
-      <div className="flex flex-wrap justify-center gap-2 max-w-md mx-auto">
+      <p className="section-label mb-2">Or ask something specific</p>
+      <div className="flex flex-wrap gap-2">
         {suggestions.slice(0, 3).map((s, i) => (
           <motion.button key={i} onClick={() => onSuggest(s.q ?? s.label)}
             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.12 + i * 0.04, duration: 0.25 }}
-            className="flex min-h-10 items-center gap-1.5 rounded-full border border-white/[0.1] bg-white/[0.045] px-3.5 py-2 text-[13px] text-readable-secondary transition-colors hover:border-emerald-300/25 hover:bg-emerald-400/[0.06] hover:text-white">
-            <s.icon className="w-3.5 h-3.5 text-emerald-300/80" />{s.label}
+            className="flex min-h-11 items-center rounded-xl border border-white/[0.1] px-3.5 py-2 text-left text-[14px] text-readable-secondary transition-colors hover:bg-white/[0.05] hover:text-white">
+            {s.label}
           </motion.button>
         ))}
       </div>
@@ -368,6 +356,10 @@ export default function AIAdvisor() {
   const [loading, setLoading]           = useState(false)
   const [analyzing, setAnalyzing]       = useState(false)
   const [historyLoading, setHistoryLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
+  const profileRef = useRef(profile)
+  profileRef.current = profile
   const [goals,    setGoals]            = useState([])
   const [debts,    setDebts]            = useState([])
   const [plans,    setPlans]            = useState([])
@@ -404,53 +396,43 @@ export default function AIAdvisor() {
   }, [input])
   // ── Load data ───────────────────────────────────────────────────────────────
   useEffect(() => {
+    let live = true
+    isLoadingHistory.current = true
+    setHistoryLoading(true)
+    setLoadError(null)
     async function load() {
-      const [g, d, conv, pl, ac, flow, limits, mems, activityRows, reminderRows, reminderEventRows] = await Promise.all([
-        supabase.from('goals').select('*').eq('user_id', user.id),
-        supabase.from('debts').select('*').eq('user_id', user.id),
+      const [records, conv, pl, mems, activityRows, reminderRows, reminderEventRows] = await Promise.all([
+        loadFinancialRecords(supabase, user.id),
         supabase.from('conversations').select('messages').eq('user_id', user.id).single(),
         listPlans(user.id),
-        supabase.from('accounts').select('*').eq('user_id', user.id),
-        supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order'),
-        supabase.from('budget_limits').select('*').eq('user_id', user.id),
         getMemories(),
         listFinancialActivities(user.id),
         listReminders(user.id),
         listReminderEvents(user.id, { limit: 20 }),
       ])
-      if (g.error) throw g.error
-      if (d.error) throw d.error
-      if (ac.error) throw ac.error
-      if (flow.error) throw flow.error
-      if (limits.error) throw limits.error
+      if (!live) return
       if (conv.error && conv.error.code !== 'PGRST116') throw conv.error
-      const loadedGoals = g.data ?? []
-      const loadedDebts = d.data ?? []
-      const loadedAccounts = ac.data ?? []
-      const loadedFlow = flow.data ?? []
-      const loadedLimits = limits.data ?? []
-      const loadedSnapshot = computeSnapshot({
-        profile, accounts: loadedAccounts, debts: loadedDebts, goals: loadedGoals,
-        cashFlowItems: loadedFlow, budgetLimits: loadedLimits,
-      })
+      const loadedSnapshot = computeSnapshot({ profile: profileRef.current, ...records })
       const trend = await netWorthTrend(user.id, {
         netWorth: loadedSnapshot.netWorth,
         assets: loadedSnapshot.assets,
         liabilities: loadedSnapshot.totalDebt,
-      })
-      setGoals(loadedGoals)
-      setDebts(loadedDebts)
+      }).catch(() => ({ delta: 0, days: 0, has: false }))
+      if (!live) return
+      setGoals(records.goals)
+      setDebts(records.debts)
       setPlans(pl ?? [])
-      setAccounts(loadedAccounts)
-      setCashFlowItems(loadedFlow)
-      setBudgetLimits(loadedLimits)
+      setAccounts(records.accounts)
+      setCashFlowItems(records.cashFlowItems)
+      setBudgetLimits(records.budgetLimits)
       setMemories(mems ?? [])
       setActivities(activityRows ?? [])
       setReminders(reminderRows ?? [])
       setReminderEvents(reminderEventRows ?? [])
 
       // Calculate progress delta since last visit
-      const lastVisit = localStorage.getItem(LAST_VISIT_KEY)
+      let lastVisit = null
+      try { lastVisit = localStorage.getItem(LAST_VISIT_KEY) } catch {}
       let stepsDone = 0
       if (pl?.length) {
         stepsDone = pl.reduce((sum, p) => sum + p.steps.filter(s => s.done).length, 0)
@@ -467,8 +449,10 @@ export default function AIAdvisor() {
       })
 
       // Store current state for next visit
-      localStorage.setItem(LAST_VISIT_KEY, new Date().toISOString())
-      localStorage.setItem(`advisor-steps-${user.id}`, JSON.stringify(stepsDone))
+      try {
+        localStorage.setItem(LAST_VISIT_KEY, new Date().toISOString())
+        localStorage.setItem(`advisor-steps-${user.id}`, JSON.stringify(stepsDone))
+      } catch { /* Storage restrictions must not prevent a conversation. */ }
 
       // Merge Supabase history
       if (conv.data?.messages?.length) {
@@ -480,20 +464,23 @@ export default function AIAdvisor() {
       setHistoryLoading(false)
     }
     load().catch(err => {
-      setError(err.message ?? 'Could not load your advisor data.')
-      isLoadingHistory.current = false
+      if (!live) return
+      setLoadError(err)
+      // Keep persistence closed until the remote conversation is known. A
+      // cached/empty transcript must never replace history after a read error.
       setHistoryLoading(false)
     })
-  }, [user.id, profile, LAST_VISIT_KEY, STORAGE_KEY])
+    return () => { live = false }
+  }, [user.id, loadAttempt, LAST_VISIT_KEY, STORAGE_KEY])
 
   // A Plan "Smart next step" can route here with a pre-filled question
   useEffect(() => {
     const ask = location.state?.ask
-    if (!ask || historyLoading) return
+    if (!ask || historyLoading || loadError) return
     navigate('/advisor', { replace: true, state: null })
     void send(ask)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyLoading, location.state, navigate])
+  }, [historyLoading, loadError, location.state, navigate])
 
   // Persist to localStorage + Supabase when messages settle
   useEffect(() => {
@@ -517,9 +504,25 @@ export default function AIAdvisor() {
   }, [messages, loading, analyzing])
 
   useEffect(() => {
+    // The welcome screen reads top-down (the plan, then questions), so an empty
+    // chat starts at the top instead of following the bottom anchor.
+    if (!messages.length) {
+      scrollRef.current?.scrollTo({ top: 0 })
+      setAtBottom(true)
+      return
+    }
     if (atBottom) bottomRef.current?.scrollIntoView({ behavior: loading || analyzing ? 'auto' : 'smooth' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, loading, pendingGoal])
+
+  // The composer fits its text however the text got there: typing, clearing
+  // after a send, or a failed send putting the question back.
+  useLayoutEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 144)}px`
+  }, [input])
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current
@@ -574,7 +577,7 @@ export default function AIAdvisor() {
   // The interview asks these as taps. Listing them on the card as well
   // would put the same question on the screen twice, so the card only
   // carries them when there is no interview to run.
-  const followUps = interview.status === 'unavailable' ? allFollowUps : []
+  const followUps = useMemo(() => interview.status === 'unavailable' ? allFollowUps : [], [interview.status, allFollowUps])
 
   const quickSuggestions = useMemo(() => {
     // Once a plan exists the advisor's job is to REFINE it, so the prompts
@@ -592,7 +595,7 @@ export default function AIAdvisor() {
       return [
         { label: 'Is this the right order?', q: 'Walk me through why my plan is in this order, and tell me if anything about my situation should change it.', icon: Target },
         { label: 'What am I missing?', q: 'What would a financial planner ask me that my numbers alone cannot answer? Ask me one question at a time.', icon: Brain },
-        { label: 'Stress-test it', q: 'What would break this plan — job loss, a big expense, rates changing? What should I do differently?', icon: Shield },
+        { label: 'Stress-test it', q: 'What would break this plan: job loss, a big expense, rates changing? What should I do differently?', icon: Shield },
       ]
     }
     const hasInvestmentAccount = accounts.some(account => account.type === 'brokerage' || [
@@ -609,7 +612,7 @@ export default function AIAdvisor() {
 
   // ── Send message ────────────────────────────────────────────────────────────
   async function send(text, opts = {}) {
-    if (!text.trim() || loading || noKey) return
+    if (!text.trim() || loading || analyzing || historyLoading || loadError || noKey) return
     setError(null)
 
     const userMsg = { role: 'user', content: text.trim() }
@@ -667,6 +670,9 @@ export default function AIAdvisor() {
     } catch (err) {
       setError(err.message ?? 'Something went wrong. Please try again.')
       setMessages(messages)
+      // The question goes back in the composer, so a failed send costs one tap
+      // to retry instead of retyping it.
+      setInput(current => current || text.trim())
     } finally {
       setLoading(false)
       setAnalyzing(false)
@@ -820,7 +826,7 @@ export default function AIAdvisor() {
       setError(null)
       flashToast(added === 0
         ? 'Those steps are already in your Plan'
-        : `Added ${added} step${added === 1 ? '' : 's'} to your Plan${skipped ? ` — ${skipped} already there` : ''}`,
+        : `Added ${added} step${added === 1 ? '' : 's'} to your Plan${skipped ? ` (${skipped} already there)` : ''}`,
         { to: '/plan', label: 'View Plan' })
     } catch (err) {
       setError(err.message ?? 'Could not add to plan.')
@@ -899,20 +905,14 @@ export default function AIAdvisor() {
     goal: pendingGoal,
   })
 
+  if (historyLoading || loadError) return <DataLoadState title="Advisor" loading={historyLoading} onRetry={() => setLoadAttempt(value => value + 1)} />
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex-shrink-0 border-b border-white/[0.07] bg-[#08110e]/88 px-4 py-3 backdrop-blur-xl md:px-6">
         <div className="mx-auto flex max-w-3xl items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-300/15 bg-emerald-400/[0.09]">
-              <Bot className="h-5 w-5 text-emerald-200" />
-            </div>
-            <div>
-              <h1 className="font-display text-[18px] font-medium leading-tight text-white">Advisor</h1>
-              <p className="text-[11px] text-readable-muted">Personal to your real numbers</p>
-            </div>
-          </div>
+          <h1 className="text-[20px] font-semibold leading-tight tracking-[-0.02em] text-white">Advisor</h1>
           <div className="relative z-30">
             {menuOpen && <button type="button" aria-label="Close advisor menu" onClick={() => setMenuOpen(false)} className="fixed inset-0 z-20 cursor-default" />}
             <button type="button" onClick={() => setMenuOpen(open => !open)} aria-label="Advisor menu" aria-expanded={menuOpen}
@@ -948,16 +948,15 @@ export default function AIAdvisor() {
             className="flex-shrink-0 z-50"
           >
             <div className="max-w-3xl mx-auto px-4 pt-2">
-              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-500/15 border border-emerald-400/25 rounded-lg">
-                <Brain className="w-4 h-4 text-emerald-400" />
-                <span className="text-xs text-emerald-200">{toast.message}</span>
+              <div className="flex min-h-11 items-center gap-3 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-2">
+                <span className="text-sm text-emerald-100">{toast.message}</span>
                 {toast.action && (
                   <Link
                     to={toast.action.to}
                     onClick={() => setToast(null)}
-                    className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-emerald-300 hover:text-emerald-200 whitespace-nowrap"
+                    className="ml-auto inline-flex min-h-11 items-center gap-1 whitespace-nowrap text-sm font-semibold text-emerald-200 hover:text-emerald-100"
                   >
-                    {toast.action.label} <ArrowRight className="w-3 h-3" />
+                    {toast.action.label} <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
                 )}
               </div>
@@ -1062,12 +1061,12 @@ export default function AIAdvisor() {
             </motion.div>
           ) : null}
           {error && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-3">
-              <p className="text-xs text-rose-200 bg-rose-500/15 border border-rose-400/25 inline-block px-3 py-2 rounded-lg">{error}</p>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-3">
+              <p role="alert" className="rounded-xl border border-rose-400/25 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-200">{error}</p>
             </motion.div>
           )}
           {routeError && !routeAdjustOpen && (
-            <p className="mb-4 rounded-lg border border-rose-400/25 bg-rose-500/15 px-3 py-2 text-center text-xs text-rose-100">{routeError}</p>
+            <p role="alert" className="mb-4 rounded-xl border border-rose-400/25 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-200">{routeError}</p>
           )}
 
           <div ref={bottomRef} />
@@ -1079,28 +1078,26 @@ export default function AIAdvisor() {
         <div className="border-t border-white/[0.07] bg-[#08110e]/92 backdrop-blur-xl">
           <form onSubmit={e => { e.preventDefault(); send(input) }} className="mx-auto max-w-3xl px-4 py-3 md:py-4">
             <div className="flex gap-2 items-end">
-              <div className="flex-1 rounded-2xl border border-white/[0.1] bg-white/[0.055] px-4 py-3 transition-colors focus-within:border-emerald-300/40 focus-within:ring-1 focus-within:ring-emerald-300/15">
+              <div className="flex-1 rounded-2xl border border-white/[0.1] bg-white/[0.055] transition-colors focus-within:border-emerald-300/40 focus-within:ring-1 focus-within:ring-emerald-300/15">
                 <textarea ref={inputRef} value={input}
-                  onChange={e => {
-                    setInput(e.target.value)
-                    e.target.style.height = 'auto'
-                    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
-                  }}
+                  onChange={e => setInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }}
                   placeholder={noKey ? 'Add your API key to start…' : 'Ask me anything…'}
                   disabled={noKey || loading || analyzing}
+                  aria-label="Message the advisor"
+                  enterKeyHint="send"
                   rows={1}
-                  className="w-full bg-transparent text-base md:text-sm text-white placeholder-white/35 focus:outline-none resize-none leading-relaxed disabled:opacity-50"
-                  style={{ maxHeight: 120, overflowY: 'auto' }}
+                  className="block w-full resize-none bg-transparent px-4 py-3 text-base leading-relaxed text-white placeholder-white/35 focus:outline-none disabled:opacity-50 md:text-sm"
+                  style={{ maxHeight: 144, overflowY: 'auto' }}
                 />
               </div>
-              <button type="submit" disabled={!input.trim() || loading || analyzing || noKey}
-                className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-950/25 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-white/[0.07] disabled:text-white/25">
+              <button type="submit" aria-label="Send" disabled={!input.trim() || loading || analyzing || noKey}
+                className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-white/[0.07] disabled:text-white/25">
                 <Send className="w-4 h-4" />
               </button>
             </div>
             <p className="mt-2 hidden text-center text-[10px] text-readable-muted sm:block">
-              Educational guidance — not a substitute for a licensed financial planner.
+              Educational guidance, not a substitute for a licensed financial planner.
             </p>
           </form>
         </div>

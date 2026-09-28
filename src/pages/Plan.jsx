@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ClipboardList, Target, MoreHorizontal, Trash2, History, ChevronRight } from 'lucide-react'
+import { MoreHorizontal, Trash2, History, ChevronRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useGarden, milestonesToStage } from '@/context/GardenContext'
@@ -10,7 +10,10 @@ import { reconcileGardenMilestones, recordGardenMilestone } from '@/lib/gardenPr
 import { getPlan, updatePlanSteps, deletePlan, applyStep, appendSteps, normalizeSteps } from '@/lib/advisorPlans'
 import { requestFocusPlan, chatConfigured } from '@/lib/claude'
 import { computeSnapshot } from '@/lib/finance'
+import { loadFinancialRecords } from '@/lib/financialData'
+import DataLoadState from '@/components/ui/DataLoadState'
 import { buildHowToContext } from '@/lib/howToContext'
+import { stepProgress } from '@/lib/stepFacts'
 import { GoalItem, GoalModal } from '@/components/GoalItem'
 import ReminderWorkspace from '@/components/ReminderWorkspace'
 import {
@@ -23,7 +26,6 @@ import {
   LaterAccordion,
   CalmOutdatedStepReview,
 } from '@/components/PlanSteps'
-import GardenMeter from '@/components/GardenMeter'
 import GardenGrowthToast from '@/components/GardenGrowthToast'
 import PageHeader from '@/components/ui/PageHeader'
 import BottomSheet from '@/components/ui/BottomSheet'
@@ -34,6 +36,7 @@ import {
   buildPlanModel,
   mergeFocusWording,
   replacementCandidate,
+  retireMove,
   validateFocusPlanResult,
 } from '@/lib/focusedPlan'
 import { getMoneySetupState } from '@/lib/moneySetup'
@@ -76,6 +79,9 @@ export default function Plan() {
   const [cashFlowItems, setCashFlowItems] = useState([])
   const [budgetLimits, setBudgetLimits] = useState([])
   const [loading, setLoading] = useState(true)
+  const [dataReady, setDataReady] = useState(false)
+  const [loadError, setLoadError] = useState(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [modal,   setModal]   = useState(null)   // null | 'new' | goal
   const [growth,  setGrowth]  = useState(null)   // garden-grew celebration
   const [error,   setError]   = useState(null)
@@ -134,37 +140,26 @@ export default function Plan() {
   }
 
   useEffect(() => {
+    let live = true
+    setLoading(true)
+    setDataReady(false)
+    setLoadError(null)
     async function load() {
-      const [g, d, pl, ac, flow, limits, activityRows, reminderRows, reminderEventRows] = await Promise.all([
-        supabase.from('goals').select('*').eq('user_id', user.id).order('created_at'),
-        supabase.from('debts').select('*').eq('user_id', user.id),
+      const [records, pl, activityRows, reminderRows, reminderEventRows] = await Promise.all([
+        loadFinancialRecords(supabase, user.id),
         getPlan(user.id),
-        supabase.from('accounts').select('*').eq('user_id', user.id),
-        supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order'),
-        supabase.from('budget_limits').select('*').eq('user_id', user.id),
         listFinancialActivities(user.id),
         listReminders(user.id),
         listReminderEvents(user.id),
       ])
-      if (g.error) throw g.error
-      if (d.error) throw d.error
-      if (ac.error) throw ac.error
-      if (flow.error) throw flow.error
-      if (limits.error) throw limits.error
-      const loadedAccounts = ac.data ?? []
-      const loadedDebts = d.data ?? []
-      const loadedFlow = flow.data ?? []
-      const loadedLimits = limits.data ?? []
-      const loadedSnapshot = computeSnapshot({
-        profile, accounts: loadedAccounts, debts: loadedDebts, goals: g.data ?? [],
-        cashFlowItems: loadedFlow, budgetLimits: loadedLimits,
-      })
-      setGoals(g.data ?? [])
-      setDebts(loadedDebts)
+      if (!live) return
+      const loadedSnapshot = computeSnapshot({ profile, ...records })
+      setGoals(records.goals)
+      setDebts(records.debts)
       setPlan(pl)
-      setAccounts(loadedAccounts)
-      setCashFlowItems(loadedFlow)
-      setBudgetLimits(loadedLimits)
+      setAccounts(records.accounts)
+      setCashFlowItems(records.cashFlowItems)
+      setBudgetLimits(records.budgetLimits)
       setActivities(activityRows)
       setReminders(reminderRows)
       setReminderEvents(reminderEventRows)
@@ -173,12 +168,14 @@ export default function Plan() {
       try {
         const garden = await reconcileGardenMilestones(user.id, {
           plans: pl ? [pl] : [],
-          goals: g.data ?? [],
+          goals: records.goals,
         })
+        if (!live) return
         setGardenTotal(garden.total)
         setGardenMilestones(garden.milestones)
       } catch {
-        const fallback = milestoneEventsFromState({ plans: pl ? [pl] : [], goals: g.data ?? [] })
+        if (!live) return
+        const fallback = milestoneEventsFromState({ plans: pl ? [pl] : [], goals: records.goals })
         setGardenTotal(fallback.length)
         setGardenMilestones(fallback)
         setError('Your plan loaded, but permanent garden progress could not sync yet.')
@@ -188,13 +185,16 @@ export default function Plan() {
         expenses: loadedSnapshot.expenses,
         netWorth: loadedSnapshot.netWorth,
       })
+      setDataReady(true)
       setLoading(false)
     }
     load().catch(err => {
-      setError(err.message ?? 'Could not load your plan.')
+      if (!live) return
+      setLoadError(err)
       setLoading(false)
     })
-  }, [user.id]) // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { live = false }
+  }, [user.id, loadAttempt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Steps and Goals are different animals (a checklist you do vs money targets
   // you grow), so they live on separate tabs. /plan#goals deep-links (garden
@@ -241,6 +241,7 @@ export default function Plan() {
   const afterThis = planModel.focus.slice(1, 3)
   const doneSteps = steps.filter(step => step.done)
   const replacement = replacementCandidate(planModel)
+  const progressFor = useCallback(step => stepProgress(step, { accounts, debts, goals }), [accounts, debts, goals])
   const fingerprintRef = useRef(currentFingerprint)
   useEffect(() => { fingerprintRef.current = currentFingerprint }, [currentFingerprint])
   const dismissedKey = `focus-plan-dismissed-${user.id}`
@@ -254,7 +255,7 @@ export default function Plan() {
 
   // Keep the garden in sync with live state.
   useEffect(() => {
-    if (loading) return
+    if (loading || !dataReady) return
     updateGarden({
       milestones: gardenMilestones,
       milestoneTotal: gardenTotal,
@@ -262,19 +263,19 @@ export default function Plan() {
       income: money.income,
       expenses: money.expenses,
     })
-  }, [gardenMilestones, gardenTotal, goals, money.income, money.expenses, loading, updateGarden])
+  }, [gardenMilestones, gardenTotal, goals, money.income, money.expenses, loading, dataReady, updateGarden])
 
   // Persist the derived net worth so the dashboard, advisor, and trend snapshots
   // all read one consistent number (no manual drift).
   useEffect(() => {
-    if (loading) return
+    if (loading || !dataReady) return
     if (Number(profile?.net_worth) === netWorth) return
     setProfile(p => (p ? { ...p, net_worth: netWorth } : p))
     supabase.from('profiles').update({ net_worth: netWorth }).eq('id', user.id)
       .then(({ error: profileError }) => {
         if (profileError) setError(profileError.message ?? 'Could not sync net worth.')
       })
-  }, [netWorth, loading]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [netWorth, loading, dataReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function acceptGardenResult(result, label) {
     setGardenTotal(result.total)
@@ -407,34 +408,49 @@ export default function Plan() {
     } catch { /* handled by editSteps */ }
   }
 
+  // `proposed` may be null: a finished move with nothing to swap in is closed,
+  // not kept around because there was no replacement to accept.
   async function replaceOutdated(step, proposed) {
-    if (!step || !proposed || savingStep) return
-    const now = new Date().toISOString()
-    const normalizedReplacement = normalizeSteps([{
-      ...proposed,
-      id: undefined,
-      proposed: undefined,
-      source: 'focus',
-      addedAt: now,
-      generatedForFingerprint: currentFingerprint,
-    }])[0]
-    const admission = filterFreshPlanSteps(
-      steps.filter(item => item.id !== step.id),
-      [normalizedReplacement],
-      { dedupeCompleted: true },
-    )
-    if (!admission.fresh.length) {
-      setNotice('That replacement is already represented in your Plan.')
+    if (!step || savingStep) return
+    // A resized move is the same step: rewrite it where it sits, keeping its
+    // due date and place in the queue, along with the standing order for it.
+    const review = planModel.review
+    if (review?.kind === 'amount_update' && review.step?.id === step.id) {
+      const patches = new Map(review.updates.map(update => [update.id, update.patch]))
+      try {
+        await editSteps(list => list.map(item => patches.has(item.id) ? { ...item, ...patches.get(item.id) } : item))
+        setNotice(review.final
+          ? `Updated: the last $${Math.round(review.after).toLocaleString()} finishes it.`
+          : `Updated to $${Math.round(review.after).toLocaleString()}/mo.`)
+      } catch { /* handled by editSteps */ }
       return
     }
-    const replacementStep = admission.fresh[0]
+    const now = new Date().toISOString()
+    let replacementStep = null
+    if (proposed) {
+      const normalizedReplacement = normalizeSteps([{
+        ...proposed,
+        id: undefined,
+        proposed: undefined,
+        source: 'focus',
+        addedAt: now,
+        generatedForFingerprint: currentFingerprint,
+      }])[0]
+      const admission = filterFreshPlanSteps(
+        steps.filter(item => item.id !== step.id),
+        [normalizedReplacement],
+        { dedupeCompleted: true },
+      )
+      replacementStep = admission.fresh[0] || null
+    }
     try {
-      await editSteps(list => [
-        ...list.map(item => item.id === step.id
-          ? { ...item, supersededAt: now, pinnedAt: null }
-          : item),
-        replacementStep,
-      ])
+      // Retiring the move also retires the standing order that automated it,
+      // or asks for it to be stopped if it is already running at the bank.
+      await editSteps(list => {
+        const retired = retireMove(list, step.id, { now })
+        return replacementStep ? [...retired, replacementStep] : retired
+      })
+      if (proposed && !replacementStep) setNotice('Closed. Its replacement is already in your Plan.')
     } catch { /* handled by editSteps */ }
   }
 
@@ -726,7 +742,7 @@ export default function Plan() {
   }, [basePlanModel.candidates, cacheKey, currentFingerprint, dismissedKey, nextStatus])
 
   useEffect(() => {
-    if (loading || growth || tab !== 'steps') return
+    if (loading || !dataReady || growth || tab !== 'steps') return
 
     if (!basePlanModel.candidates.length) {
       if (nextStatus !== 'idle' || nextChapter || nextError) {
@@ -778,7 +794,7 @@ export default function Plan() {
     if (attemptedFingerprint === currentFingerprint || dismissedFingerprint === currentFingerprint || savingStep) return
 
     void generateNextChapter()
-  }, [attemptedFingerprint, basePlanModel.candidates.length, cacheKey, currentFingerprint, dismissedKey, generateNextChapter, growth, loading, nextChapter, nextError, nextStatus, savingStep, tab])
+  }, [attemptedFingerprint, basePlanModel.candidates.length, cacheKey, currentFingerprint, dismissedKey, generateNextChapter, growth, loading, dataReady, nextChapter, nextError, nextStatus, savingStep, tab])
 
   async function approveNextChapter() {
     const approvalDraft = currentDraft || (basePlanModel.candidates.length
@@ -895,19 +911,16 @@ export default function Plan() {
   // build theirs on the step detail page from the same shared builder).
   const howToCtx = buildHowToContext({ profile, debts, accounts, goals, income: money.income, expenses: money.expenses, netWorth })
 
+  if (loading || loadError || !dataReady) return <DataLoadState title="Your Plan" loading={loading} onRetry={() => setLoadAttempt(value => value + 1)} />
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
       className="p-4 md:p-6 lg:p-8 max-w-2xl mx-auto space-y-4 pb-24 md:pb-8"
     >
       <PageHeader
-        icon={ClipboardList}
-        eyebrow="Your path"
         title="Plan"
-        subtitle={tab === 'steps' ? 'One clear move at a time.' : 'Grow the goals that matter most.'}
         actions={(
-          <>
-          <GardenMeter total={gardenTotal} compact />
           <div className="relative">
             <button onClick={() => setManageOpen(open => !open)} aria-label="Manage plan" aria-expanded={manageOpen}
               className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.1] text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
@@ -917,7 +930,6 @@ export default function Plan() {
               <>
                 <button aria-label="Close plan menu" onClick={() => setManageOpen(false)} className="fixed inset-0 z-20 cursor-default" />
                 <div className="absolute right-0 top-12 z-30 w-56 rounded-2xl border border-white/[0.12] bg-[#101a14] p-2 shadow-2xl shadow-black/40">
-                 <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-readable-muted">Plan management</p>
                   <button type="button" onClick={() => { setManageOpen(false); setPromptActivity(null); setActivitySheetOpen(true) }}
                     className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm text-readable-secondary hover:bg-white/[0.06] hover:text-white">
                     <History className="h-4 w-4" /> Recent progress
@@ -931,30 +943,23 @@ export default function Plan() {
               </>
             )}
           </div>
-          </>
         )}
       />
 
       {/* ── Steps | Goals switcher — a checklist you DO vs targets you GROW ── */}
-      <div className="sticky top-0 z-20 -mx-1 border-y border-white/[0.06] bg-[#0b1410]/90 px-1 py-2 backdrop-blur-xl md:top-3 md:rounded-2xl md:border">
-      <div className="flex p-1 rounded-xl bg-white/[0.06] border border-white/[0.10]">
+      <div className="sticky top-0 z-20 -mx-4 bg-[#0b1410]/95 px-4 py-2 backdrop-blur-xl md:static md:mx-0 md:bg-transparent md:px-0 md:backdrop-blur-none">
+      <div role="tablist" className="flex rounded-xl bg-white/[0.05] p-1">
         {[
-          { id: 'steps', icon: ClipboardList, label: 'Steps',
+          { id: 'steps', label: 'Steps',
             badge: totalSteps === 0 ? null : (activeSteps.length === 0 ? 'all done' : `${activeSteps.length} left`) },
-          { id: 'goals', icon: Target, label: 'Goals',
-            badge: reminderModel.counts.due > 0 ? `${reminderModel.counts.due} due` : (goals.length ? `${goals.length} goals` : null) },
+          { id: 'goals', label: 'Goals',
+            badge: reminderModel.counts.due > 0 ? `${reminderModel.counts.due} due` : (goals.length ? `${goals.length} goal${goals.length === 1 ? '' : 's'}` : null) },
         ].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`min-h-11 flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-sm font-semibold transition-all ${
-              tab === t.id ? 'bg-emerald-500/20 ring-1 ring-emerald-400/30 text-white' : 'text-white/50 hover:text-white/80'}`}>
-            <t.icon className={`w-4 h-4 flex-shrink-0 ${tab === t.id ? 'text-emerald-300' : ''}`} />
+          <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
+            className={`flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 ${
+              tab === t.id ? 'bg-white/[0.1] text-white' : 'text-readable-muted hover:text-white'}`}>
             {t.label}
-            {t.badge && (
-              <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded-full whitespace-nowrap ${
-                tab === t.id ? 'bg-emerald-400/20 text-emerald-200' : 'bg-white/10 text-white/45'}`}>
-                {t.badge}
-              </span>
-            )}
+            {t.badge && <span className="text-xs font-medium tabular-nums text-readable-muted">{t.badge}</span>}
           </button>
         ))}
       </div>
@@ -978,6 +983,7 @@ export default function Plan() {
             {upNext && !upNext.proposed && (
               <UpNextCard
                 step={upNext}
+                live={progressFor(upNext)}
                 onToggle={toggleStep}
                 onApply={applyAndMark}
                 onOpen={openStep}
@@ -985,7 +991,7 @@ export default function Plan() {
               />
             )}
 
-            {upNext && !upNext.proposed && <FocusQueue steps={afterThis} onOpen={openStep} />}
+            {upNext && !upNext.proposed && <FocusQueue steps={afterThis} onOpen={openStep} progressFor={progressFor} />}
 
             {!growth && basePlanModel.candidates.length > 0 && (
               <CalmNextChapterCard
@@ -1001,10 +1007,9 @@ export default function Plan() {
             )}
 
             {!upNext && !basePlanModel.candidates.length && (
-              <div className="rounded-2xl border border-white/[0.09] bg-white/[0.045] p-5 text-center">
-                <GardenMeter total={gardenTotal} />
-                <p className="mt-4 text-sm font-semibold text-white">Your focused plan is clear.</p>
-                <p className="mt-1 text-xs leading-5 text-readable-secondary">Add a goal or a manual step when there is a concrete next move.</p>
+              <div className="rounded-2xl border border-white/[0.09] bg-white/[0.04] p-4">
+                <p className="text-[15px] font-semibold text-white">Nothing to do right now.</p>
+                <p className="mt-1 text-[14px] leading-5 text-readable-secondary">Your plan is caught up. Add a goal or a step when there is a concrete next move.</p>
               </div>
             )}
           </>}
@@ -1081,8 +1086,8 @@ export default function Plan() {
       )}
 
       {modal && <GoalModal goal={modal === 'new' ? null : modal} onSave={saveGoal} onClose={() => { setModal(null); setPendingLinkedReminder(null) }} />}
-      <BottomSheet open={Boolean(goalDetail)} title={goalDetail?.name || 'Goal details'} subtitle="Progress, pace, and management in one place." onClose={() => setGoalDetail(null)} size="sm">
-        {goalDetail && <GoalItem goal={goalDetail}
+      <BottomSheet open={Boolean(goalDetail)} title={goalDetail?.name || 'Goal details'} onClose={() => setGoalDetail(null)} size="sm">
+        {goalDetail && <GoalItem goal={goalDetail} embedded
           onEdit={goal => { setGoalDetail(null); setModal(goal) }}
           onDelete={async id => { await deleteGoal(id); setGoalDetail(null) }}
           onUpdateProgress={async (id, value) => { await updateProgress(id, value); setGoalDetail(current => current ? { ...current, current_amount: value } : current) }}

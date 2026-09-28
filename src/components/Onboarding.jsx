@@ -89,7 +89,7 @@ const BASE_STEPS = [
   },
   {
     id: 'intro',
-    question: "Before we start — a quick setup",
+    question: "Before we start, a quick setup",
     sub: 'Takes about 2 minutes. Your answers unlock advice that\'s actually about you, not generic tips.',
     type: 'intro',
   },
@@ -116,12 +116,12 @@ const BASE_STEPS = [
   {
     id: 'retirement',
     question: 'Does your employer offer a 401k or 403b?',
-    sub: "An employer match is the highest-return 'investment' available — we need to know if you have it.",
+    sub: "An employer match is the highest-return 'investment' there is, so it matters whether you have one.",
     type: 'single',
     field: 'employer_401k',
     options: [
-      { value: 'match',    label: 'Yes — with employer match', sub: 'Free money — usually 3–6% of your salary' },
-      { value: 'no_match', label: 'Yes — but no match', sub: 'Still useful for tax savings' },
+      { value: 'match',    label: 'Yes, with an employer match', sub: 'Free money, usually 3–6% of your salary' },
+      { value: 'no_match', label: 'Yes, but no match', sub: 'Still useful for tax savings' },
       { value: 'none',     label: 'No / Not offered', sub: "We'll focus on IRA instead" },
       { value: 'unsure',   label: "I'm not sure", sub: 'Worth checking your HR portal' },
       { value: 'na',       label: 'Not applicable',  sub: 'Student, freelance, or other' },
@@ -130,7 +130,7 @@ const BASE_STEPS = [
   {
     id: 'investing',
     question: 'Are you currently investing anywhere?',
-    sub: "Pick all that apply — we won't suggest opening accounts you already have.",
+    sub: "Pick all that apply. We won't suggest opening an account you already have.",
     type: 'multi',
     field: 'investment_types',
     options: [
@@ -149,28 +149,28 @@ const BASE_STEPS = [
     type: 'single',
     field: 'health_insurance',
     options: [
-      { value: 'employer',    label: 'Yes — through work' },
-      { value: 'marketplace', label: 'Yes — marketplace / ACA' },
-      { value: 'parents',     label: "Yes — on parents' plan", sub: 'Available until age 26' },
-      { value: 'none',        label: 'No — uninsured', sub: "We'll flag this as a priority" },
+      { value: 'employer',    label: 'Yes, through work' },
+      { value: 'marketplace', label: 'Yes, marketplace / ACA' },
+      { value: 'parents',     label: "Yes, on a parent's plan", sub: 'Available until age 26' },
+      { value: 'none',        label: 'No, uninsured', sub: "We'll flag this as a priority" },
     ],
   },
   {
     id: 'money',
-    question: 'Now your monthly picture — rough is fine.',
+    question: 'Now your monthly picture. Rough is fine.',
     sub: 'Roughly what comes in and what goes out. You can fine-tune it later.',
     type: 'money',
   },
   {
     id: 'debts',
     question: 'Any debts to track?',
-    sub: 'Credit cards, student loans, car loans — add what you owe so your advisor can plan payoff. Skip if you have none.',
+    sub: 'Credit cards, student loans, car loans. Add what you owe so the plan can pay it off. Skip if you have none.',
     type: 'debts',
   },
   {
     id: 'goal',
     question: "What's your #1 financial priority right now?",
-    sub: "Your advisor will focus around this — you can change it anytime.",
+    sub: "Your plan starts here. You can change it anytime.",
     type: 'single',
     field: 'primary_goal',
     options: [
@@ -214,7 +214,7 @@ const CALM_STEPS = [
     id: 'coverage_calm',
     type: 'calm_coverage',
     question: 'Your safety net and investing',
-    sub: 'So your plan fits your life — and we never ask you twice.',
+    sub: 'So your plan fits your life. You will only be asked once.',
   },
   {
     ...BASE_STEPS.find(step => step.id === 'goal'),
@@ -252,13 +252,13 @@ function buildSteps(answers, profileOnly) {
       if (s.id === 'investing' && emp === 'freelance') {
         return {
           ...s,
-          sub: "Pick all that apply. Self-employed? A SEP-IRA or Solo 401(k) may fit — your advisor can walk you through it.",
+          sub: "Pick all that apply. Self-employed? A SEP-IRA or Solo 401(k) may fit, and the advisor can walk you through it.",
         }
       }
       if (s.id === 'insurance') {
         let options = [
           ...s.options.slice(0, 2),
-          { value: 'spouse', label: "Yes — on my spouse's plan" },
+          { value: 'spouse', label: "Yes, on my spouse's plan" },
           ...s.options.slice(2),
         ]
         // The parents'-plan option ends at 26 — hide it for anyone older.
@@ -280,12 +280,9 @@ function buildSteps(answers, profileOnly) {
 // ─── Preview step (value prop before questions) ────────────────────────────────
 function PreviewStep() {
   return (
-    <div className="rounded-2xl border border-emerald-300/20 bg-emerald-300/[0.07] p-5">
-      <p className="text-base font-semibold text-white">One clear next move, built from your real numbers.</p>
-      <p className="mt-2 text-sm leading-6 text-readable-secondary">
-        A few short questions — about two minutes. Your plan is built the moment you finish.
-      </p>
-    </div>
+    <p className="text-[15px] leading-6 text-readable-secondary">
+      A few short questions, about two minutes. Your plan is ready the moment you finish, and it only ever uses what you tell it.
+    </p>
   )
 }
 
@@ -403,8 +400,10 @@ function DebtsStep({ debts, setDebts }) {
               <div className="flex items-center gap-2 flex-shrink-0">
                 {d.interest_rate != null && <span className="text-xs text-amber-200/80 tabular-nums">{d.interest_rate}%</span>}
                 <span className="text-sm font-semibold text-rose-300 tabular-nums">${Math.round(d.balance).toLocaleString()}</span>
-                <button type="button" onClick={() => setDebts(debts.filter((_, j) => j !== i))}
-                  className="text-white/30 hover:text-rose-400 transition-colors text-lg leading-none">×</button>
+                <button type="button" onClick={() => setDebts(debts.filter((_, j) => j !== i))} aria-label={`Remove ${d.name}`}
+                  className="-my-2 -mr-2 flex h-11 w-11 items-center justify-center text-white/40 transition-colors hover:text-rose-300">
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             </div>
           ))}
@@ -431,7 +430,7 @@ function DebtsStep({ debts, setDebts }) {
           Add
         </button>
       </div>
-      <p className="text-[11px] text-white/35">Don't know the rate? Leave it blank — no debts? Just hit Next.</p>
+      <p className="text-[13px] leading-5 text-readable-muted">Don't know the rate? Leave it blank. No debts? Just tap Next.</p>
     </div>
   )
 }
@@ -710,47 +709,33 @@ export default function Onboarding({ onClose, profileOnly = false }) {
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-5">
-          <div className="flex items-center gap-2.5 mb-4">
-            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-              <Sprout className="w-4 h-4 text-white" />
-            </div>
-            <span className="font-brand text-white font-semibold text-sm">Garden Financial</span>
+        <div className="px-6 pt-5">
+          <div className="flex min-h-10 items-center">
+            <span className="font-brand text-[15px] font-semibold text-white">Garden Financial</span>
             {onClose && (
               <button onClick={onClose} aria-label="Close"
-                className="ml-auto -mr-1 p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/15 transition-colors">
+                className="-mr-2 ml-auto flex h-10 w-10 items-center justify-center rounded-lg text-readable-muted transition-colors hover:bg-white/[0.07] hover:text-white">
                 <X className="w-4 h-4" />
               </button>
             )}
           </div>
 
           {current.type === 'preview' ? (
-            // Preview step: big headline, no progress dots
-            <div>
-              <h2 className="font-display text-[22px] font-medium text-white leading-tight">
-                A calm plan for your money.
-              </h2>
-              <p className="text-white/70 text-xs mt-1.5">
-                Your progress grows a living illustrated garden along the way.
-              </p>
-            </div>
+            <h2 className="mt-5 text-[24px] font-semibold leading-8 tracking-[-0.02em] text-white">
+              A plan for your money, built from your real numbers.
+            </h2>
           ) : (
-            // All other steps: show progress dots
-            <>
-              <div className="flex items-center gap-1.5">
-                {dotsSteps.map((_, i) => (
-                  <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${
-                    i < dotsStep ? 'bg-white w-4' : i === dotsStep ? 'bg-white w-6' : 'bg-white/30 w-3'
-                  }`} />
-                ))}
+            <div className="mt-3" aria-label={`Step ${dotsStep + 1} of ${dotsSteps.length}`}>
+              <div className="h-1 overflow-hidden rounded-full bg-white/[0.08]">
+                <div className="h-full rounded-full bg-emerald-400 transition-all duration-300" style={{ width: `${((dotsStep + 1) / dotsSteps.length) * 100}%` }} />
               </div>
-              <div className="text-white/70 text-xs mt-2">Step {dotsStep + 1} of {dotsSteps.length}</div>
-            </>
+              <p className="mt-2 text-xs text-readable-muted">Step {dotsStep + 1} of {dotsSteps.length}</p>
+            </div>
           )}
         </div>
 
         {/* Body */}
-        <div className="px-6 py-6 overflow-y-auto" style={{ minHeight: 300, maxHeight: '60dvh' }}>
+        <div className="px-6 pb-6 pt-4 overflow-y-auto" style={{ minHeight: 300, maxHeight: '60dvh' }}>
           {/* No AnimatePresence mode="wait" here: it gates the NEXT question
               behind the previous step's exit animation, so a throttled rAF
               (backgrounded tab, low-power mode) freezes the whole wizard on
@@ -761,8 +746,8 @@ export default function Onboarding({ onClose, profileOnly = false }) {
 
               {current.type !== 'preview' && (
                 <>
-                  <h2 className="font-display text-xl font-medium text-white mb-1 tracking-tight">{current.question}</h2>
-                  {current.sub && <p className="text-sm text-white/50 mb-5">{current.sub}</p>}
+                  <h2 className="mb-1 text-[20px] font-semibold leading-7 tracking-[-0.015em] text-white">{current.question}</h2>
+                  {current.sub && <p className="mb-5 text-sm text-readable-secondary">{current.sub}</p>}
                 </>
               )}
 
@@ -982,7 +967,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
                     </span>
                     <div>
                       <p className="text-sm font-semibold text-white">Retirement and brokerage come later</p>
-                      <p className="mt-1 text-xs leading-5 text-readable-secondary">These two set your emergency-fund target. Add retirement and investment accounts{BANK_LINKING_ENABLED ? ' — or connect your bank — ' : ' '}right after setup.</p>
+                      <p className="mt-1 text-xs leading-5 text-readable-secondary">These two set your emergency-fund target. Add retirement and investment accounts{BANK_LINKING_ENABLED ? ', or connect your bank, ' : ' '}right after setup.</p>
                     </div>
                   </div>
                 </div>
@@ -1036,20 +1021,20 @@ export default function Onboarding({ onClose, profileOnly = false }) {
         </div>
 
         {error && (
-          <p role="alert" className="px-6 pb-3 text-xs text-rose-300">{error}</p>
+          <p role="alert" className="px-6 pb-3 text-sm text-rose-200">{error}</p>
         )}
 
         {/* Footer */}
-        <div className="px-6 pb-5 flex items-center justify-between">
+        <div className="flex items-center justify-between px-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
           <div className="flex items-center gap-3">
             {!isFirst && (
               <button onClick={() => setStep(Math.max(0, safeStep - 1))}
-                className="flex items-center gap-1.5 text-sm text-white/40 hover:text-white/70 transition-colors">
-                <ArrowLeft className="w-4 h-4" /> Back
+                className="-ml-1 flex min-h-11 items-center gap-1.5 px-1 text-[15px] text-readable-secondary transition-colors hover:text-white">
+                <ArrowLeft className="h-4 w-4" /> Back
               </button>
             )}
             {isFirst && (
-              <button onClick={skip} className="text-xs text-white/30 hover:text-white/55 transition-colors">
+              <button onClick={skip} className="-ml-1 flex min-h-11 items-center px-1 text-[14px] text-readable-muted transition-colors hover:text-white">
                 Skip for now
               </button>
             )}
@@ -1059,13 +1044,13 @@ export default function Onboarding({ onClose, profileOnly = false }) {
           {(current.type === 'preview' || current.type === 'intro' || current.type === 'age' || current.type === 'multi' || current.type === 'money' || current.type === 'debts' || current.type === 'calm_basics' || current.type === 'calm_balances' || current.type === 'calm_coverage' || current.type === 'calm_priority') && (
             isLast ? (
               <button onClick={finish} disabled={!canAdvance() || saving}
-                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30">
+                className="flex min-h-12 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-[15px] font-semibold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/30">
                 {saving ? 'Saving…' : 'Finish setup'}
                 {!saving && <Check className="w-4 h-4" />}
               </button>
             ) : (
               <button onClick={() => setStep(s => s + 1)} disabled={!canAdvance()}
-                className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30">
+                className="flex min-h-12 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-[15px] font-semibold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/30">
                 {current.type === 'preview' ? 'Get started' : 'Next'} <ArrowRight className="w-4 h-4" />
               </button>
             )
@@ -1074,7 +1059,7 @@ export default function Onboarding({ onClose, profileOnly = false }) {
           {/* For single-select last step */}
           {current.type === 'single' && isLast && answers[current.field] && (
             <button onClick={finish} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 text-white rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-emerald-900/30 ml-auto">
+              className="ml-auto flex min-h-12 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-[15px] font-semibold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/30">
               {saving ? 'Saving…' : 'Finish setup'}
               {!saving && <Check className="w-4 h-4" />}
             </button>

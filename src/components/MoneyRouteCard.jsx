@@ -1,4 +1,4 @@
-import { ArrowRight, ClipboardList, ListChecks, SlidersHorizontal } from 'lucide-react'
+import { ArrowRight, SlidersHorizontal } from 'lucide-react'
 import { HORIZON_MONTHS, formatDuration, orderForPresentation } from '@/lib/moneyRoute'
 import { maskMoneyText } from '@/lib/privacy'
 
@@ -17,8 +17,10 @@ const bareName = label => label.replace(/^Pay extra toward |^Build the |^Grow |^
 const takesLabel = item => formatDuration(item.etaMonths)
 const startsLabel = item => {
   if (!item.startsInMonths || item.startsInMonths > HORIZON_MONTHS) return null
-  return `starts in ${formatDuration(item.startsInMonths)}`
+  return `Starts in ${formatDuration(item.startsInMonths)}`
 }
+
+const capitalize = text => text ? text.charAt(0).toUpperCase() + text.slice(1) : text
 
 function planItems(route) {
   return orderForPresentation((route?.allocations || []).filter(item => (
@@ -28,19 +30,17 @@ function planItems(route) {
 
 export function MoneyRouteSummary({ route }) {
   if (!route?.ready) return null
-  const visible = planItems(route).slice(0, 3)
+  // Where the money goes: funded destinations, named as nouns. A $0 setup
+  // chore ("Put every minimum payment on autopay") is not a destination.
+  const items = planItems(route)
+  const funded = items.filter(item => item.amount > 0)
+  const visible = (funded.length ? funded : items).slice(0, 3)
   if (!visible.length) return null
   return (
-    <section aria-label="Your plan" className="rounded-2xl border border-emerald-300/14 bg-emerald-300/[0.045] px-4 py-3.5">
-      <div className="flex items-center gap-2">
-        <ListChecks className="h-4 w-4 text-emerald-200" />
-        <p className="text-[13px] font-semibold text-white">Your plan</p>
-      </div>
-      <p className="mt-2 text-[13px] leading-5 text-readable-secondary">
-        <strong className="font-semibold text-white">{formatMoney(route.availableMonthlyAmount)}/mo</strong>
-        {` → ${visible.map(item => bareName(item.label)).join(' → ')}`}
-      </p>
-    </section>
+    <p aria-label="Where your money goes this month" className="rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-[13px] leading-5 text-readable-secondary">
+      <span className="font-semibold tabular-nums text-white">{formatMoney(route.availableMonthlyAmount)}/mo</span>
+      {` → ${visible.map(item => item.destinationAccountName || item.destinationName || bareName(item.label)).join(' → ')}`}
+    </p>
   )
 }
 
@@ -76,43 +76,35 @@ export default function MoneyRouteCard({
     .some(item => item.key === 'capture_employer_match' || item.key === 'confirm_employer_match')
 
   return (
-    <section className={`overflow-hidden rounded-[24px] border border-emerald-200/16 bg-[linear-gradient(145deg,rgba(18,41,31,.97),rgba(8,20,15,.99))] shadow-[0_18px_45px_rgba(0,0,0,.2)] ${compact ? 'p-4 sm:p-5' : 'p-5'}`}>
-      <div className="flex items-start gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-200/15 bg-emerald-300/[0.09] text-emerald-100"><ClipboardList className="h-5 w-5" /></span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/80">Your plan</p>
-          <h2 className="mt-1.5 text-[20px] font-semibold leading-7 tracking-[-0.02em] text-white">
-            {/* "Here is where your $0 a month goes" answers a question nobody
-                asked. When there is nothing to route, say so and point at the
-                rung that changes it. */}
-            {route.availableMonthlyAmount > 0
-              ? `Here is where your ${formatMoney(route.availableMonthlyAmount, hideAmounts)} a month goes`
-              : 'Nothing is left over yet — this is where to start'}
-          </h2>
-          {/* Keeps this figure from reading as a second, unexplained number
-              next to Home's "Left over monthly" — every subtraction is shown. */}
-          {!compact && route.reconciliation?.length > 1 && (
-            <p className="mt-1 text-xs leading-5 text-readable-muted">
-              {formatMoney(route.reconciliation[0].amount)} left over
-              {route.reconciliation.slice(1).map(line => ` − ${formatMoney(Math.abs(line.amount))} ${line.label.toLowerCase()}`).join('')}
-            </p>
-          )}
-        </div>
-      </div>
+    <section className={`rounded-2xl border border-white/[0.09] bg-white/[0.045] ${compact ? 'p-4 sm:p-5' : 'p-5'}`}>
+      <h2 className="text-[18px] font-semibold leading-6 tracking-[-0.015em] text-white">
+        {/* "Here is where your $0 a month goes" answers a question nobody
+            asked. When there is nothing to route, say so and point at the
+            rung that changes it. */}
+        {route.availableMonthlyAmount > 0
+          ? `Where your ${formatMoney(route.availableMonthlyAmount, hideAmounts)} a month goes`
+          : 'Nothing is left over yet. Start here.'}
+      </h2>
+      {/* Keeps this figure from reading as a second, unexplained number
+          next to Home's "Left over monthly" — every subtraction is shown. */}
+      {!compact && route.reconciliation?.length > 1 && (
+        <p className="mt-1 text-xs leading-5 text-readable-muted">
+          {formatMoney(route.reconciliation[0].amount)} left over
+          {route.reconciliation.slice(1).map(line => ` − ${formatMoney(Math.abs(line.amount))} ${line.label.toLowerCase()}`).join('')}
+        </p>
+      )}
 
-      <ol className="mt-4 divide-y divide-white/[0.07] rounded-2xl border border-white/[0.09] bg-black/[0.08] px-3.5">
+      <ol className="mt-3 divide-y divide-white/[0.07]">
         {items.slice(0, limit).map((item, index) => (
           <li key={item.key} className="flex gap-3 py-3">
-            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-300/10 text-[11px] font-bold text-emerald-100">{index + 1}</span>
+            <span className="w-4 shrink-0 pt-px text-[13px] font-medium tabular-nums text-readable-muted">{index + 1}</span>
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-[13px] font-semibold leading-5 text-white">{maskMoneyText(item.label, hideAmounts)}</p>
-                {item.amount > 0 && <span className="shrink-0 text-[13px] font-semibold tabular-nums text-emerald-100">{formatMoney(item.amount, hideAmounts)}</span>}
+                <p className="text-[14px] font-medium leading-5 text-white">{maskMoneyText(item.label, hideAmounts)}</p>
+                {item.amount > 0 && <span className="shrink-0 text-[14px] font-semibold tabular-nums text-white">{formatMoney(item.amount, hideAmounts)}</span>}
               </div>
-              {takesLabel(item) && (
-                <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-200/70">{takesLabel(item)} at this rate</p>
-              )}
-              {!compact && <p className="mt-0.5 text-xs leading-5 text-readable-secondary">{item.reason}</p>}
+              {takesLabel(item) && <p className="mt-0.5 text-xs text-readable-muted">{capitalize(takesLabel(item))} at this rate</p>}
+              {!compact && <p className="mt-1 text-xs leading-5 text-readable-secondary">{item.reason}</p>}
             </div>
           </li>
         ))}
@@ -122,26 +114,24 @@ export default function MoneyRouteCard({
             next is what makes this a plan rather than one suggestion. */}
         {upcoming.map((item, index) => (
           <li key={item.key} className="flex gap-3 py-3">
-            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-white/[0.14] text-[11px] font-bold text-readable-muted">{items.slice(0, limit).length + index + 1}</span>
+            <span className="w-4 shrink-0 pt-px text-[13px] font-medium tabular-nums text-readable-muted">{items.slice(0, limit).length + index + 1}</span>
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-[13px] font-semibold leading-5 text-readable-secondary">{maskMoneyText(item.label, hideAmounts)}</p>
-                <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-readable-muted">Then</span>
+                <p className="text-[14px] leading-5 text-readable-secondary">{maskMoneyText(item.label, hideAmounts)}</p>
+                <span className="shrink-0 text-xs text-readable-muted">Then</span>
               </div>
-              {startsLabel(item) && (
-                <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-readable-muted">{startsLabel(item)}</p>
-              )}
-              {!compact && <p className="mt-0.5 text-xs leading-5 text-readable-muted">{item.reason}</p>}
+              {startsLabel(item) && <p className="mt-0.5 text-xs text-readable-muted">{startsLabel(item)}</p>}
+              {!compact && <p className="mt-1 text-xs leading-5 text-readable-muted">{item.reason}</p>}
             </div>
           </li>
         ))}
       </ol>
-      {items.length > limit && <p className="mt-2 text-xs text-readable-secondary">+{items.length - limit} more funded this month</p>}
+      {items.length > limit && <p className="mt-1 text-xs text-readable-secondary">+{items.length - limit} more funded this month</p>}
 
       {/* Anything the user entered but the plan deliberately leaves alone —
           silence about a debt they typed in reads as lost data. */}
       {!compact && (route.notes || []).map(note => (
-        <p key={note} className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-xs leading-5 text-readable-secondary">{note}</p>
+        <p key={note} className="mt-3 border-t border-white/[0.07] pt-3 text-xs leading-5 text-readable-secondary">{note}</p>
       ))}
 
       {/* The plan is settled; these are the things it cannot know. A planner
@@ -149,9 +139,9 @@ export default function MoneyRouteCard({
           asking about THIS plan sit right under it rather than waiting for the
           user to guess that the advisor has more to say. */}
       {!compact && followUps.length > 0 && onAskFollowUp && (
-        <div className="mt-4 rounded-2xl border border-white/[0.09] bg-white/[0.025] p-3.5">
-          <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-readable-muted">Before you start, I&rsquo;d ask</p>
-          <ul className="mt-2 space-y-1.5">
+        <div className="mt-4 border-t border-white/[0.07] pt-3">
+          <p className="section-label">Worth answering before you start</p>
+          <ul className="mt-1 -mx-2">
             {followUps.map(item => (
               <li key={item.id}>
                 {/* A question whose answer is one field does not deserve a trip
@@ -160,9 +150,9 @@ export default function MoneyRouteCard({
                     the advisor. */}
                 <button
                   type="button" disabled={busy} onClick={() => onAskFollowUp(item)}
-                  className="w-full rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-white/[0.05] disabled:opacity-50"
+                  className="w-full rounded-xl px-2 py-2.5 text-left transition-colors hover:bg-white/[0.05] disabled:opacity-50"
                 >
-                  <span className="block text-[13px] font-semibold leading-5 text-white">{item.question}</span>
+                  <span className="block text-[14px] font-medium leading-5 text-white">{item.question}</span>
                   <span className="mt-0.5 block text-xs leading-5 text-readable-muted">{item.why}</span>
                 </button>
               </li>
@@ -197,7 +187,7 @@ export default function MoneyRouteCard({
       {/* Explains the ranking, minus any rung that does not apply — a student
           with no employer should not be told about matching contributions. */}
       {!compact && (
-        <p className="mt-3 text-center text-[11px] leading-4 text-readable-muted">
+        <p className="mt-3 text-xs leading-5 text-readable-muted">
           Ordered by what earns you most: a cash cushion,{mentionsMatch ? ' free money from your employer,' : ''} expensive debt, then saving and investing.
         </p>
       )}

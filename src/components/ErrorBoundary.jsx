@@ -1,5 +1,5 @@
 import { Component } from 'react'
-import { Sprout, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw } from 'lucide-react'
 import { isChunkError, reloadOnce } from '@/lib/chunkReload'
 
 // Top-level boundary: catches render/runtime errors anywhere in the tree and
@@ -27,33 +27,26 @@ export default class ErrorBoundary extends Component {
     // the scary error screen.
     if (this.state.recovering) {
       return (
-        <div className="min-h-screen flex flex-col items-center justify-center gap-3"
-          style={{ background: 'linear-gradient(155deg, #021109 0%, #04261a 30%, #02140f 62%, #020c0a 100%)' }}>
-          <div className="w-12 h-12 bg-green-500/90 rounded-2xl flex items-center justify-center shadow-lg animate-pulse">
-            <Sprout className="w-6 h-6 text-white" />
-          </div>
-          <span className="text-sm font-medium text-white/55">Updating to the latest version…</span>
+        <div className="flex min-h-dvh items-center justify-center gap-2.5" style={{ background: '#08110e' }} role="status">
+          <Loader2 className="status-spinner h-4 w-4 text-emerald-300" aria-hidden="true" />
+          <span className="text-sm text-readable-secondary">Updating to the latest version…</span>
         </div>
       )
     }
     if (this.state.error) {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 flex flex-col items-center justify-center gap-5 p-6 text-center">
-          <div className="w-14 h-14 bg-green-500 rounded-2xl flex items-center justify-center shadow-lg">
-            <Sprout className="w-8 h-8 text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-gray-900">Something went wrong</h1>
-            <p className="text-sm text-gray-500 mt-1 max-w-sm">
-              The app hit an unexpected error. Reloading usually clears it — your data is safe.
+        // Same dark shell as the app: a white page flashing in mid-session
+        // reads as a different product having crashed.
+        <div className="flex min-h-dvh items-center px-6" style={{ background: '#08110e' }}>
+          <div className="mx-auto w-full max-w-sm">
+            <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-white">Something went wrong</h1>
+            <p className="mt-1.5 text-[15px] leading-6 text-readable-secondary">
+              The app hit an unexpected error. Reloading usually clears it, and your data is safe.
             </p>
+            <button onClick={() => window.location.reload()} className="btn-primary mt-5 min-h-11">
+              <RefreshCw className="w-4 h-4" /> Reload
+            </button>
           </div>
-          <button
-            onClick={() => window.location.reload()}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold shadow-sm transition-colors"
-          >
-            <RefreshCw className="w-4 h-4" /> Reload
-          </button>
         </div>
       )
     }

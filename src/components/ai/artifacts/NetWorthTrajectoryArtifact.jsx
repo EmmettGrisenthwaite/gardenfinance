@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { netWorthTrajectory } from '@/lib/financeArtifacts'
-import { TrendingUp, Sprout, DollarSign } from 'lucide-react'
+
+const signed = value => `${value < 0 ? '−' : ''}$${Math.abs(Math.round(value)).toLocaleString()}`
 
 export default function NetWorthTrajectoryArtifact({ assets, debts, monthlySurplus }) {
   const result = useMemo(() => {
@@ -12,118 +13,69 @@ export default function NetWorthTrajectoryArtifact({ assets, debts, monthlySurpl
 
   if (!result || !result.trajectory || result.trajectory.length === 0) {
     return (
-      <div className="bg-white/[0.05] border border-white/[0.10] rounded-xl p-4 mt-3">
-        <div className="text-center py-4">
-          <TrendingUp className="w-8 h-8 text-white/30 mx-auto mb-2" />
-          <p className="text-sm text-white/50">Add your money data to see net worth projections</p>
-        </div>
-      </div>
+      <p className="mt-3 rounded-2xl border border-white/[0.09] bg-white/[0.04] p-4 text-[14px] text-readable-secondary">
+        Add your money to see where your net worth is heading.
+      </p>
     )
   }
 
-  const maxValue = Math.max(...result.trajectory.map(t => t.netWorth), currentNetWorth, 1)
+  // Scale to the real range, so a negative start sits below a zero line
+  // instead of being clipped off the bottom of the chart.
+  const values = [...result.trajectory.map(t => t.netWorth), currentNetWorth]
+  const max = Math.max(...values, 1)
+  const min = Math.min(...values, 0)
+  const yFor = value => 38 - ((value - min) / (max - min || 1)) * 34
+  const points = result.trajectory.map((t, i) => `${(i / (result.trajectory.length - 1)) * 100},${yFor(t.netWorth)}`).join(' ')
   const y1 = result.year1?.netWorth || 0
   const y5 = result.year5?.netWorth || 0
   const y10 = result.year10?.netWorth || 0
 
   return (
-    <motion.div
+    <motion.section
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="mt-3"
+      transition={{ duration: 0.25 }}
+      aria-label="Net worth projection"
+      className="mt-3 rounded-2xl border border-white/[0.09] bg-white/[0.04] p-4"
     >
-      <div className="bg-white/[0.05] border border-white/[0.10] rounded-xl overflow-hidden mt-3">
-        {/* Header */}
-        <div className="px-4 py-3 border-b border-white/[0.08] flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-sky-500/15 flex items-center justify-center">
-            <TrendingUp className="w-4 h-4 text-sky-300" />
-          </div>
-          <div>
-            <h4 className="text-sm font-semibold text-white">Your Future Net Worth</h4>
-            <p className="text-[11px] text-white/40">If you keep going at this pace</p>
-          </div>
-        </div>
+      <h4 className="text-[15px] font-semibold text-white">Where your net worth is heading</h4>
+      <p className="mt-0.5 text-[13px] text-readable-muted">If you keep going at this pace.</p>
 
-        <div className="px-4 py-4 space-y-4">
-          {/* Sparkline chart */}
-          <div className="relative h-24 bg-white/[0.03] rounded-xl overflow-hidden">
-            <svg viewBox="0 0 100 40" className="w-full h-full" preserveAspectRatio="none">
-              {/* Grid lines */}
-              {[0, 10, 20, 30, 40].map(y => (
-                <line key={y} x1="0" y1={y} x2="100" y2={y} stroke="rgba(255,255,255,0.05)" strokeWidth="0.5" />
-              ))}
-              {/* Trajectory line */}
-              <polyline
-                fill="none"
-                stroke="rgb(14, 165, 233)"
-                strokeWidth="1.5"
-                points={result.trajectory.map((t, i) => {
-                  const x = (i / (result.trajectory.length - 1)) * 100
-                  const y = 40 - ((t.netWorth / maxValue) * 35 + 2)
-                  return `${x},${y}`
-                }).join(' ')}
-              />
-              {/* Area fill */}
-              <polygon
-                fill="rgba(14, 165, 233, 0.15)"
-                points={`
-                  0,40
-                  ${result.trajectory.map((t, i) => {
-                    const x = (i / (result.trajectory.length - 1)) * 100
-                    const y = 40 - ((t.netWorth / maxValue) * 35 + 2)
-                    return `${x},${y}`
-                  }).join(' ')}
-                  100,40
-                `}
-              />
-              {/* Current point dot */}
-              <circle
-                cx="0"
-                cy={40 - ((currentNetWorth / maxValue) * 35 + 2)}
-                r="2"
-                fill="rgb(16, 185, 129)"
-              />
-            </svg>
-            {/* Year labels */}
-            <div className="absolute bottom-1 left-0 right-0 flex justify-between px-2">
-              <span className="text-[9px] text-white/30">Now</span>
-              <span className="text-[9px] text-white/30">5yr</span>
-              <span className="text-[9px] text-white/30">10yr</span>
-            </div>
-          </div>
-
-          {/* Milestones */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="bg-white/[0.04] rounded-xl p-2.5 text-center">
-              <DollarSign className="w-3.5 h-3.5 text-emerald-400/70 mx-auto mb-1" />
-              <p className="text-sm font-bold text-white">${y1.toLocaleString()}</p>
-              <p className="text-[9px] text-white/40">1 year</p>
-            </div>
-            <div className="bg-white/[0.04] rounded-xl p-2.5 text-center">
-              <Sprout className="w-3.5 h-3.5 text-emerald-400/70 mx-auto mb-1" />
-              <p className="text-sm font-bold text-white">${y5.toLocaleString()}</p>
-              <p className="text-[9px] text-white/40">5 years</p>
-            </div>
-            <div className="bg-white/[0.04] rounded-xl p-2.5 text-center">
-              <TrendingUp className="w-3.5 h-3.5 text-sky-400/70 mx-auto mb-1" />
-              <p className="text-sm font-bold text-white">${y10.toLocaleString()}</p>
-              <p className="text-[9px] text-white/40">10 years</p>
-            </div>
-          </div>
-
-          {/* Motivational copy */}
-          <div className="flex items-start gap-2 bg-emerald-500/8 rounded-lg px-3 py-2">
-            <Sprout className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-emerald-200/80 leading-relaxed">
-              {currentNetWorth < 0
-                ? `Your net worth is negative now, but with ${monthlySurplus > 0 ? `$${monthlySurplus.toLocaleString()}/mo surplus` : 'consistent effort'} you'll turn positive and keep growing.`
-                : `Keep this up and your net worth could grow to $${y10.toLocaleString()} in 10 years. The power of compounding works best when you start early.`
-              }
-            </p>
-          </div>
+      <div className="mt-4">
+        <svg viewBox="0 0 100 40" className="h-24 w-full" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="nw-fill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#34d399" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {min < 0 && (
+            <line x1="0" x2="100" y1={yFor(0)} y2={yFor(0)} stroke="rgba(255,255,255,0.14)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+          )}
+          <polygon fill="url(#nw-fill)" points={`0,40 ${points} 100,40`} />
+          <polyline fill="none" stroke="#34d399" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" points={points} />
+        </svg>
+        <div className="mt-1 flex justify-between text-[12px] text-readable-muted">
+          <span>Now</span>
+          <span>5 years</span>
+          <span>10 years</span>
         </div>
       </div>
-    </motion.div>
+
+      <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-white/[0.07] pt-4">
+        {[['In 1 year', y1], ['In 5 years', y5], ['In 10 years', y10]].map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-[13px] text-readable-muted">{label}</dt>
+            <dd className="mt-0.5 text-[16px] font-semibold tabular-nums text-white">{signed(value)}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <p className="mt-3 text-[14px] leading-5 text-readable-secondary">
+        {currentNetWorth < 0
+          ? `You are below zero today. With ${monthlySurplus > 0 ? `$${monthlySurplus.toLocaleString()}/mo to work with` : 'steady progress'}, that turns around and keeps growing.`
+          : 'Most of the growth comes late. Money invested early has the longest time to compound.'}
+      </p>
+    </motion.section>
   )
 }

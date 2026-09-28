@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ChevronLeft } from 'lucide-react'
 
 /**
  * Required for the Play listing, and for a finance app it is read.
@@ -9,34 +9,39 @@ import { ArrowLeft } from 'lucide-react'
  * template. If the data flow changes, this page is part of the change.
  */
 export default function Privacy() {
+  const navigate = useNavigate()
+  // Reached from Settings or, signed out, from the login screen: go back to
+  // wherever that was rather than naming one of them.
+  const back = () => (window.history.length > 1 ? navigate(-1) : navigate('/'))
   return (
-    <div className="mx-auto max-w-2xl px-4 pb-24 pt-6 md:pb-10">
-      <Link to="/settings" className="mb-6 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-emerald-100 hover:text-white">
-        <ArrowLeft className="h-4 w-4" /> Settings
-      </Link>
+    <div className="min-h-dvh" style={{ background: '#08110e' }}>
+    <div className="mx-auto max-w-2xl px-5 pb-24 pt-4 md:pb-10">
+      <button type="button" onClick={back} className="-ml-2 mb-4 inline-flex min-h-11 items-center gap-0.5 rounded-xl pl-1 pr-3 text-sm font-medium text-readable-secondary hover:bg-white/[0.07] hover:text-white">
+        <ChevronLeft className="h-5 w-5" /> Back
+      </button>
 
-      <h1 className="font-brand text-[26px] font-medium tracking-tight text-white">Privacy</h1>
+      <h1 className="text-[28px] font-semibold tracking-[-0.02em] text-white">Privacy</h1>
       <p className="mt-2 text-sm leading-6 text-readable-secondary">
         What this app stores, where it goes, and how to get rid of it.
       </p>
 
       <section className="mt-8 space-y-3">
-        <h2 className="text-sm font-semibold text-white">What is collected</h2>
-        <p className="text-sm leading-6 text-readable-secondary">
+        <h2 className="text-[16px] font-semibold text-white">What is collected</h2>
+        <p className="text-[15px] leading-7 text-readable-secondary">
           Only what you enter, plus what it takes to sign you in: your email address, and the
-          financial details you type — income, spending, account balances, debts and their rates,
+          financial details you type: income, spending, account balances, debts and their rates,
           goals, and the plan steps you accept. If you connect a bank, the balances and transactions
           that connection returns.
         </p>
-        <p className="text-sm leading-6 text-readable-secondary">
+        <p className="text-[15px] leading-7 text-readable-secondary">
           There is no analytics SDK, no advertising SDK, and no third-party tracker in this app.
           Nothing about you is sold or shared for advertising, because nothing is collected for it.
         </p>
       </section>
 
       <section className="mt-8 space-y-3">
-        <h2 className="text-sm font-semibold text-white">Where it lives</h2>
-        <p className="text-sm leading-6 text-readable-secondary">
+        <h2 className="text-[16px] font-semibold text-white">Where it lives</h2>
+        <p className="text-[15px] leading-7 text-readable-secondary">
           In a Supabase-hosted Postgres database, encrypted in transit. Every table is protected by
           row-level security keyed to your user id, so a request authenticated as you can only ever
           read rows belonging to you.
@@ -44,38 +49,38 @@ export default function Privacy() {
       </section>
 
       <section className="mt-8 space-y-3">
-        <h2 className="text-sm font-semibold text-white">Who else sees it</h2>
-        <p className="text-sm leading-6 text-readable-secondary">
+        <h2 className="text-[16px] font-semibold text-white">Who else sees it</h2>
+        <p className="text-[15px] leading-7 text-readable-secondary">
           <strong className="font-semibold text-white">Anthropic</strong>, when you use the advisor.
           Your message and a summary of your figures are sent to Claude to produce a reply. The call
           is made by a server-side function, so the API key is never in the app you downloaded.
           Anthropic does not train models on data sent through its API.
         </p>
-        <p className="text-sm leading-6 text-readable-secondary">
+        <p className="text-[15px] leading-7 text-readable-secondary">
           <strong className="font-semibold text-white">Plaid</strong>, only if you choose to connect
           a bank. Plaid handles the login with your institution; this app never sees your banking
           credentials. Skip that feature and Plaid receives nothing.
         </p>
-        <p className="text-sm leading-6 text-readable-secondary">
+        <p className="text-[15px] leading-7 text-readable-secondary">
           The plan links out to providers such as Fidelity, Ally and Vanguard. Those are ordinary
-          links — following one is a visit you make, and nothing about you is passed along with it.
+          links. Following one is a visit you make, and nothing about you is passed along with it.
         </p>
       </section>
 
       <section className="mt-8 space-y-3">
-        <h2 className="text-sm font-semibold text-white">Getting it back, or getting rid of it</h2>
-        <p className="text-sm leading-6 text-readable-secondary">
+        <h2 className="text-[16px] font-semibold text-white">Getting it back, or getting rid of it</h2>
+        <p className="text-[15px] leading-7 text-readable-secondary">
           Settings has both. <strong className="font-semibold text-white">Export</strong> downloads
           everything held about you as a JSON file.{' '}
           <strong className="font-semibold text-white">Delete</strong> removes your records
-          permanently — accounts, debts, goals, plans, advisor history, the lot. Deletion is not
+          permanently: accounts, debts, goals, plans, advisor history, all of it. Deletion is not
           reversible and there is no archived copy to restore from.
         </p>
       </section>
 
       <section className="mt-8 space-y-3">
-        <h2 className="text-sm font-semibold text-white">What this app is not</h2>
-        <p className="text-sm leading-6 text-readable-secondary">
+        <h2 className="text-[16px] font-semibold text-white">What this app is not</h2>
+        <p className="text-[15px] leading-7 text-readable-secondary">
           It is educational guidance built from arithmetic on figures you supply, not advice from a
           licensed financial planner, and it does not move money on your behalf. Every step is
           something you carry out yourself, at your own bank.
@@ -85,6 +90,7 @@ export default function Privacy() {
       <p className="mt-10 text-xs leading-5 text-readable-muted">
         Questions about your data can go to the address you signed up with.
       </p>
+    </div>
     </div>
   )
 }

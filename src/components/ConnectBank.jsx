@@ -36,7 +36,7 @@ function ConnectionRow({ connection, onSync, onDisconnect, busy }) {
       <div className="min-w-0 flex-1">
         <p className="truncate text-[14px] font-semibold text-readable-primary">{connection.institution_name || 'Connected bank'}</p>
         <p className={`mt-0.5 text-xs ${needsReconnect ? 'text-amber-200' : 'text-readable-secondary'}`}>
-          {needsReconnect ? 'Needs reconnecting — sync to try again' : timeAgo(connection.last_synced_at)}
+          {needsReconnect ? 'Needs reconnecting. Sync to try again.' : timeAgo(connection.last_synced_at)}
         </p>
       </div>
       <button type="button" disabled={busy} onClick={() => onSync(connection.id)} aria-label={`Sync ${connection.institution_name || 'this bank'}`}
@@ -49,7 +49,7 @@ function ConnectionRow({ connection, onSync, onDisconnect, busy }) {
         className={`flex h-10 shrink-0 items-center justify-center rounded-xl transition-colors disabled:opacity-40 ${
           armed ? 'w-auto gap-1 border border-rose-400/40 bg-rose-500/20 px-2.5 text-rose-200' : 'w-10 text-readable-secondary hover:bg-rose-400/10 hover:text-rose-100'}`}>
         <Trash2 className="h-4 w-4" />
-        {armed && <span className="text-[11px] font-semibold whitespace-nowrap">Sure?</span>}
+        {armed && <span className="whitespace-nowrap text-[13px] font-semibold">Remove?</span>}
       </button>
     </div>
   )
@@ -152,13 +152,13 @@ export default function ConnectBank({ onConnected }) {
       <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-300/18 bg-emerald-300/[0.06] p-4">
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-[15px] font-semibold text-white"><Landmark className="h-4 w-4 text-emerald-200" /> Connect a real bank</p>
-          <p className="mt-1 text-[13px] leading-5 text-readable-secondary">Securely link an account through Plaid — balances sync automatically. Your login is never seen or stored by Garden Financial.</p>
+          <p className="mt-1 text-[13px] leading-5 text-readable-secondary">Securely link an account through Plaid and balances sync automatically. Your login is never seen or stored by Garden Financial.</p>
         </div>
       </div>
 
       {notConfigured && (
         <p className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-3 text-xs leading-5 text-readable-muted">
-          Bank linking isn't set up on this server yet — an admin needs to add Plaid API keys. Manual accounts below still work normally.
+          Bank linking isn't available yet. Manual accounts below work normally.
         </p>
       )}
       {error && (

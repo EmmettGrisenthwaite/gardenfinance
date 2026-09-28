@@ -28,6 +28,16 @@
     color: var(--gf-text-placeholder) !important;
     opacity: 1;
   }
+  /* Phone-sized screens: iOS zooms the whole page into any focused field whose
+     text is under 16px, and a field is a touch target like any other. */
+  @media (max-width: 767px) {
+    input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea {
+      font-size: 16px !important;
+    }
+    input:not([type=checkbox]):not([type=radio]):not([type=range]), select {
+      min-height: 44px;
+    }
+  }
 
   /* Slim translucent scrollbars — default chrome scrollbars read as undesigned
      against the dark shell. */
@@ -196,8 +206,10 @@ button:focus-visible {
     /* Inter's tweaks: contextual alternates + disambiguated l/I and tabular-friendly */
     font-feature-settings: 'cv05' 1, 'cv08' 1, 'ss01' 1;
   }
-  body {
-    @apply bg-background text-foreground;
+  /* The page behind the app is the app's own dark, so overscroll bounce and
+     the moment before the first paint never flash white. */
+  html, body {
+    background-color: #08110e;
   }
 }
 
@@ -274,9 +286,16 @@ button:focus-visible {
     box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.25);
   }
   .glass-input option { color: #fff; background: #0c1510; }
+  /* A section heading inside a page: sentence case, quiet. Replaces the
+     uppercase letter-spaced eyebrows that sat over every block. */
+  .section-label {
+    @apply text-[13px] font-medium leading-5;
+    color: var(--gf-text-muted);
+  }
+  /* Flat: a glow under every button is decoration, not affordance. */
   .btn-primary {
     @apply inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5
-           text-sm font-semibold text-white shadow-lg shadow-emerald-950/25 transition-colors
+           text-sm font-semibold text-white transition-colors
            hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60
            disabled:cursor-not-allowed disabled:opacity-50;
   }

@@ -8,8 +8,8 @@ import { listPlaidConnections, removeAllPlaidConnections } from '@/lib/plaid'
 import Onboarding from '@/components/Onboarding'
 import BottomSheet from '@/components/ui/BottomSheet'
 import {
-  ChevronLeft, UserCircle, Pencil, Wallet, ArrowRight, Download, ShieldCheck,
-  LogOut, Trash2, Loader2, Brain, X, Plus, FileText,
+  ChevronLeft, ChevronRight, Pencil, Wallet, Download, ShieldCheck,
+  LogOut, Trash2, Loader2, BookMarked, X, Plus, FileText,
 } from 'lucide-react'
 
 const APP_VERSION = '1.0'
@@ -62,7 +62,7 @@ function Row({ icon: Icon, title, sub, onClick, to, danger, busy, trailing }) {
 function Card({ label, children }) {
   return (
     <div>
-      {label && <div className="text-[10px] font-semibold text-white/45 uppercase tracking-wide px-1 mb-1.5">{label}</div>}
+      {label && <h2 className="section-label mb-1.5 px-1">{label}</h2>}
       <div className="bg-white/[0.05] rounded-2xl border border-white/[0.10] overflow-hidden divide-y divide-white/[0.06]">
         {children}
       </div>
@@ -75,7 +75,6 @@ export default function Settings() {
   const navigate = useNavigate()
   const [editProfile, setEditProfile] = useState(false)
   const [memorySheetOpen, setMemorySheetOpen] = useState(false)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -88,7 +87,9 @@ export default function Settings() {
   const [deletingMemory, setDeletingMemory] = useState(null)
   const [operationError, setOperationError] = useState(null)
 
-  const name = user.user_metadata?.full_name || profile?.first_name || 'there'
+  // "there" is the greeting fallback ("Hi there"); as a name on the account
+  // row it read as if the user were called There.
+  const name = user.user_metadata?.full_name || profile?.first_name || null
   const bits = [
     profile?.age && `${profile.age}`,
     profile?.employment_type && EMPLOYMENT[profile.employment_type],
@@ -257,12 +258,12 @@ export default function Settings() {
       style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
 
       {/* Header */}
-      <div className="flex items-center gap-2 mb-5">
+      <div className="mb-4 flex items-center gap-1">
         <button onClick={() => navigate(-1)} aria-label="Back"
-          className="p-1.5 -ml-1.5 rounded-lg text-white/55 hover:text-white hover:bg-white/10 transition-colors">
+          className="-ml-2 flex h-11 w-11 items-center justify-center rounded-xl text-readable-secondary transition-colors hover:bg-white/[0.07] hover:text-white">
           <ChevronLeft className="w-5 h-5" />
         </button>
-        <h1 className="font-display text-[22px] font-medium text-white">Settings</h1>
+        <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-white">Settings</h1>
       </div>
 
       {operationError && (
@@ -275,29 +276,26 @@ export default function Settings() {
         {/* Account */}
         <Card label="Account">
           <div className="flex items-center gap-3 px-4 py-4">
-            <div className="w-11 h-11 rounded-full bg-emerald-500/20 ring-1 ring-emerald-400/30 flex items-center justify-center flex-shrink-0">
-              <UserCircle className="w-6 h-6 text-emerald-300" />
-            </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-white truncate">{name}</div>
-              <div className="text-xs text-white/45 truncate">{user.email}</div>
+              <div className="truncate text-[15px] font-semibold text-white">{name || user.email}</div>
+              {name && <div className="truncate text-[13px] text-readable-muted">{user.email}</div>}
             </div>
           </div>
           <Row icon={Pencil} title="Edit your profile"
-            sub={bits.length ? bits.join(' · ') : 'Age, work, goals — powers your advisor'}
+            sub={bits.length ? bits.join(' · ') : 'Age, work, and goals'}
             onClick={() => setEditProfile(true)}
-            trailing={<ArrowRight className="w-4 h-4 text-white/30" />} />
+            trailing={<ChevronRight className="h-4 w-4 text-white/30" />} />
           <Row icon={Wallet} title="Your money" sub="Income, accounts, assets & debts"
-            to="/money" trailing={<ArrowRight className="w-4 h-4 text-white/30" />} />
+            to="/money" trailing={<ChevronRight className="h-4 w-4 text-white/30" />} />
         </Card>
 
         <Card label="Advisor">
           <Row
-            icon={Brain}
+            icon={BookMarked}
             title="Advisor memory"
             sub={memoriesLoading ? 'Loading remembered facts…' : `${memories.length} fact${memories.length !== 1 ? 's' : ''} remembered`}
             onClick={() => setMemorySheetOpen(true)}
-            trailing={<ArrowRight className="w-4 h-4 text-white/30" />}
+            trailing={<ChevronRight className="h-4 w-4 text-white/30" />}
           />
         </Card>
 
@@ -309,7 +307,7 @@ export default function Settings() {
         >
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <Brain className="w-4 h-4 text-emerald-300" />
+              <BookMarked className="w-4 h-4 text-emerald-300" />
               <span className="text-sm text-white/70">
                 {memories.length} fact{memories.length !== 1 ? 's' : ''} remembered
               </span>
@@ -415,17 +413,17 @@ export default function Settings() {
         {/* Data & privacy */}
         <Card label="Data & privacy">
           <Row icon={FileText} title="Privacy" sub="What is stored, who sees it, how to remove it"
-            to="/privacy" trailing={<ArrowRight className="w-4 h-4 text-white/30" />} />
+            to="/privacy" trailing={<ChevronRight className="h-4 w-4 text-white/30" />} />
           <Row icon={Download} title="Export my data" sub="Download everything as JSON"
             onClick={exportData} busy={exporting}
-            trailing={!exporting && <ArrowRight className="w-4 h-4 text-white/30" />} />
+            trailing={!exporting && <ChevronRight className="h-4 w-4 text-white/30" />} />
           <div className="flex items-start gap-3 px-4 py-3.5">
             <span className="w-8 h-8 rounded-lg bg-white/[0.06] text-sky-300 flex items-center justify-center flex-shrink-0">
               <ShieldCheck className="w-4 h-4" />
             </span>
             <p className="text-xs text-white/50 leading-relaxed">
               Your data is private to your account. Garden Financial offers educational
-              guidance — it isn't a substitute for a licensed financial planner.
+              guidance. It isn't a substitute for a licensed financial planner.
             </p>
           </div>
         </Card>
@@ -435,41 +433,36 @@ export default function Settings() {
           <Row icon={LogOut} title="Sign out" onClick={signOut} />
         </Card>
 
-        <Card label="Advanced">
-          <Row
-            icon={Trash2}
-            title="Advanced controls"
-            sub="Destructive data controls"
-            onClick={() => setAdvancedOpen(value => !value)}
-            trailing={<ArrowRight className={`w-4 h-4 text-white/30 transition-transform ${advancedOpen ? 'rotate-90' : ''}`} />}
-          />
-          {advancedOpen && (!confirmDelete ? (
-            <Row icon={Trash2} title="Delete app data" sub="Permanently erase your Garden data" danger
+        {/* One row, one confirmation. The confirmation is the guard; a
+            toggle in front of it only added a tap. */}
+        <Card>
+          {!confirmDelete ? (
+            <Row icon={Trash2} title="Delete my data" sub="Erase everything Garden stores, then sign out" danger
               onClick={() => setConfirmDelete(true)} />
           ) : (
-            <div className="px-4 py-4 space-y-3">
-              <p className="text-sm text-rose-100 font-medium">Delete all Garden data?</p>
-              <p className="text-xs text-white/55 leading-relaxed">
+            <div className="space-y-3 px-4 py-4">
+              <p className="text-[15px] font-semibold text-rose-100">Delete all your Garden data?</p>
+              <p className="text-[13px] leading-5 text-readable-secondary">
                 This permanently deletes your profile, money, goals, debts, plans, advisor
-                history, and memories from this app, then signs you out. Your Supabase login
-                remains available. This can't be undone.
+                history, and memories, then signs you out. Your sign-in stays, so you can
+                start fresh later. This can't be undone.
               </p>
               <div className="flex gap-2">
-                <button onClick={() => setConfirmDelete(false)} disabled={deleting}
-                  className="flex-1 px-3 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm font-semibold text-white/80 hover:bg-white/10 transition-colors">
+                <button type="button" onClick={() => setConfirmDelete(false)} disabled={deleting}
+                  className="min-h-11 flex-1 rounded-xl border border-white/10 bg-white/[0.06] px-3 text-sm font-semibold text-white/80 transition-colors hover:bg-white/10">
                   Cancel
                 </button>
-                <button onClick={deleteEverything} disabled={deleting}
-                  className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white text-sm font-semibold transition-colors">
-                  {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                  {deleting ? 'Deleting…' : 'Delete app data'}
+                <button type="button" onClick={deleteEverything} disabled={deleting}
+                  className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-rose-500 disabled:opacity-60">
+                  {deleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {deleting ? 'Deleting…' : 'Delete everything'}
                 </button>
               </div>
             </div>
-          ))}
+          )}
         </Card>
 
-        <p className="text-center text-[11px] text-white/25 pt-1">Garden Financial · v{APP_VERSION}</p>
+        <p className="pt-1 text-center text-[12px] text-readable-muted">Garden Financial · v{APP_VERSION}</p>
       </div>
 
       {editProfile && <Onboarding profileOnly onClose={() => setEditProfile(false)} />}

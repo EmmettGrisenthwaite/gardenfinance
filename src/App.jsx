@@ -10,22 +10,15 @@ import Plan from '@/pages/Plan'
 import StepDetail from '@/pages/StepDetail'
 import Settings from '@/pages/Settings'
 import Privacy from '@/pages/Privacy'
-import { Sprout, Compass } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { HOME_MONEY_REDIRECTS } from '@/lib/routes'
 
+// The same colour as the shell it hands over to, so opening the app is one
+// continuous dark screen rather than a splash followed by a different page.
 function AppLoader() {
   return (
-    <div
-      className="min-h-dvh flex flex-col items-center justify-center gap-5"
-      style={{ background: 'linear-gradient(155deg, #020c05 0%, #031508 30%, #04101a 60%, #030b14 100%)' }}
-    >
-      <div
-        className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl animate-pulse"
-        style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
-      >
-        <Sprout className="w-8 h-8 text-white" strokeWidth={2.5} />
-      </div>
-      <div className="w-6 h-6 border-emerald-400/80 border-t-transparent rounded-full animate-spin" style={{ borderWidth: 2.5 }} />
+    <div className="flex min-h-dvh items-center justify-center" style={{ background: '#08110e' }} role="status" aria-label="Loading">
+      <Loader2 className="status-spinner h-5 w-5 text-emerald-300" aria-hidden="true" />
     </div>
   )
 }
@@ -49,29 +42,12 @@ function PublicRoute({ children }) {
 
 function NotFound() {
   return (
-    <div
-      className="min-h-dvh flex flex-col items-center justify-center gap-5 p-6 text-center"
-      style={{ background: 'linear-gradient(155deg, #020c05 0%, #031508 30%, #04101a 60%, #030b14 100%)' }}
-    >
-      <div
-        className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl"
-        style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
-      >
-        <Compass className="w-8 h-8 text-white" strokeWidth={2.5} />
+    <div className="flex min-h-dvh items-center px-6" style={{ background: '#08110e' }}>
+      <div className="mx-auto w-full max-w-sm">
+        <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-white">Page not found</h1>
+        <p className="mt-1.5 text-[15px] leading-6 text-readable-secondary">That link doesn’t go anywhere in the app.</p>
+        <Link to="/" className="btn-primary mt-5 min-h-11">Go to Home</Link>
       </div>
-      <div>
-        <h1 className="font-display text-2xl font-medium text-white tracking-tight">Page not found</h1>
-        <p className="text-sm text-white/45 mt-1.5 max-w-sm">
-          This corner of the garden doesn’t exist. Let’s get you back home.
-        </p>
-      </div>
-      <Link
-        to="/"
-        className="inline-flex items-center gap-2 px-5 py-2.5 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-900/30 transition-all hover:scale-[1.02]"
-        style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
-      >
-        Back to your garden
-      </Link>
     </div>
   )
 }

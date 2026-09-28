@@ -1,38 +1,20 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Sparkles, Check, Plus, Loader2, ArrowRight, X, TrendingUp, Sprout, ShoppingBag } from 'lucide-react'
+import { Loader2, ChevronRight, X } from 'lucide-react'
 
 const fmt$ = (n) => `$${Math.round(Number(n) || 0).toLocaleString()}`
-
-// Pick a friendly emoji from the goal name.
-function goalEmoji(name = '') {
-  const n = name.toLowerCase()
-  const has = (...k) => k.some(w => n.includes(w))
-  if (has('house', 'home', 'down payment', 'mortgage', 'apartment', 'condo')) return '🏡'
-  if (has('car', 'vehicle', 'truck', 'tesla'))                                return '🚗'
-  if (has('trip', 'travel', 'vacation', 'japan', 'europe', 'flight', 'holiday')) return '✈️'
-  if (has('wedding', 'ring', 'engage'))                                       return '💍'
-  if (has('emergency', 'rainy', 'safety'))                                    return '🛟'
-  if (has('baby', 'child', 'kid'))                                            return '👶'
-  if (has('school', 'college', 'tuition', 'education'))                       return '🎓'
-  if (has('retire', 'roth', 'ira', '401'))                                    return '🏦'
-  if (has('invest', 'brokerage', 'stock', 'wealth'))                          return '📈'
-  if (has('business', 'startup'))                                            return '💼'
-  return '🎯'
-}
 
 function timeline(months) {
   const m = Math.round(Number(months) || 0)
   if (!m) return null
-  if (m < 18)  return `~${m} months`
-  return `~${(m / 12).toFixed(m % 12 === 0 ? 0 : 1)} years`
+  if (m < 18) return `about ${m} month${m === 1 ? '' : 's'}`
+  return `about ${(m / 12).toFixed(m % 12 === 0 ? 0 : 1)} years`
 }
 
 export default function GoalSuggestionCard({ suggestion: s, onAdd, onDismiss }) {
   const [busy, setBusy] = useState(false)
   const [added, setAdded] = useState(false)
-  const isInv = s.goal_type === 'investment'
-  const isPurchase = s.goal_type === 'purchase'
+  const type = s.goal_type === 'investment' ? 'Investment' : s.goal_type === 'purchase' ? 'Purchase' : 'Savings'
   const tl = timeline(s.timeline_months)
 
   async function handleAdd() {
@@ -46,56 +28,39 @@ export default function GoalSuggestionCard({ suggestion: s, onAdd, onDismiss }) 
   }
 
   return (
-    <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/[0.08] overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10 bg-emerald-500/10">
-        <Sparkles className="w-4 h-4 text-emerald-300 flex-shrink-0" />
-        <span className="text-xs font-semibold text-emerald-200 flex-1">Add this to your plan?</span>
+    <section aria-label={`Suggested goal: ${s.name}`} className="rounded-2xl border border-emerald-400/20 bg-white/[0.04] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-emerald-200">Suggested goal</p>
+          <h4 className="mt-1 text-[16px] font-semibold leading-6 text-white">{s.name}</h4>
+        </div>
         {!added && onDismiss && (
-          <button onClick={onDismiss} aria-label="Dismiss" className="p-0.5 -mr-1 text-white/35 hover:text-white/70 transition-colors">
-            <X className="w-3.5 h-3.5" />
+          <button type="button" onClick={onDismiss} aria-label="Dismiss suggestion"
+            className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-readable-muted transition-colors hover:bg-white/[0.06] hover:text-white">
+            <X className="h-4 w-4" />
           </button>
         )}
       </div>
+      <p className="mt-0.5 text-[14px] tabular-nums text-readable-secondary">
+        {type} · {fmt$(s.target_amount)}
+        {s.monthly_contribution ? ` · ${fmt$(s.monthly_contribution)}/mo` : ''}
+        {tl ? ` · ${tl}` : ''}
+      </p>
+      {s.rationale && <p className="mt-2 text-[14px] leading-5 text-readable-muted">{s.rationale}</p>}
 
-      <div className="px-4 py-3">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-11 h-11 rounded-xl bg-white/10 flex items-center justify-center text-xl flex-shrink-0">
-            {goalEmoji(s.name)}
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-base font-bold text-white">{s.name}</span>
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                isInv ? 'bg-amber-400/15 border-amber-400/30 text-amber-200'
-                      : isPurchase ? 'bg-sky-400/15 border-sky-400/30 text-sky-200'
-                        : 'bg-emerald-400/15 border-emerald-400/30 text-emerald-200'}`}>
-                {isInv ? <TrendingUp className="w-3 h-3" /> : isPurchase ? <ShoppingBag className="h-3 w-3" /> : <Sprout className="w-3 h-3" />}
-                {isInv ? 'Investment' : isPurchase ? 'Purchase' : 'Savings'}
-              </span>
-            </div>
-            <div className="text-xs text-white/60 mt-0.5 tabular-nums">
-              {fmt$(s.target_amount)} target
-              {s.monthly_contribution ? ` · ${fmt$(s.monthly_contribution)}/mo` : ''}
-              {tl ? ` · ${tl}` : ''}
-            </div>
-          </div>
-        </div>
-        {s.rationale && <p className="text-xs text-white/55 leading-snug">{s.rationale}</p>}
-      </div>
-
-      <div className="px-4 py-3 border-t border-white/10">
+      <div className="mt-3">
         {added ? (
-          <Link to="/plan#goals" className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300 hover:text-emerald-200 transition-colors">
-            <Check className="w-3.5 h-3.5" /> Added to your goals &amp; plan · view <ArrowRight className="w-3.5 h-3.5" />
+          <Link to="/plan#goals" className="inline-flex min-h-11 items-center gap-1 text-[14px] font-semibold text-emerald-200 transition-colors hover:text-emerald-100">
+            Added to your goals and Plan <ChevronRight className="h-4 w-4" />
           </Link>
         ) : (
-          <button onClick={handleAdd} disabled={busy}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-900/30 transition-colors disabled:opacity-60">
-            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-            Add to my goals &amp; plan
+          <button type="button" onClick={handleAdd} disabled={busy}
+            className="btn-primary min-h-11 px-4 text-[14px] disabled:opacity-60">
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            Add to my goals and Plan
           </button>
         )}
       </div>
-    </div>
+    </section>
   )
 }

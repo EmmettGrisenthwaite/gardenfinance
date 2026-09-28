@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import {
-  AlertCircle, ArrowRight, CalendarClock, Eye, EyeOff, History, Loader2, MoreHorizontal,
-  RefreshCw, Settings, SlidersHorizontal, Sprout, Target, WalletCards,
+  AlertCircle, ArrowRight, Eye, EyeOff, History, Loader2, MoreHorizontal,
+  RefreshCw, Settings, SlidersHorizontal, Sprout, Target,
 } from 'lucide-react'
 import Money from '@/pages/Money'
 import BottomSheet from '@/components/ui/BottomSheet'
@@ -30,9 +30,12 @@ import { isPromptableActivity } from '@/lib/progressOutcome'
 import { buildReminderModel } from '@/lib/reminderModel'
 import { listReminderEvents, listReminders } from '@/lib/reminders'
 
+// "Done when the transfer is scheduled" — the condition continues the phrase.
+const lowerFirst = text => text ? text.charAt(0).toLowerCase() + text.slice(1) : text
+
 const formatMoney = value => {
   const amount = Number(value) || 0
-  return `${amount < 0 ? '-' : ''}$${Math.abs(Math.round(amount)).toLocaleString()}`
+  return `${amount < 0 ? '−' : ''}$${Math.abs(Math.round(amount)).toLocaleString()}`
 }
 
 function formatDate(value) {
@@ -275,7 +278,7 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
 
   return (
     <>
-      <PageHeader title="Home" subtitle="What matters now, with your priorities close by."
+      <PageHeader title="Home"
         actions={<div className="flex items-center gap-2">
           <button type="button" onClick={() => dashboardPreferences.setHideAmounts(!dashboardPreferences.hideAmounts)}
             disabled={dashboardPreferences.loading || dashboardPreferences.privacySaving}
@@ -301,23 +304,15 @@ function HomeHero({ profile, accounts, debts, goals, cashFlowItems, budgetLimits
           busy={adopting}
         /> : <motion.section key={action.kind + action.title}
             initial={reducedMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}
-            className="rounded-[24px] border border-emerald-200/15 bg-[linear-gradient(145deg,rgba(18,41,31,.96),rgba(8,20,15,.98))] p-4 shadow-[0_18px_45px_rgba(0,0,0,.2)] sm:p-5">
+            className="rounded-2xl border border-white/[0.09] bg-white/[0.045] p-4 sm:p-5">
             <div className="flex items-start gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-200/15 bg-emerald-300/[0.09] text-emerald-100">
-                {action.kind === 'loading'
-                  ? <Loader2 className="h-5 w-5 animate-spin" />
-                  : action.kind === 'reminder'
-                    ? <CalendarClock className="h-5 w-5" />
-                    : action.kind === 'setup'
-                      ? <WalletCards className="h-5 w-5" />
-                      : <Sprout className="h-5 w-5" />}
-              </span>
+              {action.kind === 'loading' && <Loader2 className="status-spinner mt-1 h-4 w-4 shrink-0 text-emerald-200" aria-hidden="true" />}
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/80">Today · {action.eyebrow}</p>
-                <h2 className="mt-1.5 text-[18px] font-semibold leading-6 tracking-[-0.015em] text-white">{maskMoneyText(action.title, dashboardPreferences.hideAmounts)}</h2>
+                <p className="section-label">{action.eyebrow}</p>
+                <h2 className="mt-0.5 text-[18px] font-semibold leading-6 tracking-[-0.015em] text-white">{maskMoneyText(action.title, dashboardPreferences.hideAmounts)}</h2>
                 <p className="mt-1.5 text-[13px] leading-5 text-readable-secondary">{maskMoneyText(action.detail, dashboardPreferences.hideAmounts)}</p>
-                {action.doneWhen && <p className="mt-2 text-[12px] leading-5 text-white/[0.78]"><span className="font-semibold text-readable-secondary">Done when:</span> {maskMoneyText(action.doneWhen, dashboardPreferences.hideAmounts)}</p>}
-                {action.cta && <button type="button" onClick={runAction} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl text-[13px] font-semibold text-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
+                {action.doneWhen && <p className="mt-2 text-xs leading-5 text-readable-muted">Done when {lowerFirst(maskMoneyText(action.doneWhen, dashboardPreferences.hideAmounts))}</p>}
+                {action.cta && <button type="button" onClick={runAction} className="btn-primary mt-4 min-h-11">
                   {action.cta}<ArrowRight className="h-4 w-4" />
                 </button>}
               </div>

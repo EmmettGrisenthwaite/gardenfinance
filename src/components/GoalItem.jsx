@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { Pencil, Trash2, X, Check, CalendarClock, TrendingUp, Sprout, Plus, Loader2, ShoppingBag } from 'lucide-react'
+import { Pencil, Trash2, X, Check, TrendingUp, Sprout, Plus, Loader2, ShoppingBag } from 'lucide-react'
 import HowToInline from '@/components/HowToInline'
 import BottomSheet from '@/components/ui/BottomSheet'
 import { THRESHOLDS } from '@/lib/finance'
@@ -154,7 +154,7 @@ export function GoalModal({ goal, onSave, onClose }) {
             <div>
               <label className="block text-sm font-medium text-white/80 mb-1.5">
                 Monthly contribution ($)
-                <span className="ml-1 font-normal text-white/40">— enables timeline projection</span>
+                <span className="ml-1 font-normal text-white/40">(shows when you'll get there)</span>
               </label>
               <input type="number" inputMode="decimal" value={contribution} onChange={change(setContribution)}
                 min="0" step="0.01" placeholder="0" className={inputCls} />
@@ -197,7 +197,7 @@ function ProgressInput({ goal, onContribute, onUpdate }) {
         <span className={`text-xs font-semibold ${isInv ? 'text-amber-300' : 'text-emerald-300'}`}>{pct}%</span>
       </div>
       <div className="w-full bg-white/10 rounded-full h-2 mb-2 overflow-hidden">
-        <div className={`h-2 rounded-full transition-all duration-500 ${isInv ? 'bg-gradient-to-r from-amber-400 to-amber-300' : 'bg-gradient-to-r from-emerald-400 to-emerald-300'}`}
+        <div className={`h-2 rounded-full transition-all duration-500 ${isInv ? 'bg-amber-300' : 'bg-emerald-400'}`}
           style={{ width: `${pct}%` }} />
       </div>
 
@@ -211,30 +211,30 @@ function ProgressInput({ goal, onContribute, onUpdate }) {
                 onKeyDown={e => e.key === 'Enter' && addMoney()}
                 className="w-full pl-6 pr-2.5 py-2 rounded-lg border border-white/[0.11] bg-white/[0.085] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
             </div>
-            <button onClick={addMoney} aria-label="Save contribution" className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
-            <button onClick={() => setMode(null)} aria-label="Cancel contribution" className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
+            <button onClick={addMoney} aria-label="Save contribution" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
+            <button onClick={() => setMode(null)} aria-label="Cancel contribution" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-readable-muted hover:bg-white/[0.06] hover:text-white"><X className="w-3.5 h-3.5" /></button>
           </div>
-          <p className="text-[11px] text-white/40">This logs progress toward the goal; account balances are not changed.</p>
+          <p className="text-[13px] leading-5 text-readable-muted">This logs progress toward the goal. Account balances stay as they are.</p>
         </div>
       ) : mode === 'adjust' ? (
         <div className="flex gap-2 items-center">
           <input autoFocus type="number" inputMode="decimal" value={absVal} onChange={e => setAbsVal(e.target.value)}
             min="0" step="0.01"
             className="flex-1 px-2.5 py-2 rounded-lg border border-white/[0.11] bg-white/[0.085] text-white text-base focus:outline-none focus:ring-1 focus:ring-emerald-400/30" />
-          <button onClick={saveAbs} aria-label="Save progress" className="p-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
-          <button onClick={() => setMode(null)} aria-label="Cancel progress edit" className="p-2 text-white/40 hover:text-white/60"><X className="w-3.5 h-3.5" /></button>
+          <button onClick={saveAbs} aria-label="Save progress" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white hover:bg-emerald-500"><Check className="w-3.5 h-3.5" /></button>
+          <button onClick={() => setMode(null)} aria-label="Cancel progress edit" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-readable-muted hover:bg-white/[0.06] hover:text-white"><X className="w-3.5 h-3.5" /></button>
         </div>
       ) : (
         <div className="flex items-center gap-3">
           {/* A reached goal doesn't need more money — just the option to adjust. */}
           {pct < 100 && (
             <button onClick={() => setMode('add')}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/20 border border-emerald-400/30 px-2.5 py-1.5 rounded-lg transition-colors">
-              <Plus className="w-3 h-3" /> Log progress
+              className="btn-primary min-h-11 px-3.5">
+              <Plus className="h-4 w-4" /> Log progress
             </button>
           )}
           <button onClick={() => { setAbsVal(goal.current_amount); setMode('adjust') }}
-            className="text-xs text-white/45 hover:text-white/70 font-medium py-1">
+            className="min-h-11 rounded-lg px-3 text-sm font-medium text-readable-secondary hover:bg-white/[0.05] hover:text-white">
             Adjust
           </button>
         </div>
@@ -243,67 +243,36 @@ function ProgressInput({ goal, onContribute, onUpdate }) {
   )
 }
 
-// ─── Timeline badge ────────────────────────────────────────────────────────────
+// ─── Timeline line ─────────────────────────────────────────────────────────────
+// One sentence under the bar. Colour only where it means something: amber when
+// the goal is behind its date, emerald when it is on pace or done.
 function TimelineBadge({ goal }) {
   const proj = getProjection(goal)
-  if (!proj) {
-    return (
-      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/5 rounded-lg border border-dashed border-white/[0.11]">
-        <CalendarClock className="w-3 h-3 text-white/30" />
-        <span className="text-xs text-white/40">Set a monthly contribution to see your timeline</span>
-      </div>
-    )
+  let text = 'Set a monthly contribution to see when you will get there.'
+  let tone = 'text-readable-muted'
+  if (proj?.done) {
+    text = 'Goal reached.'
+    tone = 'text-emerald-200'
+  } else if (proj?.deadlinePassed || proj?.onTime === false) {
+    text = proj.deadlinePassed ? `Past its target date (${proj.deadlineLabel}).` : `Behind its target date (${proj.deadlineLabel}).`
+    tone = 'text-amber-200'
+  } else if (proj?.onTime === true) {
+    text = `On pace for ${proj.deadlineLabel}.`
+    tone = 'text-emerald-200'
+  } else if (proj?.longTerm) {
+    text = 'Long term. It grows with your contributions.'
+    tone = 'text-readable-secondary'
+  } else if (proj) {
+    text = `On pace for ${proj.label}, about ${proj.monthsLeft} month${proj.monthsLeft === 1 ? '' : 's'} away.`
+    tone = 'text-readable-secondary'
   }
-  if (proj.done) {
-    return (
-      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/15 rounded-lg border border-emerald-400/30">
-        <Check className="w-3 h-3 text-emerald-400" />
-        <span className="text-xs font-semibold text-emerald-300">Goal reached</span>
-      </div>
-    )
-  }
-  if (proj.deadlinePassed || proj.onTime === false) {
-    return (
-      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/15 rounded-lg border border-amber-400/30">
-        <CalendarClock className="w-3 h-3 text-amber-300" />
-        <span className="text-xs font-medium text-amber-200">
-          {proj.deadlinePassed ? `Past target date (${proj.deadlineLabel})` : `Behind target date (${proj.deadlineLabel})`}
-        </span>
-      </div>
-    )
-  }
-  if (proj.onTime === true) {
-    return (
-      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/15 rounded-lg border border-emerald-400/30">
-        <CalendarClock className="w-3 h-3 text-emerald-300" />
-        <span className="text-xs font-medium text-emerald-200">On pace for {proj.deadlineLabel}</span>
-      </div>
-    )
-  }
-  if (proj.longTerm) {
-    return (
-      <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-sky-500/15 rounded-lg border border-sky-400/30">
-        <CalendarClock className="w-3 h-3 text-sky-400" />
-        <span className="text-xs font-medium text-sky-300">Long-term — grows with your contributions</span>
-      </div>
-    )
-  }
-  const urgency = proj.monthsLeft <= 3  ? 'bg-emerald-500/15 border-emerald-400/30 text-emerald-300'
-                : proj.monthsLeft <= 12 ? 'bg-sky-500/15 border-sky-400/30 text-sky-300'
-                :                         'bg-white/5 border-white/[0.11] text-white/60'
-  return (
-    <div className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${urgency}`}>
-      <CalendarClock className="w-3 h-3" />
-      <span className="text-xs font-medium">
-        On pace for {proj.label}
-        <span className="font-normal opacity-70 ml-1">({proj.monthsLeft} mo)</span>
-      </span>
-    </div>
-  )
+  return <p className={`mt-3 text-[13px] leading-5 ${tone}`}>{text}</p>
 }
 
 // ─── Editable goal card ─────────────────────────────────────────────────────────
-export function GoalItem({ goal, onEdit, onDelete, onUpdateProgress, onContribute, howToContext }) {
+// `embedded`: inside a sheet whose title already names the goal, so no card
+// surface and no second heading.
+export function GoalItem({ goal, onEdit, onDelete, onUpdateProgress, onContribute, howToContext, embedded = false }) {
   const isInv = goal.goal_type === 'investment'
   const isPurchase = goal.goal_type === 'purchase'
   // Deleting a goal is destructive — require a second tap to confirm (the armed
@@ -316,30 +285,15 @@ export function GoalItem({ goal, onEdit, onDelete, onUpdateProgress, onContribut
   }, [armed])
   return (
     <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-      className="bg-white/[0.075] rounded-xl border border-white/[0.11] p-4 md:p-5">
+      className={embedded ? '' : 'rounded-2xl border border-white/[0.09] bg-white/[0.04] p-4 md:p-5'}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap mb-0.5">
-            <h3 className="font-semibold text-white break-words">{goal.name}</h3>
-            {isInv ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-500/15 text-amber-300 rounded-full text-xs font-medium border border-amber-400/30">
-                <TrendingUp className="w-3 h-3" /> Investment
-              </span>
-            ) : isPurchase ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-sky-300/30 bg-sky-300/15 px-2 py-0.5 text-xs font-medium text-sky-200">
-                <ShoppingBag className="h-3 w-3" /> Purchase
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/15 text-emerald-300 rounded-full text-xs font-medium border border-emerald-400/30">
-                <Sprout className="w-3 h-3" /> Savings
-              </span>
-            )}
-          </div>
-          {goal.deadline && (
-            <p className="text-xs text-white/40 mt-0.5">
-              Target date: {new Date(goal.deadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-            </p>
-          )}
+          {!embedded && <h3 className="mb-0.5 break-words text-[17px] font-semibold text-white">{goal.name}</h3>}
+          {/* Type in words, not a coloured pill: it is a label, not a state. */}
+          <p className="mt-0.5 text-[13px] text-readable-muted">
+            {isInv ? 'Investment' : isPurchase ? 'Purchase' : 'Savings'}
+            {goal.deadline ? ` · by ${new Date(`${String(goal.deadline).slice(0, 10)}T12:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}` : ''}
+          </p>
         </div>
         <div className="flex gap-1.5">
           <button onClick={() => onEdit(goal)} aria-label="Edit goal"
@@ -353,7 +307,7 @@ export function GoalItem({ goal, onEdit, onDelete, onUpdateProgress, onContribut
               armed ? 'min-w-0 px-2.5 text-rose-200 bg-rose-500/20 border border-rose-400/40'
                     : 'min-w-[44px] text-white/40 hover:text-rose-400 hover:bg-rose-500/15'}`}>
             <Trash2 className="w-3.5 h-3.5" />
-            {armed && <span className="text-[11px] font-semibold whitespace-nowrap">Sure?</span>}
+            {armed && <span className="whitespace-nowrap text-[13px] font-semibold">Delete?</span>}
           </button>
         </div>
       </div>

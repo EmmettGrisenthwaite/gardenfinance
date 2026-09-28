@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { debtFreedomWithExtra, formatDateLabel, formatMonths } from '@/lib/financeArtifacts'
 import Slider from '@/components/ui/slider'
-import { CreditCard, TrendingDown, Calendar, Target } from 'lucide-react'
 
 export default function DebtPayoffArtifact({ debts, monthlySurplus = 0, onAddStep }) {
   // Start the calculator at the user's REAL monthly surplus (what the advisor's
@@ -17,12 +16,9 @@ export default function DebtPayoffArtifact({ debts, monthlySurplus = 0, onAddSte
 
   if (!debts || debts.length === 0) {
     return (
-      <div className="bg-white/[0.05] border border-white/[0.10] rounded-xl p-4 mt-3">
-        <div className="text-center py-4">
-          <CreditCard className="w-8 h-8 text-white/30 mx-auto mb-2" />
-          <p className="text-sm text-white/50">Add your debts to see payoff projections</p>
-        </div>
-      </div>
+      <p className="mt-3 rounded-2xl border border-white/[0.09] bg-white/[0.04] p-4 text-[14px] text-readable-secondary">
+        Add your debts to see when they could be paid off.
+      </p>
     )
   }
 
@@ -33,94 +29,79 @@ export default function DebtPayoffArtifact({ debts, monthlySurplus = 0, onAddSte
   const topDebt = [...debts].sort((a, b) => (b.interest_rate || 0) - (a.interest_rate || 0))[0]
 
   return (
-    <motion.div
+    <motion.section
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="mt-3"
+      transition={{ duration: 0.25 }}
+      aria-label="Debt payoff"
+      className="mt-3 rounded-2xl border border-white/[0.09] bg-white/[0.04] p-4"
     >
-      <div className="bg-white/[0.05] border border-white/[0.10] rounded-xl overflow-hidden mt-3">
-        {/* Header */}
-        <div className="px-4 py-3 border-b border-white/[0.08] flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-emerald-500/15 flex items-center justify-center">
-            <CreditCard className="w-4 h-4 text-emerald-300" />
-          </div>
-          <div>
-            <h4 className="text-sm font-semibold text-white">Debt Payoff Calculator</h4>
-            <p className="text-[11px] text-white/40">${totalDebt.toLocaleString()} total · {debts.length} debt{debts.length !== 1 ? 's' : ''}</p>
-          </div>
+      <div className="flex items-baseline justify-between gap-3">
+        <h4 className="text-[15px] font-semibold text-white">Debt payoff</h4>
+        <p className="text-[13px] tabular-nums text-readable-muted">
+          ${totalDebt.toLocaleString()} · {debts.length} debt{debts.length !== 1 ? 's' : ''}
+        </p>
+      </div>
+
+      <div className="mt-4">
+        <div className="mb-2 flex items-baseline justify-between">
+          <span className="text-[14px] text-readable-secondary">Monthly payment</span>
+          <span className="text-[15px] font-semibold tabular-nums text-emerald-200">${extraPayment.toLocaleString()}/mo</span>
         </div>
+        <Slider
+          value={[extraPayment]}
+          onValueChange={([v]) => setExtraPayment(v)}
+          min={0}
+          max={1000}
+          step={25}
+          className="w-full"
+        />
+        <div className="mt-1.5 flex justify-between text-[12px] tabular-nums text-readable-muted">
+          <span>$0</span>
+          <span>$500</span>
+          <span>$1,000</span>
+        </div>
+      </div>
 
-        {/* Slider */}
-        <div className="px-4 py-4 space-y-4">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-white/60">Monthly payment</span>
-              <span className="text-sm font-bold text-emerald-300">${extraPayment}/mo</span>
+      {stuck ? (
+        /* Payment loses to interest at this level — say so, keep the slider */
+        <p className="mt-4 rounded-xl border border-rose-400/20 bg-rose-500/[0.08] px-3.5 py-2.5 text-[14px] leading-5 text-rose-100">
+          At ${extraPayment.toLocaleString()}/mo, interest grows faster than you pay it down. Move the slider up to see a payoff date.
+        </p>
+      ) : (
+        <>
+          <dl className="mt-4 divide-y divide-white/[0.06] border-y border-white/[0.07]">
+            <div className="flex items-baseline justify-between gap-3 py-2.5">
+              <dt className="text-[14px] text-readable-secondary">Debt-free by</dt>
+              <dd className="text-[16px] font-semibold tabular-nums text-white">{formatDateLabel(result.debtFreeDate)}</dd>
             </div>
-            <Slider
-              value={[extraPayment]}
-              onValueChange={([v]) => setExtraPayment(v)}
-              min={0}
-              max={1000}
-              step={25}
-              className="w-full"
-            />
-            <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-white/30">$0</span>
-              <span className="text-[10px] text-white/30">$500</span>
-              <span className="text-[10px] text-white/30">$1,000</span>
+            <div className="flex items-baseline justify-between gap-3 py-2.5">
+              <dt className="text-[14px] text-readable-secondary">Time to pay off</dt>
+              <dd className="text-[16px] font-semibold tabular-nums text-white">{formatMonths(result.monthsToFreedom)}</dd>
             </div>
+          </dl>
+
+          <div className="mt-4">
+            <p className="section-label">Pay off in this order</p>
+            <ol className="mt-1.5">
+              {result.payoffOrder.map((name, i) => {
+                const debt = debts.find(d => d.name === name)
+                return (
+                  <li key={name} className="flex items-center gap-3 py-1.5 text-[14px]">
+                    <span className="w-4 shrink-0 text-right tabular-nums text-readable-muted">{i + 1}</span>
+                    <span className="min-w-0 flex-1 truncate text-white">{name}</span>
+                    {debt?.interest_rate && (
+                      <span className="tabular-nums text-readable-muted">{debt.interest_rate}%</span>
+                    )}
+                  </li>
+                )
+              })}
+            </ol>
           </div>
 
-          {stuck ? (
-            /* Payment loses to interest at this level — say so, keep the slider */
-            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-rose-500/[0.08] border border-rose-400/20">
-              <TrendingDown className="w-4 h-4 text-rose-300 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-white/70 leading-snug">
-                At ${extraPayment}/mo, interest grows faster than you're paying it down — drag the slider up to see your payoff date.
-              </p>
-            </div>
-          ) : (
-          <>
-          {/* Results grid */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white/[0.04] rounded-xl p-3 text-center">
-              <Calendar className="w-4 h-4 text-emerald-400/70 mx-auto mb-1" />
-              <p className="text-lg font-bold text-white">{formatDateLabel(result.debtFreeDate)}</p>
-              <p className="text-[10px] text-white/40">Debt-free date</p>
-            </div>
-            <div className="bg-white/[0.04] rounded-xl p-3 text-center">
-              <TrendingDown className="w-4 h-4 text-emerald-400/70 mx-auto mb-1" />
-              <p className="text-lg font-bold text-white">{formatMonths(result.monthsToFreedom)}</p>
-              <p className="text-[10px] text-white/40">Time to payoff</p>
-            </div>
-          </div>
-
-          {/* Payoff order */}
-          <div className="space-y-2">
-            <p className="text-[11px] font-semibold text-white/50 uppercase tracking-wide">Payoff order (highest APR first)</p>
-            {result.payoffOrder.map((name, i) => {
-              const debt = debts.find(d => d.name === name)
-              return (
-                <div key={name} className="flex items-center gap-2 text-sm">
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
-                    i === 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/[0.06] text-white/40'
-                  }`}>
-                    {i + 1}
-                  </span>
-                  <span className="text-white/80 flex-1 min-w-0 truncate">{name}</span>
-                  {debt?.interest_rate && (
-                    <span className="text-xs text-white/40">{debt.interest_rate}% APR</span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Action button */}
           {topDebt && onAddStep && (
             <button
+              type="button"
               onClick={() => onAddStep({
                 type: 'budget',
                 budget_type: 'expense',
@@ -128,16 +109,13 @@ export default function DebtPayoffArtifact({ debts, monthlySurplus = 0, onAddSte
                 amount: extraPayment,
                 name: `Extra payment: ${topDebt.name}`,
               })}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold transition-colors"
+              className="btn-primary mt-4 min-h-11 w-full text-[15px]"
             >
-              <Target className="w-4 h-4" />
-              Add ${extraPayment}/mo toward {topDebt.name}
+              Add ${extraPayment.toLocaleString()}/mo toward {topDebt.name}
             </button>
           )}
-          </>
-          )}
-        </div>
-      </div>
-    </motion.div>
+        </>
+      )}
+    </motion.section>
   )
 }

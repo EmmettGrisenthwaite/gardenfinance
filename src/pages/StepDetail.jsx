@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Check, Trash2, ClipboardList, Loader2, MoreHorizontal } from 'lucide-react'
+import { Check, Trash2, Loader2, MoreHorizontal } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { milestonesToStage } from '@/context/GardenContext'
@@ -9,8 +9,8 @@ import { getPlan, updatePlanSteps, applyStep } from '@/lib/advisorPlans'
 import { milestoneEventForStep } from '@/lib/gardenModel'
 import { recordGardenMilestone } from '@/lib/gardenProgress'
 import { buildHowToContext } from '@/lib/howToContext'
-import { mergeResources } from '@/lib/providerLinks'
-import { StepGuide, DueChip, ApplyAction, dueMeta } from '@/components/PlanSteps'
+import { stepFactsForGuide, stepLinks, stepProgress } from '@/lib/stepFacts'
+import { StepGuide, DueChip, ApplyAction, StepProgressBar, dueMeta } from '@/components/PlanSteps'
 import ResourceLinks from '@/components/ResourceLinks'
 import PageHeader from '@/components/ui/PageHeader'
 import { recordStepActivity } from '@/lib/financialActivities'
@@ -69,6 +69,12 @@ export default function StepDetail() {
   useEffect(() => { if (missing) navigate('/plan', { replace: true }) }, [missing, navigate])
 
   const howToCtx = buildHowToContext({ profile, debts, accounts, goals })
+  const records = { accounts, debts, goals }
+  // Resolved against the records as they are now, not as they were when the
+  // step was saved: the bank to open, how far along, how long is left.
+  const links = step ? stepLinks(step, records) : []
+  const progress = step && plan ? stepProgress(step, records) : null
+  const facts = step ? stepFactsForGuide(step, records) : ''
 
   async function saveSteps(mutate) {
     if (!plan || savingChange || completing) return null
@@ -205,9 +211,6 @@ export default function StepDetail() {
       {/* Back to the plan — the visible "‹ Plan" label names the destination,
           so the eyebrow no longer needs to repeat it. */}
       <PageHeader
-        icon={ClipboardList}
-        title="Step guide"
-        subtitle="Everything you need to finish this move."
         onBack={() => navigate('/plan')}
         backLabel="Plan"
         actions={!step.done && (
@@ -223,47 +226,47 @@ export default function StepDetail() {
       />
 
       {/* The step */}
-      <h1 className="mt-6 text-[24px] font-semibold text-white leading-snug tracking-[-0.02em] sm:text-[28px]">{step.text}</h1>
-      {step.detail && (
-        <div className="mt-3">
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-readable-muted">Why this matters</p>
-          <p className="mt-1 text-sm leading-relaxed text-readable-secondary">{step.detail}</p>
-        </div>
+      <h1 className="mt-2 text-[24px] font-semibold leading-8 tracking-[-0.02em] text-white sm:text-[28px] sm:leading-9">{step.text}</h1>
+      {step.detail && <p className="mt-2 text-[15px] leading-6 text-readable-secondary">{step.detail}</p>}
+      {/* The saved estimate ("paid off in about 4 months") gives way to the
+          live one below once there are balances to read it from. */}
+      {step.impact && !progress && (
+        <p className="mt-2 text-[14px] font-medium text-emerald-200">{step.impact}</p>
       )}
-      {step.impact && (
-        <p className="mt-2 inline-flex rounded-lg bg-emerald-500/[0.12] px-2.5 py-1.5 text-xs font-semibold text-emerald-100">
-          {step.impact}
-        </p>
+      {progress && (
+        <div className="mt-4">
+          <StepProgressBar progress={progress} />
+        </div>
       )}
       {step.doneWhen && (
-        <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.045] px-3.5 py-3">
-          <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-readable-muted">Done when</p>
-          <p className="mt-1 text-[13px] leading-5 text-white/[0.82]">{step.doneWhen}</p>
-        </div>
+        <p className="mt-4 border-t border-white/[0.07] pt-3 text-[13px] leading-5 text-readable-muted">
+          Done when {step.doneWhen.charAt(0).toLowerCase() + step.doneWhen.slice(1)}
+        </p>
       )}
       {meta && <p className={`mt-1.5 text-xs font-semibold ${meta.color}`}>{meta.label}</p>}
 
       {/* The how-to — the reason this page exists */}
       <div className="mt-4">
         {step.done ? (
-          <div className="flex items-center gap-2 px-3.5 py-3 rounded-xl bg-emerald-500/[0.1] border border-emerald-400/25 text-sm text-emerald-100 font-medium">
+          <div className="flex items-center gap-2 rounded-xl border border-white/[0.08] px-3.5 py-3 text-sm font-medium text-emerald-100">
             <Check className="w-4 h-4 text-emerald-300" strokeWidth={3} /> You've done this one.
           </div>
         ) : plan ? (
-          <StepGuide step={step} context={howToCtx} onSave={saveGuide} />
+          <StepGuide step={step} context={howToCtx} facts={facts} onSave={saveGuide} />
         ) : (
-          <div className="flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.07] px-3 py-3 text-xs text-emerald-100" role="status">
+          <div className="flex items-center gap-2 rounded-2xl border border-white/[0.08] px-4 py-3 text-[13px] text-readable-secondary" role="status">
             <Loader2 className="status-spinner h-4 w-4" aria-hidden="true" /> Loading your current numbers…
           </div>
         )}
       </div>
 
-      {/* Official links — hand-verified registry pages first, then any the
-          model attached. Tap → the real signup/info page in a new tab. */}
-      {!step.done && mergeResources(step.text, step.resources).length > 0 && (
+      {/* Where the work happens: the user's own bank or lender when the step
+          moves money into something they already have, provider pages only
+          when something needs opening. Tap → a new tab. */}
+      {!step.done && links.length > 0 && (
         <div className="mt-4">
-          <div className="text-[10px] font-semibold text-white/40 uppercase tracking-wider mb-1.5">Open the official page</div>
-          <ResourceLinks resources={mergeResources(step.text, step.resources)} />
+          <h2 className="section-label">Where to do it</h2>
+          <ResourceLinks resources={links} variant="list" />
         </div>
       )}
 
@@ -271,15 +274,15 @@ export default function StepDetail() {
       {!step.done && (
         <div className="mt-5 space-y-4">
           <button onClick={markDone} disabled={!plan || completing || savingChange}
-            className="fixed inset-x-4 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 mx-auto flex min-h-12 max-w-2xl items-center justify-center gap-2 rounded-xl border border-emerald-300/15 bg-emerald-600 px-4 text-sm font-semibold text-white shadow-2xl shadow-black/40 transition-colors hover:bg-emerald-500 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 md:static md:w-full md:shadow-lg md:shadow-emerald-950/25">
+            className="fixed inset-x-4 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 mx-auto flex min-h-12 max-w-2xl items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-[15px] font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.45)] transition-colors hover:bg-emerald-500 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70 md:static md:w-full md:shadow-none">
             {completing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="w-4 h-4" strokeWidth={3} />}
-            {completing ? 'Saving…' : 'Mark done — grow my garden'}
+            {completing ? 'Saving…' : 'Mark as done'}
           </button>
           {step.apply && <ApplyAction step={step} onApply={applyAndMark} />}
         </div>
       )}
 
-      {step.group && <p className="mt-5 text-[11px] text-readable-muted">From: {step.group}</p>}
+      {step.group && <p className="mt-5 text-[13px] text-readable-muted">From {step.group}</p>}
 
       {error && (
         <p className="mt-4 text-xs text-rose-200 bg-rose-500/15 border border-rose-400/25 px-3 py-2 rounded-lg text-center">{error}</p>
@@ -288,7 +291,6 @@ export default function StepDetail() {
       <BottomSheet
         open={optionsOpen}
         title="Step options"
-        subtitle="Manage this step without interrupting the guide."
         onClose={() => {
           setOptionsOpen(false)
           setArmed(false)
@@ -297,7 +299,7 @@ export default function StepDetail() {
       >
         <div className="space-y-5">
           <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-readable-muted">Due date</p>
+            <p className="section-label mb-2">Due date</p>
             <DueChip due={step.due} onSet={setDue} />
           </div>
           <div className="border-t border-white/[0.08] pt-4">

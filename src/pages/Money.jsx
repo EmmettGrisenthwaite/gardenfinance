@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  AlertCircle, ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
-  Check, CircleDollarSign, CreditCard, Gauge, Landmark, LineChart, Loader2, Pencil,
+  AlertCircle, ArrowRight, ChevronDown, ChevronLeft, ChevronRight,
+  Check, CircleDollarSign, CreditCard, Landmark, LineChart, Loader2, Pencil,
   Plus, RefreshCw, ShieldCheck, Trash2, WalletCards,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -17,6 +17,8 @@ import {
 } from '@/lib/moneyModel'
 import { headlineMetrics, moneySections } from '@/lib/moneyLanguage'
 import { netWorthTrend } from '@/lib/netWorth'
+import { loadFinancialRecords } from '@/lib/financialData'
+import DataLoadState from '@/components/ui/DataLoadState'
 import PageHeader from '@/components/ui/PageHeader'
 import BottomSheet from '@/components/ui/BottomSheet'
 import MoneySetupNudge from '@/components/MoneySetupNudge'
@@ -26,15 +28,11 @@ import { actOnReminder, listReminders } from '@/lib/reminders'
 
 const fmt = value => {
   const amount = Number(value) || 0
-  return `${amount < 0 ? '-' : ''}$${Math.abs(Math.round(amount)).toLocaleString()}`
+  return `${amount < 0 ? '−' : ''}$${Math.abs(Math.round(amount)).toLocaleString()}`
 }
 const number = value => Math.max(0, Number(value) || 0)
 const optionalNumber = value => value === '' || value === null || value === undefined ? null : Math.max(0, Number(value) || 0)
 const today = () => new Date().toISOString().slice(0, 10)
-
-const SECTION_ICONS = {
-  plan: CalendarDays, cash: Landmark, investment: LineChart, asset: WalletCards, debts: CreditCard,
-}
 
 const GROUP_LABELS = { income: 'Income', needs: 'Needs', wants: 'Wants', future: 'Future' }
 const FAMILY_META = {
@@ -46,20 +44,19 @@ const FAMILY_META = {
 function Metric({ label, value, note, tone = 'text-white' }) {
   return (
     <div className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-3.5">
-      <p className="text-[11px] font-bold uppercase tracking-[0.11em] text-readable-muted">{label}</p>
-      <p className={`mt-1.5 truncate text-[19px] font-semibold tabular-nums ${tone}`}>{value}</p>
+      <p className="text-[13px] font-medium text-readable-muted">{label}</p>
+      <p className={`mt-1 truncate text-[19px] font-semibold tabular-nums ${tone}`}>{value}</p>
       <p className="mt-1 min-h-8 text-[13px] leading-4 text-readable-secondary">{note}</p>
     </div>
   )
 }
 
-function SummaryCard({ icon: Icon, title, total, meta, detail, onClick }) {
+// One row of the grouped money list. The section name, its total, one line
+// of what is in it — the list container supplies the surface and dividers.
+function SummaryCard({ title, total, meta, detail, onClick }) {
   return (
     <button type="button" onClick={onClick}
-      className="group flex min-h-[104px] min-w-0 w-full items-center gap-3 rounded-2xl border border-white/[0.09] bg-white/[0.045] p-4 text-left transition-colors hover:bg-white/[0.075] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/70">
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-emerald-200/15 bg-emerald-300/[0.08] text-emerald-200">
-        <Icon className="h-5 w-5" />
-      </span>
+      className="group flex min-h-16 min-w-0 w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-300/70">
       <span className="min-w-0 flex-1">
         <span className="flex items-start justify-between gap-3">
           <span className="text-[15px] font-semibold text-readable-primary">{title}</span>
@@ -144,7 +141,7 @@ function RecordRow({ title, subtitle, value, onEdit, onDelete, confirming, onCon
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className="block truncate text-[14px] font-semibold text-readable-primary">{title}</span>
-            {synced && <span className="shrink-0 rounded-full bg-emerald-300/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-200">Synced</span>}
+            {synced && <span className="shrink-0 text-[11px] font-medium text-emerald-200">· Synced</span>}
           </span>
           <span className="mt-0.5 block truncate text-xs text-readable-secondary">{subtitle}</span>
         </span>
@@ -212,6 +209,10 @@ export default function Money({
   const [budgetLimits, setBudgetLimits] = useState([])
   const [trend, setTrend] = useState({ delta: 0, days: 0, has: false })
   const [loading, setLoading] = useState(true)
+  const [dataReady, setDataReady] = useState(false)
+  const [loadError, setLoadError] = useState(null)
+  const [loadAttempt, setLoadAttempt] = useState(0)
+  const loadGeneration = useRef(0)
   const [error, setError] = useState(null)
 
   const [activeSheet, setActiveSheet] = useState(null)
@@ -221,6 +222,7 @@ export default function Money({
   const [planDraftLimits, setPlanDraftLimits] = useState([])
   const [dirty, setDirty] = useState(false)
   const [editorDirty, setEditorDirty] = useState(false)
+  const [savedDraft, setSavedDraft] = useState(null)
   const [saving, setSaving] = useState(false)
   const [sheetError, setSheetError] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -231,35 +233,36 @@ export default function Money({
   const [reminderSaving, setReminderSaving] = useState(false)
   const [reminderError, setReminderError] = useState(null)
 
-  async function loadData() {
-    const [accountResult, debtResult, goalResult, flowResult, limitResult] = await Promise.all([
-      supabase.from('accounts').select('*').eq('user_id', user.id).order('created_at'),
-      supabase.from('debts').select('*').eq('user_id', user.id).order('created_at'),
-      supabase.from('goals').select('*').eq('user_id', user.id).order('created_at'),
-      supabase.from('cash_flow_items').select('*').eq('user_id', user.id).order('sort_order').order('created_at'),
-      supabase.from('budget_limits').select('*').eq('user_id', user.id).order('category'),
-    ])
-    const failed = [accountResult, debtResult, goalResult, flowResult, limitResult].find(result => result.error)
-    if (failed) throw failed.error
-    setAccounts(accountResult.data ?? [])
-    setDebts(debtResult.data ?? [])
-    setGoals(goalResult.data ?? [])
-    setCashFlowItems(flowResult.data ?? [])
-    setBudgetLimits(limitResult.data ?? [])
-    return { accounts: accountResult.data ?? [], debts: debtResult.data ?? [] }
-  }
+  const loadData = useCallback(async () => {
+    const generation = ++loadGeneration.current
+    const records = await loadFinancialRecords(supabase, user.id)
+    if (generation !== loadGeneration.current) return records
+    setAccounts(records.accounts)
+    setDebts(records.debts)
+    setGoals(records.goals)
+    setCashFlowItems(records.cashFlowItems)
+    setBudgetLimits(records.budgetLimits)
+    setDataReady(true)
+    setLoadError(null)
+    return records
+  }, [user.id])
 
   useEffect(() => {
-    loadData().catch(loadError => setError(loadError.message ?? 'Could not load your money data.'))
-      .finally(() => setLoading(false))
-  }, [user.id, profile?.onboarding_complete]) // eslint-disable-line react-hooks/exhaustive-deps
+    let live = true
+    setLoading(true)
+    setDataReady(false)
+    setLoadError(null)
+    loadData().catch(error => { if (live) setLoadError(error) })
+      .finally(() => { if (live) setLoading(false) })
+    return () => { live = false; loadGeneration.current += 1 }
+  }, [loadData, loadAttempt, profile?.onboarding_complete])
 
   // Arriving from a nudge (dashboard money-picture row, advisor gap banner):
   // open the exact sheet that resolves it — one less tap between "I was asked"
   // and "I'm typing the number".
   useEffect(() => {
     const sheet = new URLSearchParams(location.search).get('sheet') || location.state?.sheet
-    if (!sheet || loading) return
+    if (!sheet || loading || !dataReady) return
     openSheet(sheet)
     const preferredSubtype = new URLSearchParams(location.search).get('accountSubtype')
     const accountId = new URLSearchParams(location.search).get('accountId')
@@ -275,7 +278,7 @@ export default function Money({
       const debt = debts.find(item => item.id === debtId)
       if (debt) beginDebt(debt)
     }
-  }, [loading, location.search, location.state]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loading, dataReady, location.search, location.state]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const reminderId = new URLSearchParams(location.search).get('reminder')
@@ -297,7 +300,7 @@ export default function Money({
   }), [profile, accounts, debts, goals, cashFlowItems, budgetLimits])
 
   useEffect(() => {
-    if (loading) return
+    if (loading || !dataReady) return
     if (Number(profile?.net_worth) !== snapshot.netWorth) {
       setProfile(current => current ? { ...current, net_worth: snapshot.netWorth } : current)
       supabase.from('profiles').update({ net_worth: snapshot.netWorth }).eq('id', user.id)
@@ -308,7 +311,7 @@ export default function Money({
       assets: snapshot.assets,
       liabilities: snapshot.totalDebt,
     }).then(setTrend)
-  }, [loading, snapshot.netWorth, snapshot.assets, snapshot.totalDebt]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loading, dataReady, snapshot.netWorth, snapshot.assets, snapshot.totalDebt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const accountGroups = useMemo(() => ({
     cash: accounts.filter(account => accountFamily(account) === 'cash'),
@@ -579,6 +582,7 @@ export default function Money({
   }
 
   function beginAccount(family, item = null, preferredSubtype = null) {
+    setSavedDraft(null)
     const options = family === 'cash' ? CASH_SUBTYPES : family === 'investment' ? INVESTMENT_SUBTYPES : ASSET_SUBTYPES
     const defaultOption = options.find(option => option.value === preferredSubtype) || options[0]
     const subtype = item ? (item.subtype || defaultSubtype(item.type)) : defaultOption.value
@@ -631,27 +635,21 @@ export default function Money({
     const query = editor.id
       ? supabase.from('accounts').update(payload).eq('id', editor.id).eq('user_id', user.id)
       : supabase.from('accounts').insert(payload)
-    const { error: saveError } = await query.select().single()
+    const { data: savedAccount, error: saveError } = await query.select().single()
     if (saveError) {
       setSaving(false)
       setSheetError(saveError.message ?? 'Could not save this account.')
       return
     }
-    try {
-      const canonical = await loadData()
-      await syncAccountProfile(canonical.accounts)
-      setEditor(null)
-      setEditorDirty(false)
-      setDirty(false)
-      setSaving(false)
-      offerLinkedReminderCompletion()
-    } catch (refreshError) {
-      setSaving(false)
-      setSheetError(refreshError.message ?? 'Saved, but could not refresh the account list.')
-    }
+    // A refresh failure must not turn a second Save into a duplicate insert.
+    setEditor(current => current ? { ...current, id: savedAccount.id } : current)
+    setSavedDraft(JSON.stringify(draft))
+    setEditorDirty(false)
+    await refreshSavedRecord('account')
   }
 
   function beginDebt(item = null) {
+    setSavedDraft(null)
     setEditor({ kind: 'debt', id: item?.id ?? null })
     setDraft({
       name: item?.name ?? '', type: item?.type || 'other', lender: item?.lender ?? '',
@@ -697,22 +695,33 @@ export default function Money({
     const query = editor.id
       ? supabase.from('debts').update(payload).eq('id', editor.id).eq('user_id', user.id)
       : supabase.from('debts').insert(payload)
-    const { error: saveError } = await query.select().single()
+    const { data: savedDebt, error: saveError } = await query.select().single()
     if (saveError) {
       setSaving(false)
       setSheetError(saveError.message ?? 'Could not save this debt.')
       return
     }
+    setEditor(current => current ? { ...current, id: savedDebt.id } : current)
+    setSavedDraft(JSON.stringify(draft))
+    setEditorDirty(false)
+    await refreshSavedRecord('debt')
+  }
+
+  async function refreshSavedRecord(kind) {
+    setSaving(true)
+    setSheetError(null)
     try {
-      await loadData()
+      const canonical = await loadData()
+      if (kind === 'account') await syncAccountProfile(canonical.accounts)
       setEditor(null)
       setEditorDirty(false)
+      setSavedDraft(null)
       setDirty(false)
-      setSaving(false)
       offerLinkedReminderCompletion()
-    } catch (refreshError) {
+    } catch {
+      setSheetError(`Your ${kind} is saved. We couldn’t refresh the latest balances. Retry the refresh; you don’t need to save it again.`)
+    } finally {
       setSaving(false)
-      setSheetError(refreshError.message ?? 'Saved, but could not refresh the debt list.')
     }
   }
 
@@ -774,6 +783,7 @@ export default function Money({
   }
 
   function returnToList() {
+    setSavedDraft(null)
     setEditor(null)
     setEditorDirty(false)
     setDraft({})
@@ -786,6 +796,9 @@ export default function Money({
     // header X only, so their save button stands alone at full width.
     if (breakdown) return <SaveFooter onBack={() => { setBreakdown(null); setSheetError(null) }} onSave={keepBreakdown} saving={false} saveLabel="Keep breakdown" />
     if (editor?.kind === 'flow') return <SaveFooter onBack={returnToList} guardBack={editorDirty} onSave={keepFlowItem} saving={false} saveLabel="Keep item" />
+    if (savedDraft !== null && savedDraft === JSON.stringify(draft) && ['account', 'debt'].includes(editor?.kind)) {
+      return <SaveFooter onBack={returnToList} onSave={() => refreshSavedRecord(editor.kind)} saving={saving} saveLabel="Retry refresh" />
+    }
     if (editor?.kind === 'account') return <SaveFooter onBack={returnToList} guardBack={editorDirty} onSave={saveAccount} saving={saving} saveLabel="Save account" />
     if (editor?.kind === 'debt') return <SaveFooter onBack={returnToList} guardBack={editorDirty} onSave={saveDebt} saving={saving} saveLabel="Save debt" />
     if (activeSheet === 'plan') return <SaveFooter onSave={saveMonthlyPlan} saving={saving} saveLabel="Save monthly plan" disabled={!dirty} />
@@ -796,8 +809,8 @@ export default function Money({
     // case is not "Done" either.
     if (activeSheet === 'accounts') return <SaveFooter onSave={requestClose} saving={false}
       saveLabel={new URLSearchParams(location.search).get('setup') === '1'
-        ? (accounts.length && debts.length ? 'Done — show my money route' : 'Continue — show my route')
-        : (accounts.length ? 'Done — use these accounts' : 'Skip for now')} />
+        ? (accounts.length && debts.length ? 'Done, show my plan' : 'Continue to my plan')
+        : (accounts.length ? 'Done, use these accounts' : 'Skip for now')} />
     return null
   }
 
@@ -878,9 +891,9 @@ export default function Money({
     return (
       <div className="space-y-5">
         <div className="grid grid-cols-3 gap-2 rounded-2xl border border-white/[0.09] bg-white/[0.035] p-3">
-          <div><p className="text-[11px] font-bold uppercase tracking-wide text-readable-muted">Income</p><p className="mt-1 text-[15px] font-semibold tabular-nums text-white">{fmt(planDraftItems.filter(item => item.kind === 'income').reduce((sum, item) => sum + itemMonthlyAmount(item), 0))}</p></div>
-          <div><p className="text-[11px] font-bold uppercase tracking-wide text-readable-muted">Spending</p><p className="mt-1 text-[15px] font-semibold tabular-nums text-white">{fmt(planDraftItems.filter(item => item.kind === 'expense').reduce((sum, item) => sum + itemMonthlyAmount(item), 0))}</p></div>
-          <div><p className="text-[11px] font-bold uppercase tracking-wide text-readable-muted">Future</p><p className="mt-1 text-[15px] font-semibold tabular-nums text-emerald-100">{fmt(planDraftItems.filter(item => item.kind === 'allocation').reduce((sum, item) => sum + itemMonthlyAmount(item), 0))}</p></div>
+          <div><p className="text-[13px] font-medium text-readable-muted">Income</p><p className="mt-1 text-[15px] font-semibold tabular-nums text-white">{fmt(planDraftItems.filter(item => item.kind === 'income').reduce((sum, item) => sum + itemMonthlyAmount(item), 0))}</p></div>
+          <div><p className="text-[13px] font-medium text-readable-muted">Spending</p><p className="mt-1 text-[15px] font-semibold tabular-nums text-white">{fmt(planDraftItems.filter(item => item.kind === 'expense').reduce((sum, item) => sum + itemMonthlyAmount(item), 0))}</p></div>
+          <div><p className="text-[13px] font-medium text-readable-muted">Future</p><p className="mt-1 text-[15px] font-semibold tabular-nums text-emerald-100">{fmt(planDraftItems.filter(item => item.kind === 'allocation').reduce((sum, item) => sum + itemMonthlyAmount(item), 0))}</p></div>
         </div>
         {legacyExpense && (
           <button type="button" onClick={() => startBreakdown(legacyExpense)}
@@ -901,7 +914,7 @@ export default function Money({
         ) : grouped.map(section => (
           <section key={section.group}>
             <div className="mb-1 flex items-center justify-between">
-              <h3 className="text-[13px] font-bold uppercase tracking-[0.1em] text-readable-muted">{GROUP_LABELS[section.group]}</h3>
+              <h3 className="section-label">{GROUP_LABELS[section.group]}</h3>
               <span className="text-xs tabular-nums text-readable-secondary">{fmt(section.rows.reduce((sum, item) => sum + itemMonthlyAmount(item), 0))}/mo</span>
             </div>
             {section.rows.map(item => (
@@ -960,8 +973,8 @@ export default function Money({
             {family === 'cash' && <Field label="Can you spend it today?" hint="Counts toward your emergency fund">
               <select value={draft.is_liquid} onChange={event => updateDraft('is_liquid', event.target.value)} className={inputClass}>
                 <option value="auto" className="bg-[#0a1410]">Decide by account type</option>
-                <option value="true" className="bg-[#0a1410]">Yes — available now</option>
-                <option value="false" className="bg-[#0a1410]">No — locked or penalized</option>
+                <option value="true" className="bg-[#0a1410]">Yes, available now</option>
+                <option value="false" className="bg-[#0a1410]">No, locked or penalized</option>
               </select>
             </Field>}
             <Field label="Last verified"><input type="date" value={draft.last_verified_at} onChange={event => updateDraft('last_verified_at', event.target.value)} className={inputClass} /></Field>
@@ -986,7 +999,7 @@ export default function Money({
             onEdit={() => beginAccount(family, account)} onDelete={() => setDeleteTarget(account.id)} confirming={deleteTarget === account.id}
             onCancelDelete={() => setDeleteTarget(null)} onConfirmDelete={() => deleteRecord('accounts', account.id)} disabled={saving} />
         }) : <EmptyState icon={FAMILY_META[family].icon} title={`No ${family === 'asset' ? 'assets' : `${family} accounts`} yet`}
-          copy={family === 'investment' ? 'Track the account itself—no holdings or live market data needed.' : 'Add only the details that help you make decisions.'}
+          copy={family === 'investment' ? 'Track the account total. No holdings or market data needed.' : 'Add only the details that help you make decisions.'}
           action={family === 'asset' ? 'Add asset' : 'Add account'} onAction={() => beginAccount(family)} />}
         {rows.length > 0 && <button type="button" onClick={() => beginAccount(family)} className="btn-ghost mt-4 min-h-11 w-full"><Plus className="h-4 w-4" /> {family === 'asset' ? 'Add asset' : 'Add account'}</button>}
       </div>
@@ -1088,8 +1101,8 @@ export default function Money({
       <div>
         {activeDebts.length ? <>
           <div className="mb-4 grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.09] bg-white/[0.035] p-3">
-            <div><p className="text-[11px] font-bold uppercase tracking-wide text-readable-muted">Monthly interest</p><p className="mt-1 font-semibold tabular-nums text-white">{fmt(snapshot.debtMonthlyInterest)}</p></div>
-            <div><p className="text-[11px] font-bold uppercase tracking-wide text-readable-muted">Planned payments</p><p className="mt-1 font-semibold tabular-nums text-white">{fmt(snapshot.plannedDebtPayments)}</p></div>
+            <div><p className="text-[13px] font-medium text-readable-muted">Monthly interest</p><p className="mt-1 font-semibold tabular-nums text-white">{fmt(snapshot.debtMonthlyInterest)}</p></div>
+            <div><p className="text-[13px] font-medium text-readable-muted">Planned payments</p><p className="mt-1 font-semibold tabular-nums text-white">{fmt(snapshot.plannedDebtPayments)}</p></div>
           </div>
           {activeDebts.map(debt => <RecordRow key={debt.id} title={debt.name} synced={debt.source === 'plaid'}
             subtitle={`${DEBT_TYPES.find(option => option.value === debt.type)?.label || 'Debt'}${debt.interest_rate == null ? ' · APR missing' : ` · ${Number(debt.interest_rate)}% APR`}${debt.minimum_payment == null ? ' · Minimum missing' : ` · ${fmt(debt.minimum_payment)} minimum`}`}
@@ -1149,18 +1162,13 @@ export default function Money({
     )
   }
 
-  if (loading) return <div className="flex min-h-[55vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-emerald-300" /><span className="sr-only">Loading money data</span></div>
+  if (loading || loadError || !dataReady) return <DataLoadState title={homeMode && !workspaceMode ? 'Home' : 'Your money'} loading={loading} onRetry={() => setLoadAttempt(value => value + 1)} />
 
   const renderNetWorth = () => (
-    <section className="overflow-hidden rounded-[28px] border border-emerald-200/15 bg-[radial-gradient(circle_at_top_right,rgba(52,211,153,0.13),transparent_42%),linear-gradient(145deg,rgba(14,31,24,0.98),rgba(7,17,13,0.98))] p-5 shadow-[0_18px_55px_rgba(0,0,0,0.24)] sm:p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.13em] text-emerald-100/75">Net worth</p>
-          <p className="mt-2 text-[34px] font-semibold leading-none tracking-[-0.04em] text-white sm:text-[42px]">{fmt(snapshot.netWorth)}</p>
-        </div>
-        <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-emerald-200/15 bg-emerald-300/[0.08] text-emerald-100"><Gauge className="h-5 w-5" /></span>
-      </div>
-      <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-readable-secondary">
+    <section className="rounded-2xl border border-white/[0.09] bg-white/[0.045] p-5 sm:p-6">
+      <p className="text-[13px] font-medium text-readable-muted">Net worth</p>
+      <p className={`mt-1 text-[34px] font-semibold leading-none tracking-[-0.03em] tabular-nums sm:text-[40px] ${Number(snapshot.netWorth) < 0 ? 'text-rose-100' : 'text-white'}`}>{fmt(snapshot.netWorth)}</p>
+      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-readable-secondary">
         <span><strong className="font-semibold text-white">{fmt(snapshot.assets)}</strong> assets</span>
         <span><strong className="font-semibold text-white">{fmt(snapshot.totalDebt)}</strong> liabilities</span>
         <span className={trend.has && trend.delta < 0 ? 'text-rose-100' : 'text-emerald-100'}>{trend.has ? `${trend.delta >= 0 ? '+' : ''}${fmt(trend.delta)} over ${trend.days} days` : '30-day change starts after your next snapshot'}</span>
@@ -1172,7 +1180,6 @@ export default function Money({
     <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }} className={`mx-auto w-full px-4 pb-10 md:px-6 ${homeMode ? 'max-w-6xl' : 'max-w-3xl'}`}>
       {(!homeMode || workspaceMode) && <PageHeader
         title={homeMode && !workspaceMode ? 'Home' : 'Money'}
-        subtitle={homeMode && !workspaceMode ? 'What matters now, with detail when you ask for it.' : 'Your complete financial picture.'}
         onBack={homeMode && workspaceMode ? () => navigate('/') : undefined}
         backLabel="Home"
         actions={homeMode && !workspaceMode
@@ -1203,7 +1210,7 @@ export default function Money({
         <div className="flex gap-3">
           <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${snapshot.next.urgent ? 'bg-amber-300/10 text-amber-100' : 'bg-emerald-300/10 text-emerald-100'}`}><ShieldCheck className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-readable-muted">Next move</p>
+            <p className="section-label">Next move</p>
             <h2 className="mt-1 text-[16px] font-semibold text-readable-primary">{snapshot.next.title}</h2>
             <p className="mt-1 text-[13px] leading-5 text-readable-secondary">{snapshot.next.why}</p>
             <button type="button" onClick={() => navigate('/advisor', { state: { ask: `Help me with my next money move: ${snapshot.next.title}` } })}
@@ -1215,20 +1222,17 @@ export default function Money({
       </section>}
 
       {(!homeMode || workspaceMode) && <section id={homeMode ? 'home-money' : undefined} className="mt-6 scroll-mt-4">
-        <div className="mb-3 flex items-end justify-between gap-3">
-          <div><h2 className="text-[18px] font-semibold text-readable-primary">{homeMode ? 'Your money' : 'Your money, organized'}</h2><p className="mt-1 text-[13px] text-readable-secondary">Tap a section only when you want the detail.</p></div>
-        </div>
-        <div className="grid gap-2.5 md:grid-cols-2">
-          {moneySections({ snapshot, accountGroups, cashFlowItems, activeDebts, assetTotal }).map(section => {
-            const card = <SummaryCard key={section.id} icon={SECTION_ICONS[section.id]} title={section.title}
+        <h2 className="mb-2 px-1 text-[15px] font-semibold text-readable-primary">Your money</h2>
+        <div className="divide-y divide-white/[0.07] overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.04]">
+          {moneySections({ snapshot, accountGroups, cashFlowItems, activeDebts, assetTotal }).map(section => (
+            <SummaryCard key={section.id} title={section.title}
               total={section.total} meta={section.meta} detail={section.detail} onClick={() => openSheet(section.sheet)} />
-            return section.wide ? <div key={section.id} className="md:col-span-2">{card}</div> : card
-          })}
+          ))}
         </div>
       </section>}
 
       <BottomSheet open={Boolean(activeSheet)} title={sheetTitle()}
-        subtitle={editor || breakdown ? 'Required fields first. Optional details stay tucked away.' : activeSheet === 'plan' ? 'Typical monthly amounts and targets—not transaction activity.' : activeSheet === 'accounts' ? 'Your saved records become the source of truth everywhere in the app.' : activeSheet === 'balances' ? 'A quick manual refresh across your tracked balances.' : FAMILY_META[activeSheet]?.subtitle}
+        subtitle={!editor && !breakdown && activeSheet === 'plan' ? 'Typical monthly amounts, not transactions.' : null}
         onClose={closeSheet} dirty={dirty || editorDirty} size="lg"
         footer={(editor || breakdown || activeSheet === 'plan' || activeSheet === 'accounts' || activeSheet === 'balances') ? ({ requestClose }) => sheetFooter(requestClose) : null}>
         {renderReminderCompletion()}
