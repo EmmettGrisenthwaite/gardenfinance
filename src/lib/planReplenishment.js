@@ -32,8 +32,27 @@ export function samePlanStep(leftText, rightText) {
   return shared / (left.size + right.size - shared) >= 0.6
 }
 
+// "fund.investment.roth" → "fund.investment". Two-part intents have no target.
+function intentNamespace(intent) {
+  const parts = String(intent).split('.')
+  return parts.length >= 3 ? parts.slice(0, -1).join('.') : String(intent)
+}
+
+// Same kind of move, different record — provably two moves. Text similarity is
+// for catching one generator's paraphrase of another's step; once steps name
+// their accounts ("Move $625/mo from Checking into Roth IRA" / "…into
+// Brokerage") the wording overlaps by design and would drop the second.
+function distinctTargets(left, right) {
+  const a = left?.intentKey || left?.intent_key
+  const b = right?.intentKey || right?.intent_key
+  return Boolean(a && b && a !== b && intentNamespace(a) === intentNamespace(b))
+}
+
 export function filterFreshPlanSteps(existingSteps = [], incomingSteps = [], { dedupeCompleted = false } = {}) {
-  const comparisonSteps = existingSteps.filter(step => dedupeCompleted || !step?.done)
+  // A superseded step was retired by the user in favour of something else. It
+  // is history, and letting it block the same move from returning under new
+  // numbers is how a plan went silent for months after its debt was paid off.
+  const comparisonSteps = existingSteps.filter(step => !step?.supersededAt && (dedupeCompleted || !step?.done))
   const fresh = []
   let skipped = 0
   for (const step of incomingSteps) {
@@ -43,11 +62,17 @@ export function filterFreshPlanSteps(existingSteps = [], incomingSteps = [], { d
       if ((existing?.intentKey || existing?.intent_key) !== intentKey) return false
       const policy = step?.completionPolicy || step?.completion_policy || 'once'
       if (policy !== 'repeatable') return true
+      // A money-route move is one standing instruction. While a copy is still
+      // active, a resized version updates that step (amountUpdateReview)
+      // instead of sitting beside it with a different number.
+      if (step?.source === 'money-route' && !existing?.done && !existing?.supersededAt) return true
       const previousState = existing?.outcome?.stateFingerprint
       const nextState = step?.outcome?.stateFingerprint
       return !previousState || !nextState || previousState === nextState
     })
-    if (!text.trim() || duplicateIntent || comparisonSteps.some(existing => samePlanStep(existing?.text || '', text))) {
+    if (!text.trim() || duplicateIntent || comparisonSteps.some(existing => (
+      !distinctTargets(existing, step) && samePlanStep(existing?.text || '', text)
+    ))) {
       skipped++
       continue
     }

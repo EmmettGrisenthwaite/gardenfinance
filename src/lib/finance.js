@@ -19,6 +19,10 @@ export const THRESHOLDS = {
   starterEmergency: 1000,
   autoTransferMin: 100,
   investReturn: 0.06,
+  // Only ever used for an estimate the copy labels as one ("about $560 a
+  // year"). Deliberately below the best advertised rates, so the figure a user
+  // is shown is one the account they open will actually beat.
+  hysaBenchmarkApy: 3.5,
 }
 
 export const LIQUID_TYPES = ['checking', 'savings', 'emergency', 'money_market']
@@ -56,7 +60,7 @@ export function netWorthExplanation({ netWorth, debts = [] } = {}) {
   const name = largest.name || 'your largest balance'
   const rate = known(largest.interest_rate) ? num(largest.interest_rate) : null
   if (rate !== null && rate <= THRESHOLDS.highApr) {
-    return `Most of this is ${name} at ${rate}%. Your plan leaves it on minimum payments on purpose — your money earns more everywhere above it.`
+    return `Most of this is ${name} at ${rate}%. Your plan leaves it on minimum payments on purpose. Your money earns more everywhere above it.`
   }
   if (rate !== null) {
     return `Most of this is ${name} at ${rate}%, which is exactly what your plan is aimed at.`

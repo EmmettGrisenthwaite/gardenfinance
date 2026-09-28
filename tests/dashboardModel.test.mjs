@@ -7,6 +7,7 @@ import {
   dashboardEvidenceFingerprint,
   dismissDashboardSuggestion,
   normalizeDashboardLayout,
+  packSpans,
 } from '../src/lib/dashboardModel.js'
 
 function context(patch = {}) {
@@ -33,9 +34,8 @@ function context(patch = {}) {
 
 test('personalized default always keeps the four calm foundation cards', () => {
   const layout = buildDefaultDashboard(context())
-  assert.deepEqual(layout.widgets.slice(0, 4).map(item => item.id), [
-    'garden', 'net-worth', 'monthly-plan', 'cash-emergency',
-  ])
+  assert.deepEqual(layout.widgets.slice(0, 3).map(item => item.id), ['net-worth', 'monthly-plan', 'cash-emergency'])
+  assert.deepEqual(layout.widgets[4], { id: 'garden', size: 'compact', settings: {} })
   assert.equal(layout.widgets.length, 5)
 })
 test('personalized fifth card prioritizes debt, goals, investments, accounts, then routines', () => {
@@ -43,20 +43,20 @@ test('personalized fifth card prioritizes debt, goals, investments, accounts, th
     debts: [{ id: 'd1', balance: 100 }], snapshot: { totalDebt: 100 },
     goals: [{ id: 'g1', current_amount: 0, target_amount: 1000 }],
   }))
-  assert.equal(debt.widgets[4].id, 'debt')
+  assert.equal(debt.widgets[3].id, 'debt')
 
   const goal = buildDefaultDashboard(context({ goals: [{ id: 'g1', current_amount: 0, target_amount: 1000 }] }))
-  assert.equal(goal.widgets[4].id, 'goals')
+  assert.equal(goal.widgets[3].id, 'goals')
 
   const investment = buildDefaultDashboard(context({ snapshot: { invested: 500, investmentAccounts: [{ id: 'ira' }] } }))
-  assert.equal(investment.widgets[4].id, 'investments')
+  assert.equal(investment.widgets[3].id, 'investments')
 
   const accounts = buildDefaultDashboard(context({ accounts: [{ id: 'cash', name: 'Checking' }] }))
-  assert.equal(accounts.widgets[4].id, 'account-watchlist')
-  assert.deepEqual(accounts.widgets[4].settings.accountIds, ['cash'])
+  assert.equal(accounts.widgets[3].id, 'account-watchlist')
+  assert.deepEqual(accounts.widgets[3].settings.accountIds, ['cash'])
 
   const routines = buildDefaultDashboard(context({ reminders: [{ id: 'r1', status: 'active' }] }))
-  assert.equal(routines.widgets[4].id, 'routines')
+  assert.equal(routines.widgets[3].id, 'routines')
 })
 
 test('normalization enforces known unique widgets, supported sizes, and the five-card cap', () => {
@@ -109,4 +109,25 @@ test('stale records recommend freshness before other optional cards', () => {
   })
   const suggestion = buildDashboardSuggestion(evidence, { widgets: [{ id: 'net-worth', size: 'compact' }] })
   assert.equal(suggestion.widgetId, 'freshness')
+})
+
+test('dashboard rows always end flush, whatever mix of card sizes', () => {
+  const desktop = sizes => packSpans(sizes, 6, size => size === 'expanded' ? 3 : 2)
+  const phone = sizes => packSpans(sizes, 2, size => size === 'expanded' ? 2 : 1)
+  // The default Home: a half beside a third used to leave one column empty.
+  assert.deepEqual(desktop(['expanded', 'compact', 'compact', 'compact', 'compact']), [3, 3, 2, 2, 2])
+  assert.deepEqual(desktop(['compact', 'compact', 'expanded']), [3, 3, 6])
+  assert.deepEqual(desktop(['expanded', 'expanded', 'compact']), [3, 3, 6])
+  assert.deepEqual(phone(['compact', 'expanded', 'compact', 'compact']), [2, 2, 1, 1])
+  for (const mix of [['compact'], ['expanded', 'compact'], ['compact', 'expanded', 'compact', 'expanded', 'compact']]) {
+    for (const [columns, spans] of [[6, desktop(mix)], [2, phone(mix)]]) {
+      let fill = 0
+      for (const span of spans) {
+        fill += span
+        if (fill > columns) fill = span
+        if (fill === columns) fill = 0
+      }
+      assert.equal(fill, 0, `${mix.join(',')} leaves a gap at ${columns} columns: ${spans.join(',')}`)
+    }
+  }
 })

@@ -243,7 +243,7 @@ export const PRACTICE_BACKFILL = [
     intentKey: 'habit.credit_report',
     priorityKey: 'grow',
     text: 'Pull your free credit report and read it once',
-    detail: 'Your report decides what you pay to borrow for the next decade — rent applications, car loans, a mortgage, sometimes a job. It is free, and errors on it are common enough that reading it once is worth the half hour.',
+    detail: 'Your report decides what you pay to borrow for the next decade: rent applications, car loans, a mortgage, sometimes a job. It is free, and errors on it are common enough that reading it once is worth the half hour.',
     doneWhen: 'You have read your current credit report and know what is on it.',
     impact: 'Finds errors that quietly cost you the best rates',
     // Maintenance, not setup: a report read last January says nothing about
@@ -294,7 +294,7 @@ export const PRACTICE_BACKFILL = [
     intentKey: 'habit.beneficiaries',
     priorityKey: 'grow',
     text: 'Name a beneficiary on every retirement and investment account',
-    detail: 'A beneficiary on the account overrides anything a will says, and an account with none goes through probate — months of delay for whoever you meant to leave it to. It takes about five minutes per account.',
+    detail: 'A beneficiary on the account overrides anything a will says, and an account with none goes through probate, which means months of delay for whoever you meant to leave it to. It takes about five minutes per account.',
     doneWhen: 'Every retirement and investment account has a named beneficiary.',
     impact: 'Keeps your accounts out of probate',
     gate: context => (context?.accounts || []).some(account => String(account?.type) === 'brokerage'),

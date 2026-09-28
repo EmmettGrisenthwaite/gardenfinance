@@ -133,6 +133,42 @@ Steps are deduplicated by `intentKey` and tracked by `completionPolicy`
 (`once` vs `repeatable`). Guides produced by the advisor carry the same two
 fields for the same reason — a step without them cannot be deduped or marked done.
 
+## 5. Live — after it is approved
+
+A saved step is an instruction someone carries out at their bank, so it has to
+stay usable for months, not just read well on the day it was approved.
+
+**Exact amounts, named accounts.** Steps say "Move $1,714/mo from Checking to
+Ally Savings", not "toward your emergency fund". A debt payment says it is extra
+and what lands on the balance ("on top of the $85 minimum, so $985 comes off").
+The match step states the employer's dollars; autopay names each debt and its
+minimum; idle savings states the balance and what the low rate costs. Every
+finite move carries its finish line (`outcome.targetAmount`, `etaMonths`).
+
+**Links go where the work happens** (`stepLinks` in `stepFacts.js`). A move into
+an account the user already has links to *that* bank, found from the
+institution or lender they typed. Provider sign-up pages appear only when
+something needs opening. Home pages only — deep links rot.
+
+**Progress is read, not stored** (`stepProgress`). The bar on a step comes from
+today's balances, so it moves when the records do. Frozen balances never go in
+saved copy; once live progress exists it replaces the saved estimate.
+
+**The plan follows the numbers** (`amountUpdateReview`, `pausedMove`,
+`retireMove` in `focusedPlan.js`). Nothing changes without a tap:
+
+| What changed | What the Plan offers |
+|---|---|
+| Surplus rose or fell ≥15% | Resize the same step in place, and its standing order with it |
+| A cushion reached its first $1,000 | "Next stop: $6,900" — same step, new finish line |
+| A rung's last month | "Move the last $100…" / "Pay off the rest — about $150", then stop the standing order |
+| A move finished (paid off, target reached) | Close it; if its standing order is running, add "Stop the scheduled $700 payment" |
+| Something outranks a move (new 18% loan) | Pause it, so the same dollars are never directed twice |
+
+Structural changes on other steps are shown first, because they are usually
+*why* an amount moved. A move that finishes this month is never offered a
+standing order.
+
 ---
 
 ## Invariants
@@ -153,6 +189,16 @@ Enforced by tests; break one and the suite fails.
 10. One errand per family, for every profile against every combination of
     interview answers — and the interview never pushes a plan past 5 steps.
 
+Over two simulated years per profile (`tests/planLifecycle.test.mjs`) — pay
+arriving, transfers leaving, debts amortizing, raises, pay cuts, new debt:
+
+11. No intent is ever active twice.
+12. The plan never directs more per month than is available.
+13. A standing order always matches the move it automates.
+14. Money that is routed is never left without an active step for two months.
+15. The same review is never shown twice in a row, and "paid off" is only said
+    when it is true.
+
 ## Where things live
 
 ```
@@ -160,6 +206,8 @@ src/lib/moneyRoute.js      the waterfall, steps, durations
 src/lib/planFollowUps.js   the questions, their gating and topics
 src/lib/planInterview.js   the three questions, and what answers do
 src/lib/planComposition.js 3-5 steps, families, trimming, ordering
+src/lib/stepFacts.js       links, live progress, and facts for the how-to guide
+src/lib/focusedPlan.js     reviews: resize, pause, retire, stop standing orders
 src/lib/finance.js         snapshot, thresholds, amortization
 src/components/MoneyRouteCard.jsx   the plan and its refinement
 src/pages/AIAdvisor.jsx    conversation, guides, committing to Plan

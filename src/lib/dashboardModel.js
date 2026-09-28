@@ -111,12 +111,15 @@ export function buildDefaultDashboard(context = {}) {
 
   return normalizeDashboardLayout({
     version: DASHBOARD_LAYOUT_VERSION,
+    // Money first: Home answers "where do I stand" before anything else. The
+    // garden follows as a compact tile, pairing with the fourth so the grid has
+    // no half-empty row; the full illustration is one tap away in Customize.
     widgets: [
-      widget('garden', 'expanded'),
       widget('net-worth', 'expanded'),
       widget('monthly-plan', 'compact'),
       widget('cash-emergency', 'compact'),
       fifth,
+      widget('garden', 'compact'),
     ],
   }, context)
 }
@@ -158,4 +161,27 @@ export function dismissDashboardSuggestion(layout, suggestion, context = {}) {
   const normalized = normalizeDashboardLayout(layout, context)
   if (!suggestion) return normalized
   return { ...normalized, dismissedSuggestion: { key: suggestion.key, fingerprint: suggestion.fingerprint } }
+}
+
+// Column spans for a grid whose rows always end flush. A row that cannot fit
+// the next card hands its leftover columns to the cards already in it, so a
+// half-width card beside a third never leaves a hole at the end of the row.
+export function packSpans(sizes, columns, spanFor) {
+  const spans = sizes.map(spanFor)
+  let row = []
+  let fill = 0
+  const close = () => {
+    const left = columns - fill
+    for (let k = 0; k < left; k++) spans[row[row.length - 1 - (k % row.length)]]++
+    row = []
+    fill = 0
+  }
+  spans.forEach((span, index) => {
+    if (row.length && fill + span > columns) close()
+    row.push(index)
+    fill += span
+    if (fill >= columns) close()
+  })
+  if (row.length) close()
+  return spans
 }

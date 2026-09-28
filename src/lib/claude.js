@@ -121,6 +121,7 @@ export async function fetchHowTo(subject, context = '', { signal, timeoutMs = HO
 - BUILD ON WHAT EXISTS. If the situation says they ALREADY HAVE an account (Roth IRA, 401(k), brokerage, HSA…), never tell them to open one — the steps are about contributing to / increasing / automating the account they have.
 - 3–6 numbered steps, each a single short imperative sentence. Step 1 must be startable today, on their phone.
 - Use their real numbers from the situation below for every dollar amount — computed, not generic.
+- If a THIS STEP block names their accounts, banks, or lenders, write the steps inside those exact providers ("In the Ally app, open Transfers…") using those account names and that exact amount. Never send them to a different bank for an account they already have. A debt payment amount is extra, on top of the minimum.
 - Use the app's verified ${LIMITS.year} limits when relevant: Roth IRA $${LIMITS.rothIra.toLocaleString()} and 401(k) $${LIMITS.k401.toLocaleString()}. Do not quote live rates, promotions, or deadlines in this fast guide. If an exact current fact is required, tell the user which official page or account field to verify.
 - Default brokerage pick: Fidelity (no minimums, no account fees, strong beginner experience).
 - No preamble, no closing remarks, no headings, no hedging — just the numbered steps.`

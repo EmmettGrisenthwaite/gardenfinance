@@ -112,7 +112,7 @@ const REMINDER_TEMPLATES = {
   quarterly: [
     { key: 'taxes', title: 'Review estimated taxes', detail: 'Confirm income and tax set-aside are current. Not tax advice.', linkedRecordType: '', category: 'taxes' },
     { key: 'balances', title: 'Refresh all balances', detail: 'Update account and debt balances so net worth stays accurate.', linkedRecordType: 'money_records', category: 'accounts' },
-    { key: 'rate', title: 'Check my savings APY', detail: 'Rates move — confirm your cash still earns a competitive yield.', linkedRecordType: '', category: 'accounts' },
+    { key: 'rate', title: 'Check my savings APY', detail: 'Rates move. Confirm your cash still earns a competitive yield.', linkedRecordType: '', category: 'accounts' },
     { key: 'retirement', title: 'Confirm 401(k) contribution & match', detail: 'Check your contribution and employer match on a recent paystub.', linkedRecordType: '', category: 'retirement' },
   ],
 }
@@ -334,7 +334,7 @@ function weeklyCandidates(context) {
       anchorDate,
       linkedRecordType: card ? 'debt' : 'money_records',
       linkedRecordId: card?.id || null,
-      evidence: `Credit utilization ${pct}% — aim under 30%`,
+      evidence: `Credit utilization ${pct}%. Aim for under 30%.`,
       actionLabel: card ? 'Update debt' : 'Update balances',
       actionTarget: '/?sheet=debts',
       metadata: { rule: 'weekly.card_utilization', category: 'debt', utilization: pct },
@@ -355,7 +355,7 @@ function weeklyCandidates(context) {
       }),
       cadence: 'weekly',
       title: 'Add to your emergency fund',
-      detail: `A steady weekly transfer closes the gap without straining the budget — your surplus is about $${surplus.toLocaleString()}/mo.`,
+      detail: `A steady weekly transfer closes the gap without straining the budget. Your surplus is about $${surplus.toLocaleString()}/mo.`,
       anchorDate,
       linkedRecordType: 'money_records',
       linkedRecordId: null,
@@ -488,7 +488,7 @@ function quarterlyCandidates(context) {
       title: capturing
         ? `Confirm ${workplace.name || 'your workplace plan'} still captures the match`
         : `Capture more of the ${workplace.name || 'workplace plan'} match`,
-      detail: 'Check the contribution and employer-match details against a recent pay statement — matched dollars are an instant return.',
+      detail: 'Check the contribution and employer-match details against a recent pay statement. Matched dollars are an instant return.',
       anchorDate,
       linkedRecordType: 'account',
       linkedRecordId: workplace.id || null,
@@ -515,7 +515,7 @@ function quarterlyCandidates(context) {
       }),
       cadence: 'quarterly',
       title: 'Check your IRA contribution pace',
-      detail: `Spread contributions across the year so the annual limit is easy to hit${hasRoth ? ` — Roth IRA room is $${LIMITS.rothIra.toLocaleString()} in ${LIMITS.year}` : ''}.`,
+      detail: `Spread contributions across the year so the annual limit is easy to hit${hasRoth ? `. Roth IRA room is $${LIMITS.rothIra.toLocaleString()} in ${LIMITS.year}` : ''}.`,
       anchorDate,
       linkedRecordType: 'account',
       linkedRecordId: retirementAccounts[0].id || null,
@@ -546,7 +546,7 @@ function quarterlyCandidates(context) {
       linkedRecordType: 'account',
       linkedRecordId: null,
       evidence: apy > 0
-        ? `Cash earns about ${apy.toFixed(2)}% — strong HYSAs pay ~4%+`
+        ? `Cash earns about ${apy.toFixed(2)}%. Strong high-yield accounts pay about 4% or more.`
         : `$${Math.round(liquid).toLocaleString()} in cash with no recorded yield`,
       actionLabel: 'Open account',
       actionTarget: '/?section=money&sheet=accounts',

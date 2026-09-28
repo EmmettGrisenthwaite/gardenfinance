@@ -2,7 +2,7 @@ import { financialPriorities, THRESHOLDS } from './finance.js'
 import { filterFreshPlanSteps, samePlanStep } from './planReplenishment.js'
 import { isWorkplaceAccount } from './moneyModel.js'
 import { doneWhenForStep } from './stepQuality.js'
-import { buildInitialPlan } from './moneyRoute.js'
+import { buildInitialPlan, routeStepPool } from './moneyRoute.js'
 
 export const FOCUS_SIZE = 3
 
@@ -614,6 +614,9 @@ function findRecord(records, basis) {
 
 export function staleStepReason(step, snapshot, activities, fingerprint) {
   if (!step || step.done || step.source === 'user' || step.supersededAt) return null
+  // "Stop the scheduled payment" exists BECAUSE the debt is paid off; judging
+  // it by the same record would flag it the moment it was created.
+  if (String(step.intentKey || '').startsWith('stop.')) return null
   if (!step.priorityKey && !step.generatedForFingerprint && !step.basis) return null
   if (step.reviewOverrideFingerprint === fingerprint) return null
 
@@ -646,12 +649,28 @@ export function staleStepReason(step, snapshot, activities, fingerprint) {
     return 'Recent Progress confirms this setup was already completed.'
   }
 
-  if (key === 'kill_debt' || basis.recordType === 'debt') {
+  // A step about every debt (autopay the minimums) names none of them, and
+  // "no matching debt found" read as "paid off" — so it was flagged the moment
+  // it reached the plan. It is only finished when every debt it covers is.
+  const namesADebt = Boolean(basis.recordId || basis.recordName)
+  if ((key === 'kill_debt' || basis.recordType === 'debt') && !namesADebt) {
+    const ids = Array.isArray(step.outcome?.debtIds) ? step.outcome.debtIds : []
+    const covered = ids.length
+      ? (snapshot.debts || []).filter(debt => ids.includes(debt.id))
+      : (snapshot.debts || [])
+    if (!covered.some(debt => num(debt.balance) > 0)) {
+      return ids.length === 1 && covered[0]?.name
+        ? `${covered[0].name} is now paid off.`
+        : 'Every debt is paid off, so there are no minimums left to automate.'
+    }
+  } else if (key === 'kill_debt' || basis.recordType === 'debt') {
     const debt = findRecord(snapshot.debts, basis)
     if (!debt || num(debt.balance) <= 0) return `${basis.recordName || 'This debt'} is now paid off.`
+    // Only a balance that GREW is news. One falling is the plan working, and
+    // flagging it would nag everyone who is paying their debt down.
     if (basis.balance !== null && basis.balance !== undefined) {
       const original = Math.max(1, num(basis.balance))
-      if (Math.abs(num(debt.balance) - original) / original >= 0.25) return 'The debt balance changed materially, so the amount and sequence need a fresh calculation.'
+      if ((num(debt.balance) - original) / original >= 0.25) return `${debt.name || 'This debt'} grew since this step was set, so the amount and order need a fresh look.`
     }
     if (basis.rate !== null && basis.rate !== undefined && Math.abs(num(debt.interest_rate) - num(basis.rate)) >= 1) {
       return 'The debt APR changed, so its priority and payoff impact need review.'
@@ -722,12 +741,20 @@ function prerequisiteFromSetup(setupState) {
 
 function candidatesFromMoneyRoute(moneyRoute, plan, activities) {
   const existing = Array.isArray(plan?.steps) ? plan.steps : []
-  const routeSteps = buildInitialPlan(moneyRoute).filter(candidate => !existing.some(step => (
-    !step?.done
-    && !step?.supersededAt
-    && !(step?.intentKey || step?.intent_key)
-    && inferredPriority(step) === candidate.priorityKey
-  )))
+  const activeIntents = new Set(existing
+    .filter(step => !step?.done && !step?.supersededAt)
+    .map(step => step?.intentKey || step?.intent_key)
+    .filter(Boolean))
+  // A move the plan already holds is one standing instruction. When its
+  // amount changes, the plan offers to update that step (amountUpdateReview)
+  // rather than proposing a second copy with a different number.
+  const routeSteps = buildInitialPlan(moneyRoute).filter(candidate => !activeIntents.has(candidate.intentKey)
+    && !existing.some(step => (
+      !step?.done
+      && !step?.supersededAt
+      && !(step?.intentKey || step?.intent_key)
+      && inferredPriority(step) === candidate.priorityKey
+    )))
   const { fresh } = filterFreshPlanSteps(existing, routeSteps, { dedupeCompleted: true })
   return fresh.filter(candidate => !activities.some(activity => {
     if (activity?.intent_key !== candidate.intentKey || activity?.status !== 'applied') return false
@@ -740,6 +767,246 @@ function candidatesFromMoneyRoute(moneyRoute, plan, activities) {
     id: `proposal:${candidate.candidateKey}`,
     proposed: true,
   }))
+}
+
+// Worth a trip to the bank's transfer screen. Below this, a changed number is
+// the arithmetic breathing — the same threshold the route uses before it
+// re-proposes a standing order.
+const AMOUNT_UPDATE_SHARE = 0.15
+const AMOUNT_UPDATE_MIN = 25
+
+// Fields that describe the move. Everything else on a saved step — its id,
+// due date, pin, when it was added — belongs to the user and survives.
+function rewrittenMove(next, fingerprint) {
+  return {
+    text: next.text,
+    detail: next.detail ?? null,
+    impact: next.impact ?? null,
+    doneWhen: next.doneWhen ?? null,
+    outcome: next.outcome ? { ...next.outcome } : null,
+    basis: next.basis ? { ...next.basis } : null,
+    priorityKey: next.priorityKey ?? null,
+    generatedForFingerprint: fingerprint || next.generatedForFingerprint || null,
+    // The cached how-to quotes the old amount.
+    guide: null,
+    guideFingerprint: null,
+    reviewOverrideFingerprint: null,
+  }
+}
+
+function movedEnough(before, after) {
+  return Math.abs(after - before) >= Math.max(AMOUNT_UPDATE_MIN, before * AMOUNT_UPDATE_SHARE)
+}
+
+// Why the number moved, in the order a person would look for it. Pinning a
+// shrinking payment on "you have more money now" read as nonsense the one
+// time the two moved in opposite directions — so the capacity explanation is
+// only used when it actually points the same way as the change.
+function amountUpdateReason({ step, before, after, beforeTarget, afterTarget, route, finishing, name }) {
+  const up = after > before
+  const amountMoved = movedEnough(before, after)
+  if (finishing) {
+    return step.outcome?.kind === 'debt_payment'
+      ? `Only about ${money(after)} is left, so you can clear ${name || 'this'} this month.`
+      : `Only ${money(after)} is left to reach ${money(afterTarget || beforeTarget)}, so this can be the last transfer.`
+  }
+  if (beforeTarget > 0 && afterTarget > 0 && afterTarget !== beforeTarget) {
+    const reached = num(route?.planContext?.liquid) >= beforeTarget
+    if (reached) return `You reached ${money(beforeTarget)}. Next stop: ${money(afterTarget)}${amountMoved ? `, at ${money(after)}/mo` : ''}.`
+    const moved = amountMoved ? ` and this move ${up ? 'rises' : 'drops'} to ${money(after)}/mo from ${money(before)}` : ''
+    return `Your spending ${afterTarget > beforeTarget ? 'went up' : 'went down'}, so your target is now ${money(afterTarget)} (was ${money(beforeTarget)})${moved}.`
+  }
+  const was = num(step.basis?.monthlyCapacity)
+  const now = num(route?.availableMonthlyAmount)
+  const change = `${up ? 'can rise' : 'should drop'} to ${money(after)}/mo from ${money(before)}`
+  if (was > 0 && now > 0 && was !== now && (now > was) === up) {
+    return `You now have ${money(now)} a month to direct, ${up ? 'up' : 'down'} from ${money(was)}, so this move ${change}.`
+  }
+  return up
+    ? `Money another part of your plan was using is free now, so this move ${change}.`
+    : `An earlier priority in your plan now needs part of this, so this move ${change}.`
+}
+
+/**
+ * The plan already holds this move; only its size or finish line changed. A
+ * raise, a paid-off card freeing money, a cushion reaching its first $1,000 —
+ * the route resizes the same rung, and the saved step should follow rather
+ * than keep quoting the day it was approved.
+ *
+ * Nothing changes without a tap: this returns a review the Plan offers, in the
+ * same place as every other "your records changed" check. Approving it
+ * rewrites the step in place, and the standing order that automates it with
+ * it — a transfer instruction and a schedule quoting different amounts is
+ * exactly the confusion the automation step exists to prevent. If that
+ * standing order was already set up, it comes back as one errand: change it.
+ */
+export function amountUpdateReview({ steps = [], pool = [], route = null, fingerprint = null, now = null } = {}) {
+  const live = steps.filter(step => !step?.supersededAt)
+  for (const step of live) {
+    if (step.done || step.source === 'user' || step.reviewOverrideFingerprint === fingerprint) continue
+    if (step.outcome?.final) continue
+    const intent = step.intentKey || ''
+    if (!intent || intent.startsWith('setup.') || !step.outcome?.recurrence) continue
+    const before = num(step.outcome?.amount)
+    const next = pool.find(candidate => candidate.intentKey === intent)
+    const after = num(next?.outcome?.amount)
+    if (!(before > 0) || !(after > 0)) continue
+    const beforeTarget = num(step.outcome?.targetAmount)
+    const afterTarget = num(next.outcome?.targetAmount)
+    const targetMoved = beforeTarget > 0 && afterTarget > 0 && afterTarget !== beforeTarget
+    const lastMonth = num(next.outcome?.etaMonths) > 0 && num(next.outcome?.etaMonths) <= 1
+    // A rung's final month is a one-time finish, not a new monthly amount.
+    // When it shrinks, the difference is already being handed to the next
+    // rung — leaving this step at its old size would direct the same dollars
+    // twice, so any shrink counts. A rise only matters when it is material.
+    const finishing = !targetMoved && lastMonth && (after < before || movedEnough(before, after))
+    if (!finishing && !targetMoved && !movedEnough(before, after)) continue
+
+    const payment = step.outcome?.kind === 'debt_payment' ? 'payment' : 'transfer'
+    const name = next.basis?.recordName || step.basis?.recordName || null
+    const twin = live.find(item => item.intentKey === `setup.${intent}`)
+    const scheduled = num(twin?.outcome?.amount) || before
+    const mainPatch = rewrittenMove(next, fingerprint)
+    const updates = [{ id: step.id, patch: mainPatch }]
+
+    if (finishing) {
+      // Its last month. Resetting a standing order that ends next month is
+      // two trips to the bank for one change — so the move becomes the
+      // one-time finish, and it ends the standing order itself. Debt says
+      // "about": interest and the autopaid minimum land in between, and the
+      // statement's payoff figure is the exact one.
+      const running = Boolean(twin?.done)
+      const into = step.basis?.recordType === 'goal' ? 'toward' : 'to'
+      const finish = payment === 'payment'
+        ? `Pay off the last ${money(after)} of ${name || 'the balance'}`
+        : `Move the last ${money(after)} ${into} ${name || 'it'}`
+      // A debt is cleared; a savings account is not "finished" — its target is reached.
+      const target = num(next.outcome?.targetAmount)
+      const outcomeText = payment === 'payment'
+        ? { done: `${name || 'It'} shows a $0 balance`, why: `This clears ${name || 'it'}.` }
+        : { done: `${name || 'It'} is at ${target > 0 ? money(target) : 'its target'}`, why: `This takes ${name || 'it'} to ${target > 0 ? money(target) : 'its target'}.` }
+      mainPatch.text = `${finish}${running ? `, then stop the ${money(scheduled)} scheduled ${payment}` : ''}`
+      mainPatch.detail = `${outcomeText.why}${running ? ` The standing ${payment} would keep going after that, so this ends it rather than changing it for one month.` : ''}`
+      mainPatch.doneWhen = `${outcomeText.done}${running ? ` and no ${payment} is scheduled for it` : ''}.`
+      mainPatch.outcome = { ...(mainPatch.outcome || {}), final: true }
+      if (twin) updates.push({ id: twin.id, patch: { supersededAt: now, pinnedAt: null } })
+    } else if (twin && scheduled !== after) {
+      // The standing order always follows the move, whatever the size of the
+      // change: a plan quoting $950 while the bank sends $1,100 is the one
+      // mismatch this whole review exists to prevent.
+      const nextTwin = pool.find(candidate => candidate.intentKey === `setup.${intent}`)
+      const patch = nextTwin
+        ? rewrittenMove(nextTwin, fingerprint)
+        : {
+          ...rewrittenMove({ ...twin, outcome: { ...(twin.outcome || {}), amount: after } }, fingerprint),
+          text: `Change your scheduled ${money(scheduled)} monthly ${payment} to ${money(after)}`,
+          detail: `The plan now sizes this move at ${money(after)} a month, so the standing ${payment} you set up should match it.`,
+          doneWhen: `The recurring ${payment} is set to ${money(after)} and its next date is confirmed.`,
+        }
+      // Already running at the bank at the old amount: reopening the step is
+      // the honest instruction, because the bank will keep sending the old one.
+      if (twin.done) {
+        patch.text = `Change your scheduled ${money(scheduled)} monthly ${payment} to ${money(after)}`
+        patch.done = false
+        patch.completedAt = null
+      }
+      updates.push({ id: twin.id, patch })
+    }
+
+    return {
+      kind: 'amount_update',
+      step,
+      reason: amountUpdateReason({ step, before, after, beforeTarget, afterTarget, route, finishing, name }),
+      replacement: { ...next, ...mainPatch, id: step.id },
+      updates,
+      before,
+      after,
+      final: finishing,
+    }
+  }
+  return null
+}
+
+// A move the route no longer funds at all: something new outranks it (an
+// 18% loan appears, and the savings transfer pauses). Left alone, the plan
+// directs the same dollars twice.
+export function pausedMove({ active = [], pool = [], route = null, fingerprint = null } = {}) {
+  if (!route?.ready || !(num(route.availableMonthlyAmount) > 0)) return null
+  const funded = new Set(pool.map(step => step.intentKey))
+  const lead = (route.allocations || []).find(item => num(item.amount) > 0 && !['unassigned', 'hold_for_coverage'].includes(item.key))
+  if (!lead) return null
+  for (const step of active) {
+    if (step.done || step.source === 'user' || step.reviewOverrideFingerprint === fingerprint || step.outcome?.final) continue
+    const intent = step.intentKey || ''
+    if (!/^(fund\.|pay\.debt\.)/.test(intent) || funded.has(intent)) continue
+    if (!(num(step.outcome?.amount) > 0) || !step.outcome?.recurrence) continue
+    const leadName = lead.destinationName || lead.label
+    return {
+      step,
+      reason: `Your plan now sends this money to ${leadName} first, so this ${money(step.outcome.amount)}/mo move pauses for now.`,
+    }
+  }
+  return null
+}
+
+/**
+ * What retiring a money move does to the standing order behind it. A paid-off
+ * card with a $700 monthly payment still scheduled at the bank is the plan
+ * leaving money running somewhere it no longer belongs — nothing used to say
+ * so. An order never set up is simply retired with its move.
+ */
+export function retirementFor(steps = [], step) {
+  const intent = step?.intentKey || ''
+  if (!intent || intent.startsWith('setup.')) return null
+  const twin = steps.find(item => item?.intentKey === `setup.${intent}` && !item.supersededAt)
+  if (!twin) return null
+  // Not set up yet — or it was a "pay the last amount, then stop" errand,
+  // which already ends the standing order.
+  if (!twin.done || twin.outcome?.final) return { twinId: twin.id, action: 'retire', text: null }
+  const amount = num(twin.outcome?.amount) || num(step.outcome?.amount)
+  const payment = step.outcome?.kind === 'debt_payment' ? 'payment' : 'transfer'
+  const name = step.basis?.recordName
+  const text = `Stop the scheduled ${money(amount)} monthly ${payment}${name ? ` to ${name}` : ''}`
+  return {
+    twinId: twin.id,
+    action: 'stop',
+    text,
+    step: {
+      text,
+      detail: `That move is finished, so end the standing ${payment} behind it. Otherwise it keeps sending money your plan now puts somewhere else.`,
+      doneWhen: `The scheduled ${payment} is cancelled and no future date shows.`,
+      intentKey: `stop.${twin.intentKey}`,
+      completionPolicy: 'once',
+      priorityKey: step.priorityKey || null,
+      outcome: {
+        kind: 'information_only',
+        sourceAccountId: twin.outcome?.sourceAccountId || step.outcome?.sourceAccountId || null,
+        destinationAccountId: twin.outcome?.destinationAccountId || null,
+        debtId: twin.outcome?.debtId || step.outcome?.debtId || null,
+      },
+      basis: step.basis ? { ...step.basis } : null,
+      source: 'money-route',
+    },
+  }
+}
+
+// Retires a move and whatever automated it, returning the new step list.
+export function retireMove(steps = [], stepId, { now = new Date().toISOString() } = {}) {
+  const step = steps.find(item => item.id === stepId)
+  if (!step) return steps
+  const retirement = retirementFor(steps, step)
+  // The old standing order is retired either way: directly, or via the new
+  // "stop it" errand that now carries it. Left live, a cancelled schedule
+  // would block the next move from ever getting one of its own.
+  const next = steps.map(item => {
+    if (item.id === stepId) return { ...item, supersededAt: now, pinnedAt: null }
+    if (retirement && item.id === retirement.twinId) return { ...item, supersededAt: now, pinnedAt: null }
+    return item
+  })
+  if (retirement?.action === 'stop' && !steps.some(item => item.intentKey === retirement.step.intentKey && !item.done)) {
+    next.push({ ...retirement.step, id: `stop_${retirement.twinId}_${Date.parse(now) || 0}`, done: false, addedAt: now })
+  }
+  return next
 }
 
 export function buildPlanModel({ snapshot = {}, setupState, plan, activities = [], reminders = [], moneyRoute = null, now = new Date(), proposals = [] } = {}) {
@@ -761,11 +1028,29 @@ export function buildPlanModel({ snapshot = {}, setupState, plan, activities = [
     return improved ? { ...candidate, ...improved, id: candidate.id, proposed: true } : candidate
   })
   const focus = [...approvedFocus, ...proposed.slice(0, Math.max(0, FOCUS_SIZE - approvedFocus.length))]
-  const reviewStep = active.find(step => staleStepReason(step, snapshot, activities, fingerprint)) || null
-  const review = reviewStep ? {
-    step: reviewStep,
-    reason: staleStepReason(reviewStep, snapshot, activities, fingerprint),
-  } : null
+  // An amount update only exists while the route still wants the same move,
+  // so it never masks a structural change (debt paid off, target reached) —
+  // those drop the intent from the route and fall through to staleStepReason.
+  const pool = moneyRoute ? routeStepPool(moneyRoute) : []
+  const stamp = now instanceof Date && Number.isFinite(now.getTime()) ? now.toISOString() : new Date().toISOString()
+  const amountUpdate = moneyRoute
+    ? amountUpdateReview({ steps: plan?.steps || [], pool, route: moneyRoute, fingerprint, now: stamp })
+    : null
+  // A finished move elsewhere goes first — it is usually WHY an amount moved
+  // ("the card is paid off" before "this can rise to $1,100"). For the step
+  // being resized itself, the resize wins: it keeps the step and its history.
+  const resizing = new Set((amountUpdate?.updates || []).map(update => update.id))
+  const reviewStep = active.find(step => !resizing.has(step.id) && staleStepReason(step, snapshot, activities, fingerprint)) || null
+  const paused = !reviewStep && !amountUpdate && moneyRoute
+    ? pausedMove({ active, pool, route: moneyRoute, fingerprint })
+    : null
+  const retiring = reviewStep || paused?.step || null
+  const review = retiring ? {
+    kind: 'replace',
+    step: retiring,
+    reason: reviewStep ? staleStepReason(reviewStep, snapshot, activities, fingerprint) : paused.reason,
+    retire: retirementFor(plan?.steps || [], retiring),
+  } : amountUpdate
 
   return {
     prerequisite,
@@ -855,6 +1140,7 @@ export function mergeFocusWording(candidates = [], ...results) {
 
 export function replacementCandidate(model) {
   if (!model?.review?.step) return null
+  if (model.review.kind === 'amount_update') return model.review.replacement
   return model.candidates.find(candidate => candidate.intentKey !== model.review.step.intentKey)
     || model.candidates[0]
     || null

@@ -58,21 +58,21 @@ const SPECS = {
     options: context => {
       const debt = context.promoDebt
       return [
-        { id: 'soon',  label: 'Yes — it ends within 6 months',
+        { id: 'soon',  label: 'Yes, it ends within 6 months',
           revise: () => revision({
             id: 'debt_promo',
-            summary: `${debt.name} jumps to the front — the 0% window closes first.`,
+            summary: `${debt.name} jumps to the front. The 0% window closes first.`,
             promote: `pay.debt.${debt.id || 'highest_apr'}`,
             add: step({
               text: `Clear ${debt.name} before the 0% rate ends`,
-              detail: `Once the promotional rate expires, the remaining ${money(debt.balance)} starts charging the card's normal rate — which is usually the highest rate in this plan. Paying it off inside the window costs nothing extra in interest.`,
+              detail: `Once the promotional rate expires, the remaining ${money(debt.balance)} starts charging the card's normal rate, usually the highest rate in this plan. Paying it off inside the window costs nothing extra in interest.`,
               doneWhen: `${debt.name} is cleared in full, or you know the exact date the rate changes.`,
               impact: 'Avoids the rate jump entirely',
               intentKey: `pay.debt.${debt.id || 'promo'}.before_expiry`,
               priorityKey: 'kill_debt',
             }),
           }) },
-        { id: 'later', label: 'Yes — more than 6 months away',
+        { id: 'later', label: 'Yes, more than 6 months away',
           revise: () => revision({
             id: 'debt_promo',
             summary: `${debt.name} stays where it is, with the end date noted.`,
@@ -81,7 +81,7 @@ const SPECS = {
         { id: 'no',    label: "No, it's genuinely 0%",
           revise: () => revision({
             id: 'debt_promo',
-            summary: `${debt.name} stays on minimums — nothing cheaper to pay off.`,
+            summary: `${debt.name} stays on minimums. Nothing cheaper to pay off.`,
             note: `${debt.name} charges no interest, so paying it early earns you nothing. Keep paying the minimum.`,
           }) },
       ]
@@ -100,17 +100,17 @@ const SPECS = {
       { id: 'full',  label: "I'm already getting all of it",
         revise: () => revision({
           id: 'match_details',
-          summary: 'Match already captured — the plan skips ahead to the next rung.',
+          summary: 'Match already captured. The plan skips ahead to the next rung.',
           note: 'Employer match is already fully claimed, so the plan starts below it.',
         }) },
       { id: 'unsure', label: "I don't know what they match",
         revise: () => revision({
           id: 'match_details',
-          summary: 'Finding out becomes a step — it outranks everything else here.',
+          summary: 'Finding out becomes a step, and it outranks everything else here.',
           promote: 'verify.employer_match',
           add: step({
             text: 'Find your employer match rate on a pay stub or benefits page',
-            detail: 'A match is the only guaranteed return in this plan — better than paying off even an expensive card. You cannot claim it without knowing the percentage, and it takes one message to HR.',
+            detail: 'A match is the only guaranteed return in this plan, better than paying off even an expensive card. You cannot claim it without knowing the percentage, and it takes one message to HR.',
             doneWhen: 'You know the match percentage and how much you currently contribute.',
             impact: 'Unlocks the highest-return money available to you',
             intentKey: 'verify.employer_match',
@@ -126,7 +126,7 @@ const SPECS = {
       { id: 'steady', label: "It's the same most months",
         revise: () => revision({
           id: 'income_stability',
-          summary: 'Plan stays as calculated — a steady income supports it.',
+          summary: 'Plan stays as calculated. A steady income supports it.',
         }) },
       { id: 'swings', label: 'It swings month to month',
         revise: () => revision({
@@ -135,7 +135,7 @@ const SPECS = {
           promote: 'fund.emergency_reserve',
           add: context.opensCushionAccount ? null : step({
             text: 'Open a separate savings account and start it with one lean month of expenses',
-            detail: 'Every amount in this plan assumes the surplus repeats. When income swings, the month that matters is the worst one you can expect — so the cushion needs its own account, funded first, before anything optional gets a share.',
+            detail: 'Every amount in this plan assumes the surplus repeats. When income swings, the month that matters is the worst one you can expect. So the cushion needs its own account, funded first, before anything optional gets a share.',
             doneWhen: 'The account is open at your bank and the first transfer has landed in it.',
             impact: 'Keeps a thin month from undoing months of progress',
             intentKey: 'open.lean_month_buffer',
@@ -179,7 +179,7 @@ const SPECS = {
       { id: 'unusual', label: 'This month was unusual',
         revise: () => revision({
           id: 'break_even',
-          summary: 'Plan holds — it will re-read your numbers next month.',
+          summary: 'Plan holds. It will re-read your numbers next month.',
           note: 'This month was atypical, so the plan is built on a one-off rather than the pattern. Update your spending when the normal month lands.',
         }) },
     ],
@@ -221,7 +221,7 @@ const SPECS = {
     options: context => {
       const goal = context.lateGoal
       return [
-        { id: 'jump', label: `Yes — ${goal.name} has a real deadline`,
+        { id: 'jump', label: `Yes, ${goal.name} has a real deadline`,
           revise: () => revision({
             id: 'goal_at_risk',
             summary: `${goal.name} moves ahead of the cushion.`,
@@ -243,7 +243,7 @@ const SPECS = {
         { id: 'keep', label: 'No, keep the safer order',
           revise: () => revision({
             id: 'goal_at_risk',
-            summary: 'Cushion stays first — the goal lands later than planned.',
+            summary: 'Cushion stays first. The goal lands later than planned.',
             note: `${goal.name} will arrive after its target date under this order. That is the deliberate trade for keeping the cushion first.`,
           }) },
       ]
@@ -285,14 +285,14 @@ const SPECS = {
             summary: 'Asking for a lower rate joins the plan.',
             add: step({
               text: `Call ${debt.name} and ask for a lower rate`,
-              detail: `You currently pay ${num(debt.interest_rate)}% on ${money(debt.balance)}. A rate cut does the same work as paying extra every month, without finding the extra money — and a customer who has paid on time has real leverage to ask.`,
+              detail: `You currently pay ${num(debt.interest_rate)}% on ${money(debt.balance)}. A rate cut does the same work as paying extra every month, without finding the extra money, and a customer who has paid on time has real leverage to ask.`,
               doneWhen: 'You have asked, and either the rate is lowered or you know it was declined.',
               impact: 'Costs one phone call, works like a raise',
               intentKey: `reduce.rate.${debt.id || 'primary'}`,
               priorityKey: 'kill_debt',
             }),
           }) },
-        { id: 'asked',  label: 'Asked already — no luck',
+        { id: 'asked',  label: 'Asked already, no luck',
           revise: () => revision({
             id: 'rate_reduction',
             summary: 'Plan sticks with paying it down fastest.',
@@ -301,7 +301,7 @@ const SPECS = {
         { id: 'done',   label: 'Already lowered it',
           revise: () => revision({
             id: 'rate_reduction',
-            summary: 'Noted — update the rate so the order stays honest.',
+            summary: 'Noted. Update the rate so the order stays honest.',
             note: `${debt.name}'s rate has changed. Update it so this plan ranks it correctly.`,
           }) },
       ]
@@ -320,7 +320,7 @@ const SPECS = {
           // its own pot once there is a pot to be second to.
           add: context.opensCushionAccount ? null : step({
             text: 'Open a second savings account for the bill, and set a transfer to it',
-            detail: 'An expense you already know about is not an emergency, and paying it out of the emergency fund leaves you with no emergency fund the day after. Two accounts, two jobs — most banks let you open another savings account in a few minutes at no cost.',
+            detail: 'An expense you already know about is not an emergency, and paying it out of the emergency fund leaves you with no emergency fund the day after. Two accounts, two jobs. Most banks let you open another savings account in a few minutes at no cost.',
             doneWhen: 'The second account exists and a recurring transfer into it is scheduled.',
             impact: 'Keeps a known bill from emptying your cushion',
             intentKey: 'open.sinking_fund',

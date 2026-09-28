@@ -1,6 +1,7 @@
 import { computeSnapshot, LIMITS } from '@/lib/finance'
 import { getDataGaps } from '@/lib/dataGaps'
 import { accountFamily, inferLiquidity, itemMonthlyAmount, subtypeLabel, taxTreatment } from '@/lib/moneyModel'
+import { stepProgress } from '@/lib/stepFacts'
 
 // The advisor's system prompt + user-situation context, shared between the
 // advisor conversation and the Plan page's reviewable next-chapter draft.
@@ -77,25 +78,25 @@ THE FOLLOW-UP QUESTIONS THAT MATTER MOST
 
 These are the questions that most change the advice you'd give. Ask them when relevant:
 
-🔑 **"Do you have a 401k through work? Does your employer match any of your contributions?"**
+- **"Do you have a 401k through work? Does your employer match any of your contributions?"**
 → Ask this early. If yes + match exists and they're not maxing the match, this becomes priority #1 immediately regardless of their situation. Free money always wins.
 
-🔑 **"Do you have any investments outside this app — Roth IRA, 401k, brokerage account, anything?"**
+- **"Do you have any investments outside this app, like a Roth IRA, a 401k, or a brokerage account?"**
 → Critical before giving investing advice. They might already be investing and just not tracking it here.
 
-🔑 **"Is that debt [specific debt name] a credit card, student loan, car loan, or something else?"**
+- **"Is that debt [specific debt name] a credit card, student loan, car loan, or something else?"**
 → The type of debt completely changes the strategy. Credit card at 22% = emergency. Student loan at 4% = can wait.
 
-🔑 **"Is your income pretty consistent each month, or does it vary?"**
+- **"Is your income pretty consistent each month, or does it vary?"**
 → Freelancers and gig workers need 6 months emergency fund. W-2 employees can often get by with 3.
 
-🔑 **"Do you have health insurance right now?"**
+- **"Do you have health insurance right now?"**
 → If no, this is a crisis-level gap. One medical emergency = financial ruin without insurance.
 
-🔑 **"Are you currently putting anything toward retirement, even a little?"**
+- **"Are you currently putting anything toward retirement, even a little?"**
 → Opens the door to talk about compounding, Roth IRA, 401k — the most powerful wealth-building conversation for young adults.
 
-🔑 **"What does your biggest expense actually cover?"** (if housing or another category is unusually high)
+- **"What does your biggest expense actually cover?"** (if housing or another category is unusually high)
 → Gets specifics before giving advice on cutting.
 
 ━━━━━━━━━━━━━━━━━━━━━━━
@@ -177,6 +178,7 @@ RESPONSE FORMAT RULES
 - Always end with either: a single follow-up question OR a "Your move:" section with 1–3 specific actions
 - Never end with both a question and next steps — pick one
 - Keep responses focused — 150–300 words is usually right. Longer only when explaining a complex concept they asked about.
+- Write like a person, not a template: plain sentences, no em dashes (use a period or a comma), no emoji, no headings for a short answer.
 - Be encouraging. Never shame. Frame everything as "here's the opportunity" not "here's what you did wrong."`
 
   const dynamicPrompt = `${memoriesText ? memoriesText + '\n\n' : ''}━━━━━━━━━━━━━━━━━━━━━━━
@@ -302,9 +304,13 @@ export function buildContext(money, goals = [], debts = [], profile, extras = {}
   }
 
   if (extras.plans?.length) {
-    context += 'CURRENT PLAN (do not duplicate active or completed work):\n'
+    context += 'CURRENT PLAN (do not duplicate active or completed work; "now" figures are live from their records — quote them when asked how it is going):\n'
     extras.plans.forEach(plan => {
-      const active = (plan.steps || []).filter(step => !step.done).map(step => step.text)
+      // Superseded steps were replaced by the user; they are history, not work.
+      const active = (plan.steps || []).filter(step => !step.done && !step.supersededAt).map(step => {
+        const progress = stepProgress(step, { accounts, debts, goals })
+        return progress ? `${step.text} [now: ${progress.label}${progress.eta ? `, ${progress.eta}` : ''}]` : step.text
+      })
       const completed = (plan.steps || []).filter(step => step.done).map(step => step.text)
       context += `  Active: ${active.length ? active.join('; ') : 'none'}\n`
       context += `  Completed history: ${completed.length ? completed.join('; ') : 'none'}\n`

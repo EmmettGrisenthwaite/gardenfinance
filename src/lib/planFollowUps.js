@@ -7,7 +7,7 @@ const money = value => `$${Math.max(0, Math.round(num(value))).toLocaleString()}
 // Every follow-up ends with this so the advisor stays in planner mode: one
 // question at a time, and it says what the answer would change before asking
 // the next. Without it the model answers and then dumps five more questions.
-const ADVISOR_MODE = 'Answer as my planner: tell me what my answer changes about the plan, then ask me the next most useful question — one at a time.'
+const ADVISOR_MODE = 'Answer as my planner: tell me what my answer changes about the plan, then ask me the next most useful question, one at a time.'
 
 // `answer` is optional. When present the question maps to a real column, so it
 // can be asked inline with a typed control and written straight to the record —
@@ -79,7 +79,7 @@ export function planFollowUps({ route, profile, accounts = [], debts = [], goals
     list.push(followUp('debt_promo', {
       topic: 'debt',
       label: `Is ${promo.name} on a 0% deal?`,
-      question: `${promo.name} shows 0% — is that an intro rate, and when does it end?`,
+      question: `${promo.name} shows 0%. Is that an intro rate, and when does it end?`,
       why: 'If it ends soon, it jumps ahead of everything else on this list.',
       ask: `My ${promo.name} balance of ${money(promo.balance)} is recorded at 0%. If that is a promotional rate that expires, how should my plan change before it does?`,
     }))
@@ -110,7 +110,7 @@ export function planFollowUps({ route, profile, accounts = [], debts = [], goals
       topic: 'retirement',
       label: 'My employer match',
       question: 'What percent of your pay does your employer match up to?',
-      why: 'A match is the one guaranteed return in this plan — it beats paying down debt.',
+      why: 'A match is the one guaranteed return in this plan. It beats paying down debt.',
       ask: 'My employer offers a retirement match. Help me work out exactly what I need to contribute to capture all of it, and where that should sit in my plan.',
       // Only answerable in place once the workplace account exists to write to.
       answer: workplace?.id
@@ -134,7 +134,7 @@ export function planFollowUps({ route, profile, accounts = [], debts = [], goals
       why: irregular
         ? 'Your work type usually means uneven months, and that changes how big the cushion should be first.'
         : 'If it swings, the cushion should be bigger before anything else starts.',
-      ask: `My plan assumes ${money(spare)} spare every month. My income is not perfectly steady — how should the plan change to survive a lean month?`,
+      ask: `My plan assumes ${money(spare)} spare every month. My income is not perfectly steady. How should the plan change to survive a lean month?`,
     }))
   } else {
     // "This plan moves $0 a month. Does it swing?" is a question about nothing.
@@ -153,7 +153,7 @@ export function planFollowUps({ route, profile, accounts = [], debts = [], goals
     list.push(followUp('likely_shock', {
       topic: 'risk',
       label: 'What might go wrong',
-      question: 'What is the most likely surprise cost in your life right now — car, health, pet, a flight home?',
+      question: 'What surprise cost is most likely for you right now: car, health, pet, a flight home?',
       why: 'The cushion should be sized to the thing most likely to happen to you, not to an average.',
       ask: 'Help me size my emergency fund to what could actually go wrong in my life, rather than a generic number of months.',
     }))
@@ -212,7 +212,7 @@ export function planFollowUps({ route, profile, accounts = [], debts = [], goals
       topic: 'goal',
       label: `${goal.name} may be late`,
       question: `${goal.name} is due in about ${plural(dueInMonths)}, but this plan reaches it in about ${plural(readyInMonths)}. Should it jump the queue?`,
-      why: 'The order above is right when nothing has a deadline. A real due date can outrank a cushion — you know which one hurts more to miss.',
+      why: 'The order above is right when nothing has a deadline. A real due date can outrank a cushion, and you know which one hurts more to miss.',
       ask: `I need ${short} for ${goal.name} in about ${plural(dueInMonths)}, but my plan funds other things first and gets there in about ${plural(readyInMonths)}. Walk me through whether to move it up the order, and what that costs me.`,
     }))
   }
@@ -252,7 +252,7 @@ export function planFollowUps({ route, profile, accounts = [], debts = [], goals
       // answers. Only the first two share ground.
       topic: 'known_cost',
       label: 'Something big is coming',
-      question: 'Is anything big landing in the next six months — tuition, a move, a car repair, travel?',
+      question: 'Is anything big landing in the next six months, like tuition, a move, a car repair, or travel?',
       why: 'A cost you already know about changes what the cushion has to absorb first.',
       ask: 'I have a known expense coming in the next few months. Help me work out whether to save for it separately or let it come out of my emergency fund.',
       // Naming it creates the goal, which puts it in the ladder at a real pace.

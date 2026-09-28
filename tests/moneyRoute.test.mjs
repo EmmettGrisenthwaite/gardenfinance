@@ -295,8 +295,10 @@ test('step text names a destination, never a whole sentence', () => {
   const reserve = steps.find(step => step.intentKey === 'fund.emergency_reserve')
   assert.ok(reserve)
   // "Move $250/mo toward Save your first $1,000" is the failure mode: the card
-  // label is a sentence and cannot be spliced in after "toward".
-  assert.match(reserve.text, /^Move \$\d+\/mo toward your emergency fund$/)
+  // label is a sentence and cannot be spliced in after "toward". With both
+  // accounts on file the step names them, because that is what gets typed
+  // into a bank's transfer screen.
+  assert.match(reserve.text, /^Move \$\d+\/mo from Checking to Savings$/)
   for (const step of steps) {
     assert.ok(!/toward (Save|Grow|Build|Pay|Fund|Increase) /.test(step.text), `doubled verb in: ${step.text}`)
     assert.ok(!/destination record/.test(step.doneWhen), `jargon in: ${step.doneWhen}`)
@@ -601,7 +603,12 @@ test('the automation step sits with the move it automates', () => {
   const automation = steps.findIndex(step => step.outcome?.kind === 'recurring_setup' && /^Schedule /.test(step.text))
   assert.ok(automation > 0, 'the plan should automate its biggest recurring move')
   // Appended, it landed after the chores and read as unrelated to the transfer.
-  assert.match(steps[automation - 1].text, /^Move |^Pay /)
+  assert.equal(steps[automation].intentKey, `setup.${steps[automation - 1].intentKey}`)
+  // The $900 card payment clears the card this month; a standing order for it
+  // would be followed by "stop the scheduled payment" a month later. The
+  // $200/mo savings move runs for over a year, so that is what gets automated.
+  assert.equal(steps[automation].intentKey, 'setup.fund.emergency_reserve')
+  assert.ok(!steps.some(step => step.intentKey === 'setup.pay.debt.card'))
 })
 
 test('setup steps are earned, never handed out to pad the list', () => {
@@ -731,4 +738,98 @@ test('a settled user still gets a plan worth opening', () => {
   assert.ok(steps.length >= 3, `eight months in the plan fell to ${steps.length}: ${steps.map(s => s.text).join(' | ')}`)
   const keys = steps.map(step => step.intentKey)
   assert.equal(new Set(keys).size, keys.length)
+})
+
+// ── What a generated step tells the user, in exact figures ─────────────────
+
+test('the match step says what the employer adds, not just the percentage', () => {
+  const steps = buildInitialPlan(buildMoneyRoute(state({
+    profile: { monthly_income: 6200, monthly_expenses: 4300, health_insurance: 'employer', employer_401k: 'match', onboarding_complete: true },
+    accounts: [
+      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 3100 },
+      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 6000 },
+      { id: 'work', name: 'Work 401(k)', type: 'brokerage', subtype: '401k', balance: 18000, contribution_percent: 3, employer_match_percent: 100, employer_match_limit_percent: 6, monthly_contribution: 186 },
+    ],
+  })))
+  const match = steps.find(step => step.intentKey.startsWith('capture.employer_match'))
+  assert.equal(match.impact, 'About $186/mo of free money from your employer')
+  assert.equal(match.detail, 'You put in 3% now and your employer matches up to 6%. Going to 6% takes about $186 more from each month’s pay, and your employer adds about $186 on top.')
+})
+
+test('a debt payment says it is extra, what lands on the balance, and when it ends', () => {
+  const steps = buildInitialPlan(buildMoneyRoute(state({
+    accounts: [
+      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 900 },
+      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 1500 },
+    ],
+    debts: [{ id: 'card', name: 'Visa', balance: 3400, interest_rate: 24, minimum_payment: 85 }],
+  })))
+  const pay = steps.find(step => step.intentKey === 'pay.debt.card')
+  assert.equal(pay.text, 'Pay $900/mo extra to Visa')
+  assert.match(pay.detail, /on top of the \$85 minimum, so \$985 comes off the balance each month\.$/)
+  assert.equal(pay.impact, 'Visa paid off in about 4 months')
+  assert.equal(pay.basis.balance, 3400)
+  const autopay = steps.find(step => step.intentKey === 'setup.autopay_minimums')
+  assert.equal(autopay.text, 'Put Visa’s $85 minimum on autopay')
+})
+
+test('several debts are listed by name on the autopay step', () => {
+  const steps = buildInitialPlan(buildMoneyRoute(state({
+    debts: [
+      { id: 'a', name: 'Amex', balance: 4100, interest_rate: 24.9, minimum_payment: 120 },
+      { id: 'd', name: 'Discover it', balance: 1600, interest_rate: 19.9, minimum_payment: 45 },
+    ],
+  })))
+  const autopay = steps.find(step => step.intentKey === 'setup.autopay_minimums')
+  assert.equal(autopay.text, 'Put all 2 debt minimums on autopay')
+  assert.match(autopay.detail, /Set each one to at least its minimum: Amex \$120 · Discover it \$45\.$/)
+})
+
+test('idle savings shows the balance and what the low rate is costing', () => {
+  const steps = buildInitialPlan(buildMoneyRoute(state({
+    profile: { monthly_income: 8000, monthly_expenses: 5000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+    accounts: [
+      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 4000 },
+      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'standard_savings', balance: 16000, interest_rate: 0.01 },
+    ],
+  })))
+  const upgrade = steps.find(step => step.intentKey.startsWith('move.savings_to_hysa'))
+  assert.equal(upgrade.text, 'Move the $16,000 in Savings to a high-yield savings account')
+  assert.equal(upgrade.impact, 'About $560 a year more in interest')
+  assert.match(upgrade.detail, /Estimated at 3\.5%/)
+})
+
+test('a goal step carries its finish line and the date the user chose', () => {
+  const steps = buildInitialPlan(buildMoneyRoute(state({
+    profile: { monthly_income: 8000, monthly_expenses: 5000, health_insurance: 'employer', employer_401k: 'none', onboarding_complete: true },
+    accounts: [
+      { id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 4000 },
+      { id: 'savings', name: 'Savings', type: 'savings', subtype: 'hysa', balance: 16000 },
+    ],
+    goals: [{ id: 'house', name: 'House down payment', goal_type: 'purchase', target_amount: 40000, current_amount: 5000, deadline: '2029-06-01' }],
+  })))
+  const goal = steps.find(step => step.intentKey === 'fund.goal.house')
+  assert.equal(goal.text, 'Move $3,000/mo from Checking toward House down payment')
+  assert.equal(goal.impact, 'Reaches $40,000 in about 12 months · your target date is Jun 2029')
+  assert.equal(goal.outcome.targetAmount, 40000)
+  assert.match(goal.detail, /Keep it in a high-yield savings account rather than investing it/)
+  // A transfer that stops at the finish line is not "$36,000 a year".
+  const schedule = steps.find(step => step.intentKey === 'setup.fund.goal.house')
+  assert.equal(schedule.impact, 'Keeps going until House down payment reaches $40,000')
+})
+
+test('every money step on every plan names its amount and, when finite, its finish line', () => {
+  const profiles = [
+    state(),
+    state({ debts: [{ id: 'card', name: 'Visa', balance: 2400, interest_rate: 26, minimum_payment: 60 }] }),
+    state({ accounts: [{ id: 'checking', name: 'Checking', type: 'checking', subtype: 'checking', balance: 200 }] }),
+  ]
+  for (const input of profiles) {
+    for (const step of buildInitialPlan(buildMoneyRoute(input))) {
+      if (!['transfer', 'contribution', 'debt_payment'].includes(step.outcome?.kind)) continue
+      assert.match(step.text, /\$[\d,]+/, `no amount in: ${step.text}`)
+      const finite = step.outcome.kind === 'debt_payment' || step.outcome.targetAmount > 0
+      if (finite) assert.match(step.impact, /paid off in|Reaches \$/, `no finish line in: ${step.impact}`)
+    }
+  }
 })

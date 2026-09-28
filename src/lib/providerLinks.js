@@ -12,48 +12,48 @@ const REGISTRY = [
     id: 'roth_ira',
     match: /roth ira|\broth\b/i,
     links: [
-      { label: 'Fidelity — open a Roth IRA', url: 'https://www.fidelity.com/retirement-ira/roth-ira', note: 'no minimums, no fees' },
-      { label: 'Schwab — Roth IRA', url: 'https://www.schwab.com/ira/roth-ira' },
-      { label: 'Vanguard — Roth IRA', url: 'https://investor.vanguard.com/accounts-plans/iras/roth-ira' },
+      { label: 'Open a Roth IRA at Fidelity', url: 'https://www.fidelity.com/retirement-ira/roth-ira', note: 'no minimums, no fees' },
+      { label: 'Roth IRA at Schwab', url: 'https://www.schwab.com/ira/roth-ira' },
+      { label: 'Roth IRA at Vanguard', url: 'https://investor.vanguard.com/accounts-plans/iras/roth-ira' },
     ],
   },
   {
     id: 'traditional_ira',
     match: /traditional ira/i,
     links: [
-      { label: 'Fidelity — Traditional IRA', url: 'https://www.fidelity.com/retirement-ira/traditional-ira' },
-      { label: 'Schwab — Traditional IRA', url: 'https://www.schwab.com/ira/traditional-ira' },
+      { label: 'Traditional IRA at Fidelity', url: 'https://www.fidelity.com/retirement-ira/traditional-ira' },
+      { label: 'Traditional IRA at Schwab', url: 'https://www.schwab.com/ira/traditional-ira' },
     ],
   },
   {
     id: 'hysa',
     match: /high[- ]yield|hysa|savings account|emergency fund|cash cushion|starter emergency/i,
     links: [
-      { label: 'Ally — savings account', url: 'https://www.ally.com/bank/online-savings-account/', note: 'consistently top APY' },
-      { label: 'Marcus — savings', url: 'https://www.marcus.com/us/en/savings/high-yield-savings' },
-      { label: 'SoFi — savings', url: 'https://www.sofi.com/banking/savings-account/' },
+      { label: 'Savings account at Ally', url: 'https://www.ally.com/bank/online-savings-account/', note: 'consistently top APY' },
+      { label: 'Savings at Marcus', url: 'https://www.marcus.com/us/en/savings/high-yield-savings' },
+      { label: 'Savings at SoFi', url: 'https://www.sofi.com/banking/savings-account/' },
     ],
   },
   {
     id: 'brokerage',
     match: /brokerage|index fund|start investing|taxable account/i,
     links: [
-      { label: 'Fidelity — open an account', url: 'https://www.fidelity.com/open-account/overview', note: 'best app for beginners' },
-      { label: 'Vanguard — brokerage', url: 'https://investor.vanguard.com/accounts-plans/brokerage-accounts' },
+      { label: 'Open an account at Fidelity', url: 'https://www.fidelity.com/open-account/overview', note: 'best app for beginners' },
+      { label: 'Brokerage account at Vanguard', url: 'https://investor.vanguard.com/accounts-plans/brokerage-accounts' },
     ],
   },
   {
     id: 'hsa',
     match: /\bhsa\b|health savings account/i,
     links: [
-      { label: 'Fidelity — HSA', url: 'https://www.fidelity.com/go/hsa/why-hsa', note: 'no fees, investable' },
+      { label: 'HSA at Fidelity', url: 'https://www.fidelity.com/go/hsa/why-hsa', note: 'no fees, investable' },
     ],
   },
   {
     id: 'health_insurance',
-    match: /health insurance|uninsured|medical coverage|aca|marketplace plan/i,
+    match: /health insurance|health plan|healthcare\.gov|uninsured|medical coverage|\baca\b|marketplace plan/i,
     links: [
-      { label: 'Healthcare.gov — get covered', url: 'https://www.healthcare.gov/', note: 'official ACA marketplace' },
+      { label: 'Get covered on HealthCare.gov', url: 'https://www.healthcare.gov/', note: 'official ACA marketplace' },
     ],
   },
   {

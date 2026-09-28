@@ -18,7 +18,7 @@ const num = value => Number(value) || 0
 
 export function formatMoney(value) {
   const amount = num(value)
-  return `${amount < 0 ? '-' : ''}$${Math.abs(Math.round(amount)).toLocaleString()}`
+  return `${amount < 0 ? '−' : ''}$${Math.abs(Math.round(amount)).toLocaleString()}`
 }
 
 // Trailing zeros read as false precision on a rate: 4% not 4.00%, 3.8% not 3.80%.

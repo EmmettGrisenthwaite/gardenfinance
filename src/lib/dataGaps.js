@@ -96,7 +96,7 @@ export function getDataGaps({ profile, accounts = [], debts = [], goals = [], ca
   if (!num(p.monthly_expenses) && !detailedExpenses) {
     gaps.push({
       id: 'expenses',
-      label: "What's your monthly spending — rent, food, bills, subscriptions?",
+      label: 'What do you spend each month on rent, food, bills, and subscriptions?',
       sub: 'Unlocks your savings rate and emergency-fund target.',
       cta: 'Add expenses', href: '/?sheet=plan', sheet: 'plan',
     })
@@ -107,7 +107,7 @@ export function getDataGaps({ profile, accounts = [], debts = [], goals = [], ca
     gaps.push({
       id: 'goal',
       label: 'What are you saving toward first?',
-      sub: 'A trip, a house, a cushion — give your garden something to grow.',
+      sub: 'A trip, a house, a cushion. Give your garden something to grow.',
       cta: 'Set a goal', href: '/plan#goals',
     })
   }
